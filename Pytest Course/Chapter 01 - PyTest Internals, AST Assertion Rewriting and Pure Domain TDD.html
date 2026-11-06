@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: PyTest Internals, AST Assertion Rewriting &amp; Pure Domain TDD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 01 - AST Engine &amp; Domain TDD)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Bytecode Compiler &amp; Domain TDD
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                PyTest Internals, AST Assertion Rewriting &amp; Pure Domain TDD
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing Python's premier test harness from the bytecode up: How <code class="font-mono text-emerald-400">AssertionRewriter</code> intercepts Abstract Syntax Trees via PEP 302/451 import hooks, why standard <code class="font-mono text-emerald-400">assert</code> replaces dozens of boilerplate helpers, engineering custom representation hooks (<code class="font-mono text-emerald-400">pytest_assertrepr_compare</code>), and test-driving the immutable financial math core of <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "VaultFlow" Milestone 01</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Trivial calculator examples fail to prepare engineers for institutional systems. In this series, we architect and test <strong>VaultFlow</strong>: a mission-critical, double-entry financial clearinghouse and FX settlement engine. Financial ledgers cannot tolerate floating-point truncation, sign leakage, or silent precision decay. In Milestone 01, we build the pure domain core—an immutable, fixed-point <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Money</code> value object—using strict <strong>Red-Green-Refactor Test-Driven Development (TDD)</strong> while dissecting PyTest's test discovery and AST compilation mechanisms.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PEP 302/451 Import Hook Interception</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> AST Assertion Rewriting &amp; Bytecode Diffing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Custom <code class="text-purple-300">pytest_assertrepr_compare</code> Hook</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defensive Exception Probing (<code class="text-purple-300">pytest.raises</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fixed-Point Currency Math Value Object</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> TDD Cycle: Failing Test to Clean Refactor</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Test Discovery & The src Layout -->
+        <section id="cs-discovery-layout" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Test Discovery &amp; The <code>src/</code> Layout Boundary</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When you invoke <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">pytest</code> from your terminal, PyTest does not simply execute Python scripts. It initializes a deterministic discovery protocol, parsing directories into a recursive composite tree of collection nodes:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 font-mono">The PyTest Collection Protocol Invariant</h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    PyTest crawls the directory tree starting from the <code class="font-mono text-slate-800">rootdir</code> (resolved via <code class="font-mono text-slate-800">pyproject.toml</code>). By default, it collects:
+                </p>
+                <div class="grid md:grid-cols-3 gap-4 font-mono text-xs pt-1">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-sky-800 font-bold block">1. File Identification</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            Matches <code class="text-slate-900">test_*.py</code> or <code class="text-slate-900">*_test.py</code> files. Ignores standard scripts.
+                        </p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-purple-800 font-bold block">2. Class Scoping</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            Collects classes prefixed with <code class="text-purple-900">Test*</code> that omit an <code class="text-rose-700">__init__</code> constructor.
+                        </p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-emerald-800 font-bold block">3. Item Invocation</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            Identifies test functions and methods prefixed with <code class="text-emerald-900">test_*</code>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The Flat vs src Layout Comparison Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Architectural Vulnerability: The Flat Layout vs. The Modern src/ Layout</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Local Directory Imports Create Illusory Green Test Suites</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Flat Layout (Anti-Pattern) -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Flat Layout (The Import Illusion)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Unsafe for CI</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>my_project/</div>
+                            <div>├── vaultflow/  &larr; Local module sits in current working directory</div>
+                            <div>│   └── core.py</div>
+                            <div>└── tests/</div>
+                            <div>    └── test_core.py</div>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            When PyTest runs, Python automatically prepends the current working directory to <code class="text-rose-300 font-mono">sys.path</code>. Tests import directly from the raw directory, <strong>not from the packaged wheel</strong>.
+                        </p>
+                        <p class="text-rose-400 text-[11px] font-sans">
+                            &cross; Failure Mode: Tests pass completely on your laptop, but deployment crashes in production because you forgot to package an asset, manifest file, or C-extension!
+                        </p>
+                    </div>
+
+                    <!-- src Layout (Production Standard) -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Modern src/ Layout (Packaging Isolation)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Production Standard</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>my_project/</div>
+                            <div>├── src/</div>
+                            <div>│   └── vaultflow/  &larr; Cannot be accidentally imported directly!</div>
+                            <div>│       └── core.py</div>
+                            <div>└── tests/</div>
+                            <div>    └── test_core.py</div>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Because <code class="text-emerald-300 font-mono">vaultflow</code> lives inside <code class="text-emerald-300 font-mono">src/</code>, running <code class="text-emerald-300 font-mono">pytest</code> forces you to install the package in editable mode (<code class="text-emerald-300 font-mono">pip install -e .</code>).
+                        </p>
+                        <p class="text-emerald-300 text-[11px] font-sans">
+                            &check; Total Parity: Tests are executed strictly against the installed distribution artifact, matching the exact binary state deployed to production containers.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside the Engine: Abstract Syntax Tree (AST) Assertion Rewriting -->
+        <section id="ast-rewriting" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Abstract Syntax Tree (AST) Assertion Rewriting</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In standard Python, the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">assert</code> keyword is a primitive language construct designed for internal sanity checks. If an expression evaluates to <code class="font-mono text-xs">False</code>, Python raises an uninformative <code class="font-mono text-xs text-rose-700">AssertionError</code> with no contextual metadata. Worse, if Python executes with optimization flags (<code class="font-mono text-xs">python -O</code>), assertion statements are completely stripped from compiled bytecode!
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Legacy frameworks like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">unittest</code> worked around this by inventing dozens of verbose assertion methods: <code class="font-mono text-xs">self.assertEqual()</code>, <code class="font-mono text-xs">self.assertDictEqual()</code>, <code class="font-mono text-xs">self.assertSequenceEqual()</code>. PyTest abandoned this boilerplate entirely by implementing <strong>AST Assertion Rewriting</strong>.
+            </p>
+
+            <!-- AST Compilation Pipeline Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The PyTest AST Bytecode Transformation Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Python Source -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">1. Raw Source Code</span>
+                        <span class="text-[10px] text-slate-500 font-sans">assert account.balance == expected</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; Meta Path Hook &rarr;</div>
+
+                    <!-- Step 2: AST Rewriter -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. PyTest AssertionRewriter</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Traverses AST, mutates Compare nodes, injects stack frame inspectors</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; Bytecode Execution &rarr;</div>
+
+                    <!-- Step 3: Detailed Introspection -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. Introspective Failure</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">Rich Diff: Values, types, operand values, and visual diffs</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs space-y-2 leading-relaxed border border-slate-800">
+                    <span class="text-emerald-400 font-bold">// What happens under the hood when PyTest imports test modules:</span>
+                    <p class="text-slate-300 font-sans text-xs">
+                        PyTest installs a custom PEP 302 import hook at the head of <code class="text-emerald-300 font-mono">sys.meta_path</code>. When a test module or <code class="text-emerald-300 font-mono">conftest.py</code> is imported, PyTest reads its source, compiles it into an Abstract Syntax Tree (<code class="text-purple-300 font-mono">ast.parse</code>), and invokes <code class="text-purple-300 font-mono">_pytest.assertion.rewrite.AssertionRewriter</code>.
+                    </p>
+                    <p class="text-slate-300 font-sans text-xs">
+                        The rewriter replaces every <code class="text-amber-300 font-mono">ast.Assert</code> node with complex conditional bytecode: capturing each sub-expression (the left-hand value, the right-hand value, intermediate operations), storing them in temporary variables, and only executing the string formatting if the assertion fails.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Custom Hook Dive: pytest_assertrepr_compare -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-mono font-bold">Systems Deep Dive</span>
+                    Engineering Custom Failure Explanations: <code>pytest_assertrepr_compare</code>
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    When comparing complex domain objects (such as two multi-currency ledger accounts or matrix vectors), standard string representations fail to explain *why* the assertion failed. PyTest exposes an internal hook specification in <code class="font-mono text-purple-700">conftest.py</code> allowing senior engineers to intercept equality comparisons and format visual diff reports:
+                </p>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># In tests/conftest.py: Intercept equality failures between Money domain objects</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_assertrepr_compare</span>(config, op, left, right):
+    <span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money
+    <span class="text-purple-400">if isinstance</span>(left, Money) <span class="text-purple-400">and isinstance</span>(right, Money) <span class="text-purple-400">and</span> op == <span class="text-amber-300">"=="</span>:
+        <span class="text-purple-400">return</span> [
+            <span class="text-amber-300">"Financial Money comparison mismatch:"</span>,
+            f<span class="text-amber-300">"   Left operand:  &#123;left.amount&#125; &#123;left.currency&#125;"</span>,
+            f<span class="text-amber-300">"   Right operand: &#123;right.amount&#125; &#123;right.currency&#125;"</span>,
+            f<span class="text-amber-300">"   Currency match: &#123;left.currency == right.currency&#125;"</span>,
+            f<span class="text-amber-300">"   Delta balance:  &#123;abs(left.amount - right.amount)&#125;"</span>,
+        ]
+    <span class="text-purple-400">return None</span>  <span class="text-slate-500"># Fall back to standard PyTest AST diffing for other types</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Test-Driven Development (TDD): The Red-Green-Refactor Cycle -->
+        <section id="tdd-cycle" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Test-Driven Development (TDD): The Immutable Cycle</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Test-Driven Development is not an academic philosophy; it is a defensive engineering strategy that forces clear interface contracts before implementation details cloud architectural judgment. When engineering high-frequency financial platforms, TDD prevents **Speculative Generality** and forces boundary handling for rounding modes, nullability, and invariants upfront.
+            </p>
+
+            <!-- TDD Flow Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Strict TDD State Machine
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Phase 1: RED -->
+                    <div class="p-4 bg-slate-950 border border-rose-800 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. RED PHASE</span>
+                            <span class="text-[9px] bg-rose-950 text-rose-300 px-1.5 py-0.5 rounded border border-rose-800">Must Fail</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            Write an atomic test asserting desired domain behavior <em>before writing a single line of production code</em>.
+                        </p>
+                        <div class="text-[10px] text-rose-300 bg-rose-950/60 p-2 rounded">
+                            pytest &rarr; FAIL: ModuleNotFoundError or AssertionError
+                        </div>
+                    </div>
+
+                    <!-- Phase 2: GREEN -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. GREEN PHASE</span>
+                            <span class="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-800">Make it Pass</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            Write the <em>absolute minimal</em> production code required to satisfy the failing assertion. No speculative features!
+                        </p>
+                        <div class="text-[10px] text-emerald-300 bg-emerald-950/60 p-2 rounded">
+                            pytest &rarr; 1 passed in 0.01s!
+                        </div>
+                    </div>
+
+                    <!-- Phase 3: REFACTOR -->
+                    <div class="p-4 bg-slate-950 border border-purple-800 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-purple-800/60 pb-2">
+                            <span class="text-purple-400 font-bold text-sm">3. REFACTOR</span>
+                            <span class="text-[9px] bg-purple-950 text-purple-300 px-1.5 py-0.5 rounded border border-purple-800">Clean Architecture</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            Eliminate duplication, enforce immutability, optimize algorithmic performance, and add type annotations while under the green safety net.
+                        </p>
+                        <div class="text-[10px] text-purple-300 bg-purple-950/60 p-2 rounded">
+                            pytest &rarr; Suite remains 100% green!
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Defensive Exception Testing: pytest.raises -->
+        <section id="pytest-raises" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Defensive Exception Verification: <code>pytest.raises</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In a financial ledger, how your application <strong>rejects invalid operations</strong> is just as vital as how it processes valid transactions. If an engineer attempts to sum $100.00 USD with €50.00 EUR without passing through an explicit FX clearing house, the application must abort instantly with a deterministic domain exception.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                PyTest provides the <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">pytest.raises()</code> context manager. In production suites, testing for raw exception classes alone is considered an anti-pattern; you must assert against specific error regex patterns and verify custom exception attributes:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Anatomy of Defensive Exception Verification:</div>
+                <pre>
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money, CurrencyMismatchError
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cross_currency_addition_raises_deterministic_domain_error</span>():
+    usd = Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>)
+    eur = Money(Decimal(<span class="text-amber-300">"50.0000"</span>), <span class="text-amber-300">"EUR"</span>)
+
+    <span class="text-slate-500"># 1. Capture the exact exception and enforce regex validation on the message</span>
+    <span class="text-purple-400">with</span> pytest.raises(
+        CurrencyMismatchError, 
+        match=<span class="text-amber-300">r"^Cannot operate across distinct currencies: USD vs EUR$"</span>
+    ) <span class="text-purple-400">as</span> exc_info:
+        _ = usd + eur
+
+    <span class="text-slate-500"># 2. Senior Pattern: Inspect structured payload attributes on the exception itself!</span>
+    assert exc_info.value.source_currency == <span class="text-amber-300">"USD"</span>
+    assert exc_info.value.target_currency == <span class="text-amber-300">"EUR"</span>
+    assert exc_info.type <span class="text-purple-400">is</span> CurrencyMismatchError</pre>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: VaultFlow Milestone 01 -->
+        <section id="vaultflow-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 01: Pure Financial Domain Build</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct the foundational persistence and value-object layers for <strong>VaultFlow</strong>. Below is the project file hierarchy established for Milestone 01 following the modern <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">src/</code> layout:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// VaultFlow Project Layout (Milestone 01)</div>
+                <div>vaultflow/</div>
+                <div>├── pyproject.toml              <span class="text-slate-500"># Package metadata, PyTest configuration &amp; strict flags</span></div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">money.py</span>           <span class="text-slate-500"># Immutable Money Value Object, ISO Currencies, Custom Errors</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    ├── <span class="text-emerald-300 font-bold">conftest.py</span>             <span class="text-slate-500"># Custom pytest_assertrepr_compare financial representation hook</span></div>
+                <div>    └── unit/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_money.py</span>          <span class="text-slate-500"># TDD Test Suite: Math, Rounding, Immutability, Exception Checks</span></div>
+            </div>
+
+            <!-- File 1: pyproject.toml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Project Configuration: <code class="text-purple-700">pyproject.toml</code></span>
+                    <span class="text-slate-400">Strict PyTest Defaults</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+[build-system]
+requires = [<span class="text-amber-300">"setuptools&gt;=61.0"</span>]
+build-backend = <span class="text-amber-300">"setuptools.build_meta"</span>
+
+[project]
+name = <span class="text-amber-300">"vaultflow"</span>
+version = <span class="text-amber-300">"0.1.0"</span>
+description = <span class="text-amber-300">"Institutional Financial Clearing &amp; FX Settlement Engine"</span>
+authors = [{ name = <span class="text-amber-300">"VaultFlow Architecture Team"</span> }]
+dependencies = []
+
+[tool.pytest.ini_options]
+minversion = <span class="text-amber-300">"8.0"</span>
+<span class="text-slate-500"># Enforce src/ layout import resolution and strict marker validation</span>
+addopts = <span class="text-amber-300">"-ra -q --strict-markers --strict-config"</span>
+testpaths = [<span class="text-amber-300">"tests"</span>]
+pythonpath = [<span class="text-amber-300">"src"</span>]
+filterwarnings = [
+    <span class="text-amber-300">"error"</span>,  <span class="text-slate-500"># Treat all unexpected Python warnings as hard failures</span>
+]
+markers = [
+    <span class="text-amber-300">"unit: Pure domain logic tests requiring zero network or database I/O"</span>,
+]</pre>
+            </div>
+
+            <!-- File 2: src/vaultflow/core/money.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Financial Domain Value Object: <code class="text-purple-700">src/vaultflow/core/money.py</code></span>
+                    <span class="text-slate-400">The Implementation Core</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Core Domain - Immutable Money Value Object (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal, ROUND_HALF_EVEN, InvalidOperation
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Union
+
+<span class="text-slate-500"># Standard ISO-4217 Currency Code Registry</span>
+SUPPORTED_CURRENCIES = {<span class="text-amber-300">"USD"</span>, <span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"GBP"</span>, <span class="text-amber-300">"JPY"</span>, <span class="text-amber-300">"CHF"</span>}
+<span class="text-slate-500"># Quantization Mask: 4 decimal places for micro-cent settlement accuracy</span>
+FINANCIAL_PRECISION = Decimal(<span class="text-amber-300">"0.0001"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">FinancialDomainError</span>(Exception):
+    <span class="text-slate-500">"""Base exception for all VaultFlow financial invariant violations."""</span>
+    pass
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">CurrencyMismatchError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when arithmetic is attempted across distinct un-cleared currencies."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, source_currency: str, target_currency: str):
+        self.source_currency = source_currency
+        self.target_currency = target_currency
+        super().__init__(
+            f<span class="text-amber-300">"Cannot operate across distinct currencies: &#123;source_currency&#125; vs &#123;target_currency&#125;"</span>
+        )
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">InvalidCurrencyError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when an unapproved ISO currency symbol is initialized."""</span>
+    pass
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>, slots=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Money</span>:
+    <span class="text-slate-500">"""
+    IMMUTABLE FINANCIAL VALUE OBJECT:
+    Enforces exact fixed-point arithmetic using Python's Decimal.
+    Uses banker's rounding (ROUND_HALF_EVEN) to eliminate statistical bias.
+    """</span>
+    amount: Decimal
+    currency: str
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__post_init__</span>(self):
+        <span class="text-slate-500"># 1. Enforce strict type safety: reject float completely!</span>
+        <span class="text-purple-400">if isinstance</span>(self.amount, float):
+            <span class="text-purple-400">raise</span> TypeError(
+                <span class="text-amber-300">"Floating-point numbers are prohibited in financial modeling. Use Decimal or str."</span>
+            )
+
+        <span class="text-slate-500"># 2. Coerce string or integer amounts safely into quantized Decimal</span>
+        <span class="text-purple-400">try</span>:
+            quantized_val = Decimal(str(self.amount)).quantize(
+                FINANCIAL_PRECISION, rounding=ROUND_HALF_EVEN
+            )
+            <span class="text-slate-500"># Bypass frozen dataclass mutation restriction during post-init</span>
+            object.__setattr__(self, <span class="text-amber-300">"amount"</span>, quantized_val)
+        <span class="text-purple-400">except</span> (InvalidOperation, TypeError) <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> FinancialDomainError(f<span class="text-amber-300">"Invalid monetary amount provided: &#123;self.amount&#125;"</span>) <span class="text-purple-400">from</span> err
+
+        <span class="text-slate-500"># 3. Validate ISO Currency Code</span>
+        sanitized_curr = self.currency.strip().upper()
+        <span class="text-purple-400">if</span> sanitized_curr <span class="text-purple-400">not in</span> SUPPORTED_CURRENCIES:
+            <span class="text-purple-400">raise</span> InvalidCurrencyError(f<span class="text-amber-300">"Unsupported ISO-4217 currency: &#123;self.currency&#125;"</span>)
+        object.__setattr__(self, <span class="text-amber-300">"currency"</span>, sanitized_curr)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__add__</span>(self, other: <span class="text-amber-300">"Money"</span>) -> <span class="text-amber-300">"Money"</span>:
+        self._assert_same_currency(other)
+        <span class="text-purple-400">return</span> Money(self.amount + other.amount, self.currency)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__sub__</span>(self, other: <span class="text-amber-300">"Money"</span>) -> <span class="text-amber-300">"Money"</span>:
+        self._assert_same_currency(other)
+        <span class="text-purple-400">return</span> Money(self.amount - other.amount, self.currency)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__mul__</span>(self, scalar: Union[Decimal, int, str]) -> <span class="text-amber-300">"Money"</span>:
+        <span class="text-purple-400">if isinstance</span>(scalar, float):
+            <span class="text-purple-400">raise</span> TypeError(<span class="text-amber-300">"Cannot multiply Money by floating-point scalar."</span>)
+        decimal_scalar = Decimal(str(scalar))
+        <span class="text-purple-400">return</span> Money(self.amount * decimal_scalar, self.currency)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__lt__</span>(self, other: <span class="text-amber-300">"Money"</span>) -> bool:
+        self._assert_same_currency(other)
+        <span class="text-purple-400">return</span> self.amount &lt; other.amount
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__le__</span>(self, other: <span class="text-amber-300">"Money"</span>) -> bool:
+        self._assert_same_currency(other)
+        <span class="text-purple-400">return</span> self.amount &lt;= other.amount
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_assert_same_currency</span>(self, other: <span class="text-amber-300">"Money"</span>) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if not isinstance</span>(other, Money):
+            <span class="text-purple-400">raise</span> TypeError(f<span class="text-amber-300">"Operand must be an instance of Money. Got: &#123;type(other)&#125;"</span>)
+        <span class="text-purple-400">if</span> self.currency != other.currency:
+            <span class="text-purple-400">raise</span> CurrencyMismatchError(self.currency, other.currency)</pre>
+            </div>
+
+            <!-- File 3: tests/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Custom AST Assertion Hook: <code class="text-purple-700">tests/conftest.py</code></span>
+                    <span class="text-slate-400">Custom Representation Diff</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Harness - Root Configuration &amp; AST Hooks (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_assertrepr_compare</span>(config, op: str, left: object, right: object) -> Optional[List[str]]:
+    <span class="text-slate-500">"""
+    PYTEST HOOK SPECIFICATION:
+    Intercepts equality assertion failures between Money value objects
+    and formats an institutional audit diff detailing exact discrepancies.
+    """</span>
+    <span class="text-purple-400">if isinstance</span>(left, Money) <span class="text-purple-400">and isinstance</span>(right, Money) <span class="text-purple-400">and</span> op == <span class="text-amber-300">"=="</span>:
+        <span class="text-purple-400">return</span> [
+            <span class="text-amber-300">"─── FINANCIAL VALUE OBJECT EQUALITY FAILURE ───"</span>,
+            f<span class="text-amber-300">"  Left Spec:     &#123;left.amount&#125; [&#123;left.currency&#125;]"</span>,
+            f<span class="text-amber-300">"  Right Spec:    &#123;right.amount&#125; [&#123;right.currency&#125;]"</span>,
+            f<span class="text-amber-300">"  Currency Match: &#123;left.currency == right.currency&#125;"</span>,
+            f<span class="text-amber-300">"  Variance Delta: &#123;abs(left.amount - right.amount)&#125;"</span>,
+            <span class="text-amber-300">"──────────────────────────────────────────────"</span>
+        ]
+    <span class="text-purple-400">return None</span></pre>
+            </div>
+
+            <!-- File 4: tests/unit/test_money.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Domain Unit Test Suite: <code class="text-purple-700">tests/unit/test_money.py</code></span>
+                    <span class="text-slate-400">The TDD Verification Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - Pure Domain Money Tests (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> FrozenInstanceError
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> (
+    Money, 
+    CurrencyMismatchError, 
+    InvalidCurrencyError
+)
+
+<span class="text-purple-400">@pytest.mark.unit</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestMoneyDomainCore</span>:
+    <span class="text-slate-500">"""Unit tests asserting financial precision, immutability, and boundary constraints."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_valid_money_initialization_with_quantized_precision</span>(self):
+        <span class="text-slate-500"># String representation must normalize to 4 decimal places</span>
+        m = Money(Decimal(<span class="text-amber-300">"100.5"</span>), <span class="text-amber-300">"usd"</span>)
+        assert m.amount == Decimal(<span class="text-amber-300">"100.5000"</span>)
+        assert m.currency == <span class="text-amber-300">"USD"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_floating_point_instantiation_raises_type_error</span>(self):
+        <span class="text-slate-500"># Reject binary IEEE 754 floats unconditionally</span>
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"Floating-point numbers are prohibited"</span>):
+            _ = Money(100.50, <span class="text-amber-300">"USD"</span>)  <span class="text-slate-500"># type: ignore</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_invalid_iso_currency_rejection</span>(self):
+        <span class="text-purple-400">with</span> pytest.raises(InvalidCurrencyError, match=<span class="text-amber-300">r"Unsupported ISO-4217 currency: BITCOIN"</span>):
+            _ = Money(Decimal(<span class="text-amber-300">"10.0000"</span>), <span class="text-amber-300">"BITCOIN"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_immutable_dataclass_prevents_state_tampering</span>(self):
+        m = Money(Decimal(<span class="text-amber-300">"500.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        <span class="text-slate-500"># Value objects must be completely immutable to guarantee ledger integrity</span>
+        <span class="text-purple-400">with</span> pytest.raises(FrozenInstanceError):
+            m.amount = Decimal(<span class="text-amber-300">"1000.0000"</span>)  <span class="text-slate-500"># type: ignore</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_same_currency_addition_and_subtraction</span>(self):
+        m1 = Money(Decimal(<span class="text-amber-300">"1500.2500"</span>), <span class="text-amber-300">"USD"</span>)
+        m2 = Money(Decimal(<span class="text-amber-300">"499.7500"</span>), <span class="text-amber-300">"USD"</span>)
+        
+        summed = m1 + m2
+        assert summed == Money(Decimal(<span class="text-amber-300">"2000.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        
+        diff = m1 - m2
+        assert diff == Money(Decimal(<span class="text-amber-300">"1000.5000"</span>), <span class="text-amber-300">"USD"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cross_currency_math_raises_custom_domain_error</span>(self):
+        usd = Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        eur = Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"EUR"</span>)
+
+        <span class="text-purple-400">with</span> pytest.raises(CurrencyMismatchError) <span class="text-purple-400">as</span> exc_info:
+            _ = usd + eur
+
+        assert exc_info.value.source_currency == <span class="text-amber-300">"USD"</span>
+        assert exc_info.value.target_currency == <span class="text-amber-300">"EUR"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_bankers_rounding_half_even_preservation</span>(self):
+        <span class="text-slate-500"># Banker's rounding rounds half to nearest even digit</span>
+        <span class="text-slate-500"># 2.5 rounds to 2; 3.5 rounds to 4. Prevents systemic inflation drift!</span>
+        m_even = Money(Decimal(<span class="text-amber-300">"0.00025"</span>), <span class="text-amber-300">"USD"</span>)  <span class="text-slate-500"># 2 is even -> rounds to 0.0002</span>
+        m_odd = Money(Decimal(<span class="text-amber-300">"0.00035"</span>), <span class="text-amber-300">"USD"</span>)   <span class="text-slate-500"># 3 is odd -> rounds to 0.0004</span>
+
+        assert m_even.amount == Decimal(<span class="text-amber-300">"0.0002"</span>)
+        assert m_odd.amount == Decimal(<span class="text-amber-300">"0.0004"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Assert Catching" Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">try: assert x() except AssertionError: pass</code> inside tests.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys test harnesses:</strong> Manually catching <code class="font-mono">AssertionError</code> defeats PyTest’s reporting, silences AST stack introspection, and produces false positives. If the method crashes with an unexpected <code class="font-mono">AttributeError</code>, the test fails for the wrong reason. Always use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">pytest.raises()</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Defining __init__.py in the Project Root</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Placing an empty <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">__init__.py</code> in the repository root directory next to <code class="font-mono text-rose-900">pyproject.toml</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes package collision:</strong> Creating a root-level <code class="font-mono">__init__.py</code> forces Python to treat the entire workspace folder as a root package. In CI pipelines, tests start resolving imports from untracked root files rather than the isolated <code class="font-mono">src/</code> tree, causing silent packaging defects to bypass validation.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, install VaultFlow in editable mode, inspect PyTest's AST assertion rewriting, and execute the pure domain test battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Environment Setup -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize environment and install package in editable mode:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest<br>
+                        pip install -e .
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Tests with Verbose Introspection -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute PyTest with marker filtering and AST introspection:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest -v -m unit --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 7 passed in 0.02s. Shows pure sub-millisecond execution over memory-only models.
+                    </span>
+                </div>
+
+                <!-- Step 3: Trigger Custom Assertion Hook -->
+                <div>
+                    <span class="text-slate-500"># 3. Prove AST Rewriting and your Custom Hook work:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import pytest; pytest.main(['-k', 'test_same_currency_addition', '-vv'])"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        If you temporarily edit <code class="text-slate-400 font-mono">summed == Money(...)</code> to a wrong value, PyTest will trigger your <code class="text-slate-400 font-mono">pytest_assertrepr_compare</code> hook, displaying the exact ASCII variance table!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Advanced Fixture Engineering, Scopes, Metaprogramming &amp; Lifecycle Leaks</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving from pure value objects to stateful ledgers: Mastering the <code class="font-mono">FixtureManager</code> dependency graph, avoiding memory leaks across worker scopes, dynamic factory fixtures, and building VaultFlow's double-entry journal.</p>
+            </div>
+            <a href="Chapter 02 - Advanced Fixture Engineering, Scopes, Metaprogramming and Lifecycle Leaks.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

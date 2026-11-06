@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 08: Binary Search Trees &amp; Self-Balancing Trees - Tree Traversals, AVL &amp; Rotations</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 08 - Self-Balancing AVL Secondary Index)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Hierarchical Structures &amp; Rotations
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 08: Binary Search Trees &amp; Self-Balancing Trees - Tree Traversals, AVL &amp; Rotations
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Escaping linear degeneration in hierarchical pointer topologies: Deconstructing why naive Binary Search Trees collapse into $O(n)$ linked lists under ordered data, mastering the AVL Height-Balance invariant, orchestrating single and double tree rotations, proving the $O(\log n)$ worst-case theorem, executing Depth-First and Breadth-First traversals, and constructing a self-balancing secondary index for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Progression</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 08: Self-Balancing AVL Secondary Index</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 06, we built a sorted range index using <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">bisect</code> over flat arrays. While arrays provide lightning-fast $O(\log n)$ reads, inserting single records into a large array incurs an expensive $O(n)$ memory shift. In Milestone 08, we construct MemForge's <strong>Self-Balancing AVL Tree Index</strong>: a pointer-based hierarchical index that guarantees strict $O(\log n)$ search, insert, and delete operations even when subjected to adversarial, monotonically increasing transaction sequences.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pathological Degeneration of Naive BSTs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The AVL Balance Factor Invariant ($\pm 1$)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Single &amp; Double Tree Rotations (LL, RR, LR, RL)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Traversals: In-Order, Pre-Order, Post-Order, BFS</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Two-Child Deletion via In-Order Successor</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">BalancedTreeIndex</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of BSTs & Pathological Degeneration -->
+        <section id="bst-degeneration" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The BST Invariant &amp; Pathological Degeneration</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A <strong>Binary Search Tree (BST)</strong> is a node-based binary tree data structure where each node stores a key, associated payload data, and left and right child pointers. The structure is governed by the <strong>Binary Search Invariant</strong>:
+            </p>
+            <div class="p-4 bg-slate-900 rounded-2xl text-emerald-300 font-mono text-xs border border-slate-800">
+                &bull; For any given node N:<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;All keys in the left subtree of N must be strictly LESS THAN N.key.<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;All keys in the right subtree of N must be strictly GREATER THAN N.key.
+            </div>
+            <p class="text-slate-700 leading-relaxed">
+                When keys are inserted in random order, a naive BST forms a balanced branching tree with height $h \approx \log_2 n$, providing $O(\log n)$ average search times. 
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, database applications frequently ingest <strong>monotonically increasing data</strong> (such as auto-incrementing primary IDs, timestamps, or sequential invoice numbers). When sorted data is inserted into a naive BST, every new node is appended exclusively as the right child of the previous node. The tree <strong>pathologically degenerates into a singly linked list</strong>!
+            </p>
+
+            <!-- Pathological Degeneration Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Pathological Degeneration vs. Balanced Height Topologies</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Inserting sorted keys [10, 20, 30, 40, 50] into a Naive BST vs. an AVL Balanced Tree</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 items-start">
+                    <!-- Naive BST: Degenerate Linked List -->
+                    <div class="p-5 bg-slate-950 border border-rose-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Naive BST (Sorted Insert Hazard)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold">O(n) Collapse</span>
+                        </div>
+
+                        <!-- Skewed Visual Tree -->
+                        <div class="space-y-2 text-[11px]">
+                            <div class="flex items-center gap-2">
+                                <span class="bg-slate-800 text-rose-300 p-1.5 rounded border border-rose-800/80 w-16 text-center">Node 10</span>
+                                <span class="text-slate-600 font-sans">&rarr; right</span>
+                            </div>
+                            <div class="flex items-center gap-2 pl-6">
+                                <span class="bg-slate-800 text-rose-300 p-1.5 rounded border border-rose-800/80 w-16 text-center">Node 20</span>
+                                <span class="text-slate-600 font-sans">&rarr; right</span>
+                            </div>
+                            <div class="flex items-center gap-2 pl-12">
+                                <span class="bg-slate-800 text-rose-300 p-1.5 rounded border border-rose-800/80 w-16 text-center">Node 30</span>
+                                <span class="text-slate-600 font-sans">&rarr; right</span>
+                            </div>
+                            <div class="flex items-center gap-2 pl-20">
+                                <span class="bg-slate-800 text-rose-300 p-1.5 rounded border border-rose-800/80 w-16 text-center">Node 40</span>
+                                <span class="text-slate-600 font-sans">&rarr; right</span>
+                            </div>
+                            <div class="flex items-center gap-2 pl-28">
+                                <span class="bg-slate-800 text-rose-300 p-1.5 rounded border border-rose-800/80 w-16 text-center">Node 50</span>
+                            </div>
+                        </div>
+
+                        <div class="p-3 bg-slate-900 rounded-xl text-[10px] text-slate-400 font-sans leading-relaxed">
+                            <strong class="text-rose-400 font-mono">Height: h = n = 5.</strong><br>
+                            Tree branching completely vanishes. Locating node 50 requires traversing 5 sequential pointers. Searching an index of 1,000,000 rows degenerates to 1,000,000 pointer dereferences!
+                        </div>
+                    </div>
+
+                    <!-- Balanced AVL Tree -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Self-Balancing AVL Tree</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold">Guaranteed O(log n)</span>
+                        </div>
+
+                        <!-- Balanced Visual Tree -->
+                        <div class="space-y-3 text-[11px]">
+                            <!-- Level 0 -->
+                            <div class="flex justify-center">
+                                <span class="bg-emerald-950 text-emerald-300 p-1.5 rounded border border-emerald-500 w-20 text-center font-bold">Root: 30</span>
+                            </div>
+                            <!-- Level 1 -->
+                            <div class="flex justify-around px-4">
+                                <span class="bg-slate-800 text-sky-300 p-1.5 rounded border border-slate-700 w-16 text-center">Left: 20</span>
+                                <span class="bg-slate-800 text-sky-300 p-1.5 rounded border border-slate-700 w-16 text-center">Right: 40</span>
+                            </div>
+                            <!-- Level 2 -->
+                            <div class="flex justify-between px-2">
+                                <span class="bg-slate-900 text-slate-400 p-1 rounded border border-slate-800 w-14 text-center">10</span>
+                                <span class="text-slate-600 text-[10px]">None</span>
+                                <span class="text-slate-600 text-[10px]">None</span>
+                                <span class="bg-slate-900 text-slate-400 p-1 rounded border border-slate-800 w-14 text-center">50</span>
+                            </div>
+                        </div>
+
+                        <div class="p-3 bg-slate-900 rounded-xl text-[10px] text-slate-400 font-sans leading-relaxed">
+                            <strong class="text-emerald-400 font-mono">Height: h = &lceil;log₂ n&rceil; = 3.</strong><br>
+                            Internal rotations automatically restructure nodes during insertion. Worst-case search depth across 1,000,000 rows is strictly capped at $\approx 20$ operations!
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The AVL Invariant & Tree Rotation Mechanics -->
+        <section id="avl-rotations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The AVL Invariant &amp; The Four Rotation Cases</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Invented in 1962 by Soviet mathematicians Georgy Adelson-Velsky and Evgenii Landis, the <strong>AVL Tree</strong> was the world's first dynamically self-balancing binary search tree.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Every node in an AVL tree maintains a cached <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">height</code> property (where a leaf node has $\text{height} = 1$, and an empty child has $\text{height} = 0$). The <strong>Balance Factor</strong> ($\text{BF}$) of any node $N$ is defined mathematically as:
+            </p>
+            <div class="p-3 bg-slate-900 rounded-xl text-center font-mono text-emerald-400 text-sm font-bold border border-slate-800">
+                Balance Factor(N) = height(N.left) - height(N.right)
+            </div>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>The AVL Invariant:</strong> In a valid AVL tree, every node must maintain $\text{BF}(N) \in \{-1, 0, 1\}$. If an insertion or deletion causes $|\text{BF}(N)| > 1$, the tree is strictly unbalanced. Balance is restored in $O(1)$ time using <strong>Tree Rotations</strong>.
+            </p>
+
+            <!-- The 4 Rotation Permutations Diagram -->
+            <div class="space-y-4 font-mono text-xs">
+                <div class="grid md:grid-cols-2 gap-6">
+                    
+                    <!-- Case 1: Right Rotation (LL) -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-slate-900 font-mono text-sm">1. Left-Left Case &rarr; Single Right Rotation</span>
+                            <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">BF = +2, Child BF &ge; 0</span>
+                        </div>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Occurs when a node is inserted into the left subtree of the left child. Restored by pulling the left child up and rotating the unbalanced parent down to the right.
+                        </p>
+                        <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+      y (BF=+2)                x
+     / \                      / \
+    x   T3   -- Right Rot --> T1  y
+   / \                           / \
+  T1  T2                        T2  T3</pre>
+                    </div>
+
+                    <!-- Case 2: Left Rotation (RR) -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-slate-900 font-mono text-sm">2. Right-Right Case &rarr; Single Left Rotation</span>
+                            <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">BF = -2, Child BF &le; 0</span>
+                        </div>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Occurs when a node is inserted into the right subtree of the right child. Restored by pulling the right child up and rotating the parent down to the left.
+                        </p>
+                        <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+    x (BF=-2)                  y
+   / \                        / \
+  T1  y      -- Left Rot --> x   T3
+     / \                    / \
+    T2  T3                 T1  T2</pre>
+                    </div>
+
+                    <!-- Case 3: Left-Right Rotation (LR) -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-slate-900 font-mono text-sm">3. Left-Right Case &rarr; Double (Left + Right)</span>
+                            <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">BF = +2, Child BF &lt; 0</span>
+                        </div>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Insertion occurred in the inner right subtree of the left child. Step 1: Left-rotate the left child to convert to an LL shape. Step 2: Right-rotate the unbalanced parent.
+                        </p>
+                        <pre class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+    z (+2)         z (+2)
+   /              /             x
+  y (-1)  &rarr;      x       &rarr;    / \
+   \            /            y   z
+    x          y</pre>
+                    </div>
+
+                    <!-- Case 4: Right-Left Rotation (RL) -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-slate-900 font-mono text-sm">4. Right-Left Case &rarr; Double (Right + Left)</span>
+                            <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">BF = -2, Child BF &gt; 0</span>
+                        </div>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            Insertion occurred in the inner left subtree of the right child. Step 1: Right-rotate the right child to convert to an RR shape. Step 2: Left-rotate the unbalanced parent.
+                        </p>
+                        <pre class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+  x (-2)         x (-2)
+   \              \             y
+    z (+1) &rarr;      y      &rarr;    / \
+   /                \        x   z
+  y                  z</pre>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Tree Traversals: DFS vs. BFS -->
+        <section id="tree-traversals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: Depth-First vs. Breadth-First Traversals</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Traversing a non-linear tree involves visiting every node in a deterministic order. Four canonical traversal algorithms govern systems engineering:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- In-Order -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-emerald-700 font-mono text-sm">1. In-Order (Left &rarr; Node &rarr; Right)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">Strictly Sorted</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Recursively traverses the left subtree, visits the node, then traverses the right subtree. 
+                        <strong>The Mathematical Invariant:</strong> In any valid BST, an in-order traversal yields keys in <strong>strictly ascending sorted order</strong>! Eliminates the need to call external sorting algorithms.
+                    </p>
+                </div>
+
+                <!-- Pre-Order -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-sky-700 font-mono text-sm">2. Pre-Order (Node &rarr; Left &rarr; Right)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">Serialization</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Visits the node first, then recursively descends children. 
+                        <strong>System Application:</strong> Essential for cloning and serializing tree hierarchies to disk or JSON, because rebuilding an AVL tree from a pre-order stream preserves parent-child root topologies.
+                    </p>
+                </div>
+
+                <!-- Post-Order -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-purple-700 font-mono text-sm">3. Post-Order (Left &rarr; Right &rarr; Node)</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Bottom-Up Deletion</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Visits both children before processing the parent. 
+                        <strong>System Application:</strong> Used in language interpreters to evaluate Mathematical Abstract Syntax Trees (ASTs) and safe bottom-up memory deallocation where children must be freed before parents.
+                    </p>
+                </div>
+
+                <!-- Breadth-First / Level-Order -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-amber-700 font-mono text-sm">4. Level-Order (Breadth-First Search)</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-mono font-bold">Queue-Driven</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Visits nodes layer-by-layer horizontally from root to leaves. 
+                        <strong>System Application:</strong> Implemented iteratively using <code class="font-mono text-slate-800 font-bold">collections.deque</code>. Used to inspect balancing topologies, calculate maximum branching widths, and reconstruct trees layer-by-layer.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 08 -->
+        <section id="memforge-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 08: Balanced AVL Tree Index Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 08 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/index/avl_tree.py</code>: an in-memory self-balancing AVL secondary index tree.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The AVL Tree Index enforces:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Strict $O(\log n)$ worst-case insertion and search by performing automatic LL, RR, LR, and RL rotations.</li>
+                <li>Support for multi-value duplicates: each node stores an array of corresponding <code class="font-mono text-slate-800">record_ids</code>.</li>
+                <li><strong>Safe Deletion with In-Order Successor:</strong> Removing a node with two children cleanly splices the smallest node from the right subtree into the target slot and rebalances the tree.</li>
+                <li><strong>Range Scans with Pruned Branching:</strong> Prunes subtrees outside the query interval $[v_{\min}, v_{\max}]$, executing in $O(\log n + k)$ time where $k$ is matching elements.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 08)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       ├── scheduler/</div>
+                <div>│       │   └── priority_queue.py         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler</span></div>
+                <div>│       ├── index/</div>
+                <div>│       │   ├── sorted_index.py           <span class="text-slate-500"># Milestone 06: Bisect Sorted Range Index</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">avl_tree.py</span>               <span class="text-slate-500"># Milestone 08: Self-Balancing AVL Secondary Tree</span></div>
+                <div>│       └── txn/</div>
+                <div>│           └── undo_log.py               <span class="text-slate-500"># Milestone 07: Sentinel Doubly Linked Undo Chain</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_priority_queue.py    <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_sorted_index.py      <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_undo_log.py          <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_avl_tree.py</span>          <span class="text-slate-500"># Milestone 08: AVL Rotations, Balance &amp; Traversals</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/index/avl_tree.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production AVL Index: <code class="text-purple-700">src/memforge/index/avl_tree.py</code></span>
+                    <span class="text-slate-400">Self-Balancing Binary Search Tree</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Index Engine - Self-Balancing AVL Secondary Index Tree (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> collections <span class="text-purple-400">import</span> deque
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Iterator, List, Optional, Tuple
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AVLNode</span>:
+    <span class="text-slate-500">"""Discrete AVL Tree node maintaining cached height and duplicate record IDs."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, key: Any, record_id: int):
+        self.key = key
+        self.record_ids: List[int] = [record_id]
+        self.left: Optional[<span class="text-amber-300">"AVLNode"</span>] = <span class="text-rose-400">None</span>
+        self.right: Optional[<span class="text-amber-300">"AVLNode"</span>] = <span class="text-rose-400">None</span>
+        self.height: int = 1  <span class="text-slate-500"># Leaf nodes initialize with height 1</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BalancedTreeIndex</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION AVL BALANCED SECONDARY INDEX:
+    Maintains Balance Factor in {-1, 0, +1} across all nodes.
+    Guarantees strict O(log n) search, insert, and delete boundaries.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._root: Optional[AVLNode] = <span class="text-rose-400">None</span>
+        self._total_entries = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total record ID entries indexed across all unique keys."""</span>
+        <span class="text-purple-400">return</span> self._total_entries
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_get_height</span>(self, node: Optional[AVLNode]) -> int:
+        <span class="text-slate-500">"""Returns cached height, or 0 if node is None."""</span>
+        <span class="text-purple-400">return</span> node.height <span class="text-purple-400">if</span> node <span class="text-purple-400">else</span> 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_get_balance</span>(self, node: Optional[AVLNode]) -> int:
+        <span class="text-slate-500">"""Balance Factor = height(left) - height(right)."""</span>
+        <span class="text-purple-400">if not</span> node:
+            <span class="text-purple-400">return</span> 0
+        <span class="text-purple-400">return</span> self._get_height(node.left) - self._get_height(node.right)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_update_height</span>(self, node: AVLNode) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Updates node height based on child maximums."""</span>
+        node.height = 1 + max(self._get_height(node.left), self._get_height(node.right))
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_rotate_right</span>(self, y: AVLNode) -> AVLNode:
+        <span class="text-slate-500">"""
+        Single Right Rotation (LL Case):
+             y                x
+            / \              / \
+           x   T3   &rarr;       T1  y
+          / \                  / \
+         T1  T2               T2  T3
+        """</span>
+        x = y.left
+        T2 = x.right
+
+        <span class="text-slate-500"># Perform rotation</span>
+        x.right = y
+        y.left = T2
+
+        <span class="text-slate-500"># Update heights (y first, then x)</span>
+        self._update_height(y)
+        self._update_height(x)
+        <span class="text-purple-400">return</span> x
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_rotate_left</span>(self, x: AVLNode) -> AVLNode:
+        <span class="text-slate-500">"""
+        Single Left Rotation (RR Case):
+           x                  y
+          / \                / \
+         T1  y      &rarr;       x   T3
+            / \            / \
+           T2  T3         T1  T2
+        """</span>
+        y = x.right
+        T2 = y.left
+
+        <span class="text-slate-500"># Perform rotation</span>
+        y.left = x
+        x.right = T2
+
+        <span class="text-slate-500"># Update heights (x first, then y)</span>
+        self._update_height(x)
+        self._update_height(y)
+        <span class="text-purple-400">return</span> y
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insert</span>(self, key: Any, record_id: int) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Inserts a record pointer, rebalancing along the ascent path in O(log n)."""</span>
+        self._root = self._insert_recursive(self._root, key, record_id)
+        self._total_entries += 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_insert_recursive</span>(self, node: Optional[AVLNode], key: Any, record_id: int) -> AVLNode:
+        <span class="text-slate-500"># 1. Standard BST Insertion</span>
+        <span class="text-purple-400">if not</span> node:
+            <span class="text-purple-400">return</span> AVLNode(key, record_id)
+
+        <span class="text-purple-400">if</span> key == node.key:
+            <span class="text-slate-500"># Key collision: Append duplicate record_id without structural change</span>
+            node.record_ids.append(record_id)
+            <span class="text-purple-400">return</span> node
+        <span class="text-purple-400">elif</span> key &lt; node.key:
+            node.left = self._insert_recursive(node.left, key, record_id)
+        <span class="text-purple-400">else</span>:
+            node.right = self._insert_recursive(node.right, key, record_id)
+
+        <span class="text-slate-500"># 2. Update height of current ancestor node</span>
+        self._update_height(node)
+
+        <span class="text-slate-500"># 3. Compute Balance Factor</span>
+        balance = self._get_balance(node)
+
+        <span class="text-slate-500"># 4. Execute Rotations if Unbalanced</span>
+        <span class="text-slate-500"># Case 1: Left-Left (LL)</span>
+        <span class="text-purple-400">if</span> balance &gt; 1 <span class="text-purple-400">and</span> key &lt; node.left.key:
+            <span class="text-purple-400">return</span> self._rotate_right(node)
+
+        <span class="text-slate-500"># Case 2: Right-Right (RR)</span>
+        <span class="text-purple-400">if</span> balance &lt; -1 <span class="text-purple-400">and</span> key &gt; node.right.key:
+            <span class="text-purple-400">return</span> self._rotate_left(node)
+
+        <span class="text-slate-500"># Case 3: Left-Right (LR)</span>
+        <span class="text-purple-400">if</span> balance &gt; 1 <span class="text-purple-400">and</span> key &gt; node.left.key:
+            node.left = self._rotate_left(node.left)
+            <span class="text-purple-400">return</span> self._rotate_right(node)
+
+        <span class="text-slate-500"># Case 4: Right-Left (RL)</span>
+        <span class="text-purple-400">if</span> balance &lt; -1 <span class="text-purple-400">and</span> key &lt; node.right.key:
+            node.right = self._rotate_right(node.right)
+            <span class="text-purple-400">return</span> self._rotate_left(node)
+
+        <span class="text-purple-400">return</span> node
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">find_exact</span>(self, key: Any) -> List[int]:
+        <span class="text-slate-500">"""Point lookup returning matching record IDs in O(log n)."""</span>
+        current = self._root
+        <span class="text-purple-400">while</span> current:
+            <span class="text-purple-400">if</span> key == current.key:
+                <span class="text-purple-400">return</span> current.record_ids.copy()
+            <span class="text-purple-400">elif</span> key &lt; current.key:
+                current = current.left
+            <span class="text-purple-400">else</span>:
+                current = current.right
+        <span class="text-purple-400">return</span> []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">inorder_traversal</span>(self) -> Iterator[Tuple[Any, List[int]]]:
+        <span class="text-slate-500">"""
+        IN-ORDER DEPTH-FIRST TRAVERSAL:
+        Yields (key, record_ids) tuples in strictly ascending sorted order.
+        """</span>
+        <span class="text-purple-400">yield from</span> self._inorder_recursive(self._root)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_inorder_recursive</span>(self, node: Optional[AVLNode]) -> Iterator[Tuple[Any, List[int]]]:
+        <span class="text-purple-400">if</span> node:
+            <span class="text-purple-400">yield from</span> self._inorder_recursive(node.left)
+            <span class="text-purple-400">yield</span> (node.key, node.record_ids)
+            <span class="text-purple-400">yield from</span> self._inorder_recursive(node.right)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">level_order_traversal</span>(self) -> List[List[Any]]:
+        <span class="text-slate-500">"""
+        BREADTH-FIRST SEARCH (BFS):
+        Traverses tree level-by-level using an in-memory queue.
+        """</span>
+        <span class="text-purple-400">if not</span> self._root:
+            <span class="text-purple-400">return</span> []
+
+        results: List[List[Any]] = []
+        queue = deque([self._root])
+
+        <span class="text-purple-400">while</span> queue:
+            level_size = len(queue)
+            current_level: List[Any] = []
+            <span class="text-purple-400">for</span> _ <span class="text-purple-400">in</span> range(level_size):
+                node = queue.popleft()
+                current_level.append(node.key)
+                <span class="text-purple-400">if</span> node.left:
+                    queue.append(node.left)
+                <span class="text-purple-400">if</span> node.right:
+                    queue.append(node.right)
+            results.append(current_level)
+
+        <span class="text-purple-400">return</span> results
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">range_scan</span>(self, min_val: Any, max_val: Any) -> List[int]:
+        <span class="text-slate-500">"""
+        PRUNED RANGE SCAN [min_val, max_val]:
+        Selectively descends subtrees, pruning irrelevant branches.
+        Complexity: O(log n + k) where k is matching records.
+        """</span>
+        results: List[int] = []
+        self._range_recursive(self._root, min_val, max_val, results)
+        <span class="text-purple-400">return</span> results
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_range_recursive</span>(self, node: Optional[AVLNode], min_val: Any, max_val: Any, out: List[int]) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if not</span> node:
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Only descend left if current key is strictly greater than min</span>
+        <span class="text-purple-400">if</span> node.key &gt; min_val:
+            self._range_recursive(node.left, min_val, max_val, out)
+
+        <span class="text-slate-500"># Capture matches within closed interval [min_val, max_val]</span>
+        <span class="text-purple-400">if</span> min_val &lt;= node.key &lt;= max_val:
+            out.extend(node.record_ids)
+
+        <span class="text-slate-500"># Only descend right if current key is strictly less than max</span>
+        <span class="text-purple-400">if</span> node.key &lt; max_val:
+            self._range_recursive(node.right, min_val, max_val, out)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_avl_tree.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_avl_tree.py</code></span>
+                    <span class="text-slate-400">Rotations, Height &amp; Traversal Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - AVL Secondary Tree Index Verification (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.index.avl_tree <span class="text-purple-400">import</span> BalancedTreeIndex
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestBalancedTreeIndex</span>:
+    <span class="text-slate-500">"""Unit tests asserting AVL rotations, invariant enforcement, and traversal sorting."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_adversarial_sorted_insert_prevents_degeneration</span>(self):
+        index = BalancedTreeIndex()
+        <span class="text-slate-500"># Monotonically increasing sequence: In a naive BST, height would be 7!</span>
+        keys = [10, 20, 30, 40, 50, 60, 70]
+        <span class="text-purple-400">for</span> i, k <span class="text-purple-400">in</span> enumerate(keys):
+            index.insert(key=k, record_id=i)
+
+        assert len(index) == 7
+
+        <span class="text-slate-500"># AVL Invariant Guarantee: Maximum height for 7 nodes is exactly 3!</span>
+        assert index._get_height(index._root) &lt;= 3
+
+        <span class="text-slate-500"># The root must have been rotated away from 10 to a median key</span>
+        assert index._root.key == 40  <span class="text-slate-500"># Perfectly balanced root</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_double_rotation_left_right_case</span>(self):
+        index = BalancedTreeIndex()
+        <span class="text-slate-500"># Triggers LR Case: Insert 30, then 10, then 20 (inner child)</span>
+        index.insert(30, 1)
+        index.insert(10, 2)
+        index.insert(20, 3)
+
+        assert index._root.key == 20  <span class="text-slate-500"># 20 pulled to root</span>
+        assert index._root.left.key == 10
+        assert index._root.right.key == 30
+        assert index._get_height(index._root) == 2
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_inorder_traversal_yields_strictly_sorted_keys</span>(self):
+        index = BalancedTreeIndex()
+        unsorted_input = [(42, 1), (15, 2), (88, 3), (8, 4), (23, 5), (65, 6)]
+        <span class="text-purple-400">for</span> k, rid <span class="text-purple-400">in</span> unsorted_input:
+            index.insert(k, rid)
+
+        sorted_keys = [k <span class="text-purple-400">for</span> k, _ <span class="text-purple-400">in</span> index.inorder_traversal()]
+        assert sorted_keys == [8, 15, 23, 42, 65, 88]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_level_order_breadth_first_structure</span>(self):
+        index = BalancedTreeIndex()
+        <span class="text-slate-500"># Insert sequence: 20, 10, 30</span>
+        index.insert(20, 1)
+        index.insert(10, 2)
+        index.insert(30, 3)
+
+        levels = index.level_order_traversal()
+        assert levels == [
+            [20],        <span class="text-slate-500"># Level 0 (Root)</span>
+            [10, 30]     <span class="text-slate-500"># Level 1</span>
+        ]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_pruned_range_scan_bounds</span>(self):
+        index = BalancedTreeIndex()
+        <span class="text-purple-400">for</span> val <span class="text-purple-400">in</span> range(10, 110, 10):  <span class="text-slate-500"># 10, 20, ..., 100</span>
+            index.insert(val, record_id=val // 10)
+
+        <span class="text-slate-500"># Range scan [30, 70]</span>
+        records = index.range_scan(min_val=30, max_val=70)
+        assert records == [3, 4, 5, 6, 7]  <span class="text-slate-500"># Matching record IDs</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting Height Updates During Rotations</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing pointer rotation code without explicitly recalculating child and parent heights.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks trees:</strong> Rotations physically rearrange the parent-child hierarchy. If heights are not updated immediately (updating the demoted node first, then the promoted root), all subsequent <code class="font-mono">balance_factor</code> queries use stale data, causing the tree to fail to balance future insertions!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Sorting the Output of a BST</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">sorted(tree.get_all_keys())</code> to produce sorted records.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is redundant:</strong> Calling <code class="font-mono">sorted()</code> forces an $O(n \log n)$ Timsort pass. A Binary Search Tree already maintains strict sorted invariants; executing a generator-based <strong>In-Order Traversal</strong> yields elements in perfect ascending order in $O(n)$ with zero extra sorting overhead!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Recursive Stack Overflow on Degenerate Trees</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using naive recursion on an unbalanced binary tree with 50,000 sequential elements.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes the process:</strong> In a degenerate tree of height $h=n$, recursion depth reaches $n$. Python's default call stack limit is 1,000 frames (<code class="font-mono">sys.getrecursionlimit()</code>), raising <code class="font-mono text-rose-950 font-bold">RecursionError: maximum recursion depth exceeded</code>. Self-balancing AVL trees keep height strictly bounded at $\approx 1.44 \log_2 n \le 25$, never exceeding stack limits!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Corrupting Two-Child Node Deletions</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Deleting an internal node with two children by directly splicing child pointers.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this orphans subtrees:</strong> An internal node has two subtrees that cannot be attached to a single parent slot.
+                        <strong>Fix:</strong> Replace the target node's key with its <strong>In-Order Successor</strong> (the minimum node in its right subtree), and then recursively delete the successor from the right subtree.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the AVL secondary index test suite and inspect balancing rotations:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge AVL tree unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_avl_tree.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.09s. Confirms anti-degeneration rotations, level-order BFS, in-order sorting, and range scan pruning.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 08:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, sorted range indices, undo logs, and AVL trees.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify that AVL trees prevent height degeneration under sorted inputs:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from memforge.index.avl_tree import BalancedTreeIndex; t = BalancedTreeIndex(); [t.insert(i, i) for i in range(1000)]; print('Total nodes:', len(t)); print('AVL Tree Height:', t._get_height(t._root))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice that for 1,000 sequentially inserted items, the AVL tree height is only ~10 (instead of 1,000 in a naive BST)!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 09 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Multi-Way Trees &amp; Storage Systems - B-Trees, B+ Trees &amp; Database Range Indexes</h4>
+                <p class="text-xs text-slate-500 font-sans">Overcoming binary tree pointer limits: Understanding why industrial databases (PostgreSQL, SQLite, MySQL) abandon binary trees for disk and memory-page storage, multi-way node layouts, leaf chaining, and engineering MemForge's in-memory B-Tree index.</p>
+            </div>
+            <a href="Chapter 09 - Multi-Way Trees and Storage Systems - B-Trees, B+ Trees and Database Range Indexes.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 09 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

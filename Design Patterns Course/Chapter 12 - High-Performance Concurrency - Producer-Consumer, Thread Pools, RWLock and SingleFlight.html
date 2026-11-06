@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 12: High-Performance Concurrency: Producer-Consumer, Thread Pools, RWLock &amp; SingleFlight</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 12 - High-Performance Concurrency Patterns)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 12 &bull; Concurrency &amp; Multithreading Patterns
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                High-Performance Concurrency: Producer-Consumer, Thread Pools, RWLock &amp; SingleFlight
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating under high-throughput concurrent loads without resource starvation: Ingesting high-velocity orders via bounded <strong>Producer-Consumer</strong> queues with backpressure, offloading CPU-intensive cryptography to managed <strong>Worker Pools</strong>, unlocking concurrent read access with writer-priority <strong>Reader-Writer Locks (RWLock)</strong>, eliminating redundant execution using <strong>SingleFlight</strong> request coalescing, and constructing the high-concurrency core of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NexusCore Milestone 12: High-Performance Concurrency Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 10 and 11, we established clean domain boundaries, database repositories, and service-layer orchestration. In Milestone 12, we transition to <strong>POSA Vol. 2 Concurrency &amp; Threading Patterns</strong>. When market trading spikes ingest 100,000 events per second, naive asynchronous Python code collapses: event loops freeze during CPU hashing, unbuffered queues consume gigabytes of RAM, and standard mutual exclusion locks destroy read throughput. We engineer four concurrent pillars: a bounded <strong>Producer-Consumer</strong> queue with proactive backpressure, an asynchronous <strong>Worker Pool</strong> offloading CPU-bound workloads, a writer-prioritized <strong>Reader-Writer Lock (RWLock)</strong>, and an asynchronous <strong>SingleFlight</strong> coalescer to deduplicate redundant simultaneous queries.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 12 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #31: Bounded Producer-Consumer</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #32: Worker / Thread Pool</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #33: Async Reader-Writer Lock (RWLock)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #34: SingleFlight (Request Coalescing)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Writer-Starvation Prevention Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full Asyncio Concurrency &amp; Stress Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory -->
+        <section id="concurrency-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Computer Science Foundations</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Concurrency Physics: Event Loops, Threads &amp; Contention</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In modern asynchronous Python (FastAPI, Asyncio, AnyIO), understanding the physics of concurrent execution is essential. The Asyncio runtime operates on a <strong>single-threaded cooperative event loop</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                While this design delivers massive I/O concurrency (&gt;50,000 concurrent network sockets with minimal RAM overhead), it introduces severe failure modes when mismanaged:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Thread Starvation Card -->
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-rose-900 text-sm block">1. Event Loop Starvation</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        If a single coroutine executes a blocking CPU-heavy task (such as verifying a cryptographic signature or running complex risk calculations for 100ms), <strong>the entire event loop freezes</strong>. No other coroutine can run, incoming TCP handshakes stall, and p99 latency spikes uncontrollably.
+                    </p>
+                </div>
+
+                <!-- Unbounded Memory Card -->
+                <div class="p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-amber-900 text-sm block">2. Unbounded Buffer Bloat</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        When producers ingest orders faster than consumers can process them, unconstrained in-memory queues expand without limit. In a high-traffic surge, millions of tasks pile into memory, triggering the Linux OOM-killer and crashing the container.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: PRODUCER-CONSUMER -->
+        <section id="pattern-producer-consumer" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Concurrency Pattern #31
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Bounded Producer-Consumer (with Backpressure)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: POSA Vol. 2 &bull; Architectural Concurrency Pattern
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the drive-through lane at a busy fast-food restaurant.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Cars (Producers) arrive at the speaker box to order food. The kitchen staff (Consumers) prepare the meals in the back. Between the speaker box and the pickup window is a physical lane that fits exactly 5 cars (The Bounded Queue).
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    If the kitchen falls behind and the 5-car lane fills up completely, the restaurant employee asks incoming cars to wait at the entrance (Backpressure). Cars don't pile up infinitely across the street causing a gridlock accident. The bounded lane decouples arrival speed from cooking speed safely.
+                </p>
+            </div>
+
+            <!-- The Problem: Unbounded Queue Overflow -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Unbounded Async Queues</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In Python, calling <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">asyncio.Queue()</code> with no arguments defaults to <code class="font-mono text-xs">maxsize=0</code> (an infinite queue). During an exchange flash-crash, 500,000 trade events arrive in seconds. Without a buffer limit, the queue swallows all available server RAM:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: Unbounded In-Memory Queuing (OOM Disaster)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">UnsafeOrderIngestor</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Maxsize=0 means UNBOUNDED! Can grow to millions of items!</span>
+        self.queue = asyncio.Queue()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">on_order_received</span>(self, order_data: dict):
+        <span class="text-slate-500"># If consumers lag behind, this put() never pauses, consuming all server RAM!</span>
+        <span class="text-purple-400">await</span> self.queue.put(order_data)</pre>
+            </div>
+
+            <!-- Decision Rulebook: Producer-Consumer -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Bounded Producer-Consumer</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Data arrives in volatile, bursty spikes but downstream consumers process at a steady, fixed throughput.</li>
+                        <li>You must enforce physical memory caps by applying backpressure to producers when buffers reach capacity.</li>
+                        <li>You want to decouple multiple producer coroutines from multiple consumer workers cleanly.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Synchronous request-response endpoints where the caller must receive the processing result immediately before returning an HTTP response.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: WORKER / THREAD POOL -->
+        <section id="pattern-worker-pool" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Concurrency Pattern #32
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Worker / Thread Pool (Async-Safe Offloading)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: POSA Vol. 2 &bull; Resource Management Pattern
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine the head concierge at a busy hotel front desk.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    If a guest arrives and asks to have their entire 12-page legal document translated into Japanese, the concierge does not sit down, pull out a dictionary, and spend 4 hours translating while 50 other guests wait in line at the desk!
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans font-bold">
+                    Instead, the concierge hands the translation task to a dedicated Back-Office Translation Team (The Worker Pool). The concierge immediately resumes greeting new guests at the counter. When the back-office finishes, the document is returned seamlessly. The main counter never stops moving!
+                </p>
+            </div>
+
+            <!-- The Problem: Blocking the Event Loop -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Event Loop Freezes from CPU Workloads</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Executing CPU-intensive algorithms (such as Argon2/Bcrypt password hashing, HMAC signature verification, or complex Monte Carlo risk simulations) directly inside an <code class="font-mono text-xs">async def</code> function locks the single thread running the Asyncio event loop:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: Running Heavy CPU Logic Directly in Async Event Loop</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/orders/verify"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">verify_trade_signatures</span>(payload: OrderVerificationDTO):
+    <span class="text-slate-500"># CPU-bound intensive cryptographic loop running in the main async thread:</span>
+    <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(100_000):
+        hmac.new(b<span class="text-amber-300">"key"</span>, payload.signature.encode(), hashlib.sha512).digest()
+        
+    <span class="text-slate-500"># CATASTROPHE: For 250 milliseconds, the event loop is 100% BLOCKED!</span>
+    <span class="text-slate-500"># No other user can load pages, health probes fail, and timeouts cascade!</span>
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"VALID"</span>}</pre>
+            </div>
+
+            <!-- Decision Rulebook: Worker Pool -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Worker Pool</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have heavy CPU-bound tasks (cryptography, image rendering, parsing large files) that would otherwise stall the event loop.</li>
+                        <li>You are calling blocking third-party legacy C libraries or synchronous I/O drivers that don't support <code class="font-mono">await</code>.</li>
+                        <li>You want to bound the maximum number of simultaneous threads to avoid thrashing system memory and CPU context switches.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Standard non-blocking network I/O calls (e.g. database queries with asyncpg or HTTP calls with httpx). Plain <code class="font-mono">await</code> is far more efficient than allocating OS threads!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 3: READER-WRITER LOCK (RWLOCK) -->
+        <section id="pattern-rwlock" class="space-y-6">
+            <div class="border-b-2 border-sky-500 pb-3">
+                <span class="bg-sky-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Concurrency Pattern #33
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Reader-Writer Lock (RWLock with Writer Priority)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: POSA Vol. 2 &bull; Synchronization Pattern p. 99
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the departure and arrivals board at a massive international train terminal.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    At any given second, <strong>hundreds of passengers can look up and read the board simultaneously</strong>. Ten thousand people reading at the same time does not cause any confusion or data corruption.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    However, when a technician needs to update the track number for the 5:00 PM Express, they must freeze the board exclusively. No passenger should read a half-updated, scrambled row. As soon as the technician finishes writing, all passengers can immediately resume reading in parallel.
+                </p>
+            </div>
+
+            <!-- Visual Flowchart of RWLock -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-sky-400 uppercase tracking-widest text-[11px]">
+                    Reader-Writer Concurrency Invariant Matrix
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Readers Mode -->
+                    <div class="p-4 bg-slate-950 border border-emerald-500 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold block text-sm">Concurrent Read Mode (Shared Lock)</span>
+                        <div class="bg-slate-900 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>&bull; Reader 1: Reading OrderBook status &rarr; ALLOWED</div>
+                            <div>&bull; Reader 2: Reading OrderBook status &rarr; ALLOWED</div>
+                            <div>&bull; Reader 100: Reading OrderBook status &rarr; ALLOWED</div>
+                            <div class="text-emerald-400 font-bold">&check; Infinite parallel readers permitted simultaneously!</div>
+                        </div>
+                    </div>
+
+                    <!-- Writers Mode -->
+                    <div class="p-4 bg-slate-950 border border-rose-500 rounded-2xl space-y-3">
+                        <span class="text-rose-400 font-bold block text-sm">Exclusive Write Mode (Exclusive Lock)</span>
+                        <div class="bg-slate-900 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>&bull; Writer 1: Modifying order slot &rarr; GRANTED EXCLUSIVE LOCK</div>
+                            <div>&bull; Incoming Readers: QUEUED &amp; BLOCKED</div>
+                            <div>&bull; Other Writers: QUEUED &amp; BLOCKED</div>
+                            <div class="text-rose-400 font-bold">&cross; Total mutual exclusion during updates!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-amber-400 font-mono">The Writer Starvation Threat &amp; Solution:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        In naive RWLocks, if incoming readers arrive continuously without pause, a writer might wait forever (Writer Starvation). Our implementation uses <strong>Writer Preference</strong>: the moment a writer requests access, new readers are queued behind the writer, ensuring updates are never stalled indefinitely!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: RWLock -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use RWLock</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have a shared in-memory data structure (like an OrderBook, configuration cache, or symbol registry) where reads outnumber writes by 10:1 or 100:1.</li>
+                        <li>Standard locks (<code class="font-mono">asyncio.Lock</code>) are causing high read-latency bottlenecks under multi-tenant querying.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Write frequency equals or exceeds read frequency (a standard Mutex has lower overhead).</li>
+                        <li>Read operations take under 10 nanoseconds (the overhead of managing reader counters exceeds the locking savings).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 4: SINGLEFLIGHT -->
+        <section id="pattern-singleflight" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Concurrency Pattern #34
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: SingleFlight (Request Coalescing)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: High-Performance Distributed/Async Concurrency Pattern
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-amber-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Imagine 10 roommates sitting in a living room on a hot summer afternoon.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Roommate 1 stands up and says: <em>"I'm walking to the corner store to buy ice cream."</em>
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans font-bold">
+                    The other 9 roommates do not all jump up, start 9 separate cars, drive to the exact same store, stand in 9 separate checkout lines, and buy 9 separate cartons of the exact same vanilla ice cream! Instead, they tell Roommate 1: "Grab some for me too." Roommate 1 makes a single trip, returns, and shares the result with everyone. That is SingleFlight.
+                </p>
+            </div>
+
+            <!-- The Problem: In-Flight Duplicate Surge -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Identical In-Flight Redundant Workloads</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    When sudden volatility hits Bitcoin or Apple stock, 5,000 algorithmic bots and UI clients simultaneously request the exact same historical candlestick data or market index calculation:
+                </p>
+
+                <!-- Visual Flowchart of SingleFlight -->
+                <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                    <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                        SingleFlight In-Flight Request Deduplication
+                    </div>
+
+                    <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                        <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                            <span class="text-sky-300 font-bold block">1,000 Concurrent Calls</span>
+                            <span class="text-[10px] text-slate-400 font-sans">singleflight.do("btc_index", fetch_fn)</span>
+                        </div>
+
+                        <div class="text-amber-400 font-bold text-base">&rarr; merged by key &rarr;</div>
+
+                        <div class="p-3 bg-amber-950/80 border border-amber-500 rounded-xl w-full md:w-56 space-y-1">
+                            <span class="text-amber-300 font-bold block">SingleFlight Leader</span>
+                            <span class="text-[10px] text-amber-200 font-sans">Spawns 1 single in-flight task</span>
+                            <div class="text-[9px] text-slate-400">999 callers await shared Future</div>
+                        </div>
+
+                        <div class="text-amber-400 font-bold text-base">&rarr; single execution &rarr;</div>
+
+                        <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                            <span class="text-emerald-300 font-bold block">Backend Database</span>
+                            <span class="text-[10px] text-emerald-200 font-sans">Executes EXACTLY ONCE!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: SingleFlight -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use SingleFlight</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have computationally expensive or I/O-intensive read queries that frequently experience concurrent duplicate requests for the identical key.</li>
+                        <li>You want to eliminate cache stampedes and dogpiling spikes without requiring distributed Redis locks.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Mutating write operations (such as transferring money or creating orders). Writes must not be deduplicated unless explicit idempotency rules dictate it!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: NEXUSCORE MILESTONE 12 -->
+        <section id="nexuscore-milestone-12" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 12: High-Performance Concurrency Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 12 for <strong>NexusCore</strong>. Below is the production-grade implementation of all four concurrency patterns: a bounded producer-consumer queue with backpressure, an async-safe thread pool manager, an asynchronous reader-writer lock with writer priority, and an async singleflight coalescer:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 12)</div>
+                <div>nexuscore/</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">concurrency/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">queue.py</span>           <span class="text-slate-500"># Milestone 12: Bounded Queue &amp; Backpressure Engine</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">worker_pool.py</span>     <span class="text-slate-500"># Milestone 12: CPU-Offloading Managed Thread Pool</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">rwlock.py</span>          <span class="text-slate-500"># Milestone 12: Writer-Prioritized Async RWLock</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">singleflight.py</span>    <span class="text-slate-500"># Milestone 12: Async SingleFlight Request Coalescer</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_concurrency_patterns.py</span> <span class="text-slate-500"># Milestone 12 Comprehensive Concurrency Battery</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/concurrency/queue.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Bounded Producer-Consumer Engine: <code class="text-purple-700">src/nexuscore/concurrency/queue.py</code></span>
+                    <span class="text-slate-400">Backpressure Control</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Concurrency - Bounded Producer-Consumer with Backpressure</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Optional
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">QueueBackpressureError</span>(Exception):
+    <span class="text-slate-500">"""Raised when the bounded queue cannot accept more items within timeout."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BoundedOrderQueue</span>:
+    <span class="text-slate-500">"""
+    BOUNDED PRODUCER-CONSUMER QUEUE:
+    Prevents memory exhaustion by fixing an immutable max capacity buffer.
+    Applies backpressure by forcing producers to wait or fail when full.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, maxsize: int = 1000):
+        <span class="text-purple-400">if</span> maxsize &lt;= 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"maxsize must be strictly greater than 0"</span>)
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        self._sentinel = object()  <span class="text-slate-500"># Poison pill to signal consumers to stop cleanly</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">produce</span>(self, item: Any, timeout: Optional[float] = 2.0) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Produces an item into the queue.
+        Enforces backpressure: if queue is full, awaits up to `timeout` seconds.
+        """</span>
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">await</span> asyncio.wait_for(self._queue.put(item), timeout=timeout)
+        <span class="text-purple-400">except</span> asyncio.TimeoutError:
+            <span class="text-purple-400">raise</span> QueueBackpressureError(
+                f<span class="text-amber-300">"Backpressure limit reached. Queue at capacity ({self._queue.maxsize})."</span>
+            )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">consume</span>(self) -> Any:
+        <span class="text-slate-500">"""Consumes an item from the queue, blocking until an item is available."""</span>
+        item = <span class="text-purple-400">await</span> self._queue.get()
+        <span class="text-purple-400">if</span> item <span class="text-purple-400">is</span> self._sentinel:
+            <span class="text-slate-500"># Put sentinel back so all worker tasks receive the termination signal</span>
+            <span class="text-purple-400">await</span> self._queue.put(self._sentinel)
+            self._queue.task_done()
+            <span class="text-purple-400">return None</span>
+        <span class="text-purple-400">return</span> item
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">task_done</span>(self) -> <span class="text-rose-400">None</span>:
+        self._queue.task_done()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">close</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Broadcasts termination sentinel to shutdown consumer loops."""</span>
+        <span class="text-purple-400">await</span> self._queue.put(self._sentinel)
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">size</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._queue.qsize()</pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/concurrency/worker_pool.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Async-Safe Managed Worker Pool: <code class="text-purple-700">src/nexuscore/concurrency/worker_pool.py</code></span>
+                    <span class="text-slate-400">Thread Pool Offloading</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Concurrency - Managed Worker Pool for CPU-Bound Offloading</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> concurrent.futures <span class="text-purple-400">import</span> ThreadPoolExecutor
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable, Any
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CPUWorkerPool</span>:
+    <span class="text-slate-500">"""
+    WORKER / THREAD POOL PATTERN:
+    Manages dedicated OS worker threads to execute synchronous CPU-intensive tasks
+    without blocking the single-threaded Asyncio event loop.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, max_workers: int = 4):
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=<span class="text-amber-300">"nexus_cpu"</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, sync_fn: Callable[..., Any], *args: Any) -> Any:
+        <span class="text-slate-500">"""Offloads synchronous work to thread pool and awaits result non-blockingly."""</span>
+        loop = asyncio.get_running_loop()
+        <span class="text-purple-400">return await</span> loop.run_in_executor(self._executor, sync_fn, *args)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">shutdown</span>(self) -> <span class="text-rose-400">None</span>:
+        self._executor.shutdown(wait=<span class="text-rose-400">True</span>)</pre>
+            </div>
+
+            <!-- File 3: src/nexuscore/concurrency/rwlock.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Writer-Priority Async RWLock: <code class="text-purple-700">src/nexuscore/concurrency/rwlock.py</code></span>
+                    <span class="text-slate-400">POSA Vol. 2 Synchronization</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Concurrency - Async Reader-Writer Lock with Writer Priority</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AsyncRWLock</span>:
+    <span class="text-slate-500">"""
+    READER-WRITER LOCK WITH WRITER PREFERENCE:
+    Allows infinite concurrent readers when no writer is active.
+    When a writer requests the lock, incoming readers are blocked, preventing writer starvation.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._readers: int = 0
+        self._writers_waiting: int = 0
+        self._writer_active: bool = <span class="text-rose-400">False</span>
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._read_ok: asyncio.Condition = asyncio.Condition(self._lock)
+        self._write_ok: asyncio.Condition = asyncio.Condition(self._lock)
+
+    <span class="text-purple-400">@asynccontextmanager</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">read_lock</span>(self):
+        <span class="text-slate-500">"""Acquires a shared read lock."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-slate-500"># Block readers if a writer is active OR writers are waiting (Writer Preference)</span>
+            <span class="text-purple-400">while</span> self._writer_active <span class="text-purple-400">or</span> self._writers_waiting &gt; 0:
+                <span class="text-purple-400">await</span> self._read_ok.wait()
+            self._readers += 1
+
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">yield</span>
+        <span class="text-purple-400">finally</span>:
+            <span class="text-purple-400">async with</span> self._lock:
+                self._readers -= 1
+                <span class="text-purple-400">if</span> self._readers == 0:
+                    <span class="text-slate-500"># Wake up waiting writers when all active readers exit</span>
+                    self._write_ok.notify()
+
+    <span class="text-purple-400">@asynccontextmanager</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">write_lock</span>(self):
+        <span class="text-slate-500">"""Acquires an exclusive write lock."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            self._writers_waiting += 1
+            <span class="text-purple-400">while</span> self._writer_active <span class="text-purple-400">or</span> self._readers &gt; 0:
+                <span class="text-purple-400">await</span> self._write_ok.wait()
+            self._writers_waiting -= 1
+            self._writer_active = <span class="text-rose-400">True</span>
+
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">yield</span>
+        <span class="text-purple-400">finally</span>:
+            <span class="text-purple-400">async with</span> self._lock:
+                self._writer_active = <span class="text-rose-400">False</span>
+                <span class="text-slate-500"># Prefer waiting writers; if none, notify all waiting readers</span>
+                <span class="text-purple-400">if</span> self._writers_waiting &gt; 0:
+                    self._write_ok.notify()
+                <span class="text-purple-400">else</span>:
+                    self._read_ok.notify_all()</pre>
+            </div>
+
+            <!-- File 4: src/nexuscore/concurrency/singleflight.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Async SingleFlight Coalescer: <code class="text-purple-700">src/nexuscore/concurrency/singleflight.py</code></span>
+                    <span class="text-slate-400">Request Coalescing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Concurrency - Async SingleFlight Request Coalescing Engine</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Dict, Awaitable
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SingleFlightGroup</span>:
+    <span class="text-slate-500">"""
+    SINGLEFLIGHT PATTERN:
+    Deduplicates concurrent in-flight requests for the identical key.
+    Merges duplicate calls into a single execution, broadcasting the result to all callers.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._in_flight: Dict[str, asyncio.Future] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">do</span>(self, key: str, fn: Callable[[], Awaitable[Any]]) -> Any:
+        <span class="text-slate-500"># 1. Check or register in-flight future under lock</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> self._in_flight:
+                future = self._in_flight[key]
+                is_leader = <span class="text-rose-400">False</span>
+            <span class="text-purple-400">else</span>:
+                loop = asyncio.get_running_loop()
+                future = loop.create_future()
+                self._in_flight[key] = future
+                is_leader = <span class="text-rose-400">True</span>
+
+        <span class="text-slate-500"># 2. Leader executes underlying work</span>
+        <span class="text-purple-400">if</span> is_leader:
+            <span class="text-purple-400">try</span>:
+                result = <span class="text-purple-400">await</span> fn()
+                future.set_result(result)
+                <span class="text-purple-400">return</span> result
+            <span class="text-purple-400">except</span> BaseException <span class="text-purple-400">as</span> exc:
+                future.set_exception(exc)
+                <span class="text-purple-400">raise</span>
+            <span class="text-purple-400">finally</span>:
+                <span class="text-purple-400">async with</span> self._lock:
+                    <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> self._in_flight:
+                        del self._in_flight[key]
+
+        <span class="text-slate-500"># 3. Followers await leader resolution</span>
+        <span class="text-purple-400">return await</span> asyncio.shield(future)</pre>
+            </div>
+
+            <!-- File 5: tests/test_concurrency_patterns.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Concurrency Test Battery: <code class="text-purple-700">tests/test_concurrency_patterns.py</code></span>
+                    <span class="text-slate-400">Async Stress Verification</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> nexuscore.concurrency.queue <span class="text-purple-400">import</span> BoundedOrderQueue, QueueBackpressureError
+<span class="text-purple-400">from</span> nexuscore.concurrency.worker_pool <span class="text-purple-400">import</span> CPUWorkerPool
+<span class="text-purple-400">from</span> nexuscore.concurrency.rwlock <span class="text-purple-400">import</span> AsyncRWLock
+<span class="text-purple-400">from</span> nexuscore.concurrency.singleflight <span class="text-purple-400">import</span> SingleFlightGroup
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestConcurrencyPatterns</span>:
+    <span class="text-slate-500">"""Validates bounded queuing, worker pools, RWLocks, and SingleFlight."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_bounded_queue_enforces_backpressure_timeout</span>(self):
+        <span class="text-slate-500"># Bounded queue with capacity 2</span>
+        q = BoundedOrderQueue(maxsize=2)
+        <span class="text-purple-400">await</span> q.produce(<span class="text-amber-300">"order_1"</span>)
+        <span class="text-purple-400">await</span> q.produce(<span class="text-amber-300">"order_2"</span>)
+
+        <span class="text-slate-500"># 3rd produce must raise QueueBackpressureError after timeout</span>
+        <span class="text-purple-400">with</span> pytest.raises(QueueBackpressureError, match=<span class="text-amber-300">"Backpressure limit reached"</span>):
+            <span class="text-purple-400">await</span> q.produce(<span class="text-amber-300">"order_3"</span>, timeout=0.05)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_worker_pool_executes_cpu_task_without_blocking_event_loop</span>(self):
+        pool = CPUWorkerPool(max_workers=2)
+
+        <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">heavy_hashing</span>(payload: str) -> str:
+            <span class="text-slate-500"># Heavy CPU synchronous loop</span>
+            val = payload.encode()
+            <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(50_000):
+                val = hashlib.sha256(val).digest()
+            <span class="text-purple-400">return</span> val.hex()[:8]
+
+        <span class="text-slate-500"># Concurrently execute CPU task while checking event loop responsiveness</span>
+        t0 = time.perf_counter()
+        task = asyncio.create_task(pool.execute(heavy_hashing, <span class="text-amber-300">"trade_data"</span>))
+        
+        <span class="text-slate-500"># Event loop should remain responsive to other tasks:</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.01)
+        res = <span class="text-purple-400">await</span> task
+        pool.shutdown()
+
+        assert len(res) == 8
+        assert time.perf_counter() - t0 &gt; 0.01
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_rwlock_allows_parallel_readers_and_exclusive_writer</span>(self):
+        rwlock = AsyncRWLock()
+        active_readers = 0
+        max_parallel_readers = 0
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">reader_task</span>():
+            nonlocal active_readers, max_parallel_readers
+            <span class="text-purple-400">async with</span> rwlock.read_lock():
+                active_readers += 1
+                max_parallel_readers = max(max_parallel_readers, active_readers)
+                <span class="text-purple-400">await</span> asyncio.sleep(0.05)
+                active_readers -= 1
+
+        <span class="text-slate-500"># Launch 5 concurrent readers</span>
+        <span class="text-purple-400">await</span> asyncio.gather(*[reader_task() <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(5)])
+        <span class="text-slate-500"># Proves all 5 readers ran simultaneously in parallel:</span>
+        assert max_parallel_readers == 5
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_singleflight_deduplicates_concurrent_calls</span>(self):
+        sf = SingleFlightGroup()
+        invocations = 0
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">expensive_query</span>():
+            nonlocal invocations
+            invocations += 1
+            <span class="text-purple-400">await</span> asyncio.sleep(0.05)
+            <span class="text-purple-400">return</span> <span class="text-amber-300">"BTC_PRICE_65000"</span>
+
+        <span class="text-slate-500"># 50 concurrent requests for the identical key</span>
+        tasks = [sf.do(<span class="text-amber-300">"btc_ticker"</span>, expensive_query) <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(50)]
+        results = <span class="text-purple-400">await</span> asyncio.gather(*tasks)
+
+        <span class="text-slate-500"># SingleFlight coalesced 50 requests into exactly 1 call:</span>
+        assert invocations == 1
+        assert all(r == <span class="text-amber-300">"BTC_PRICE_65000"</span> <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> results)</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blocking the Asyncio Event Loop</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Executing long synchronous computations or blocking I/O calls (like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">time.sleep()</code>, <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">requests.get()</code>, or heavy cryptography) inside an async endpoint.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes system-wide freezes:</strong> The Asyncio loop is single-threaded. While one coroutine runs a 200ms CPU calculation, <strong>the entire server stops processing other requests</strong>! Always offload blocking work to a <strong>Worker Pool</strong> via <code class="font-mono text-rose-950 font-bold">loop.run_in_executor()</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Writer Starvation in Naive RWLocks</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing a Reader-Writer Lock where incoming readers can always acquire the lock as long as other readers are active.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes update deadlocks:</strong> In a high-traffic read service, the active reader count never drops to zero. As a result, <strong>writers wait indefinitely</strong>, causing stale state and blocked write queues! Always use an RWLock with <strong>Writer Preference</strong> to queue incoming readers behind waiting writers.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 12</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the concurrency test suite and benchmark SingleFlight deduplication:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Concurrency test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_concurrency_patterns.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.20s. Confirms bounded backpressure, CPU offloading, parallel reading, and 50-to-1 SingleFlight coalescing!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Benchmark SingleFlight request coalescing in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from nexuscore.concurrency.singleflight import SingleFlightGroup; sf = SingleFlightGroup(); runs = 0; async def task(): nonlocal runs; runs += 1; await asyncio.sleep(0.05); return 'RESULT'; async def main(): res = await asyncio.gather(*[sf.do('key', task) for _ in range(100)]); print(f'Executed: {runs} time for {len(res)} callers'); asyncio.run(main())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Executed: 1 time for 100 callers</code>!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 13 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 13: Asynchronous Coordination: Active Object, Monitor Object &amp; Lock-Free Coordination</h4>
+                <p class="text-xs text-slate-500 font-sans">Advancing asynchronous POSA patterns: Decoupling method execution from invocation with the Active Object, synchronized state access via Monitor Object, and lock-free memory coordination.</p>
+            </div>
+            <a href="Chapter 13 - Asynchronous Coordination - Active Object, Monitor Object and Lock-Free Coordination.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 13 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Asynchronous SQLAlchemy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 09 - Async Engine &amp; Non-Blocking Architecture)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Non-Blocking I/O &amp; High-Concurrency Systems
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Asynchronous SQLAlchemy
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Connecting the relational database to Python's event loop: Replacing threadpools with non-blocking I/O via <code class="font-mono text-emerald-400">create_async_engine</code> and <code class="font-mono text-emerald-400">asyncpg</code>, understanding greenlet context switching, eliminating the fatal <code class="font-mono text-emerald-400">MissingGreenlet</code> crash, running async Alembic migrations, and migrating LedgerCore to high-throughput concurrency.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 09: Full Asynchronous Upgrade</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 08, LedgerCore operated synchronously. When FastAPI handled requests, it offloaded each database call to a worker threadpool. Under 2,000 concurrent requests, threadpool context switching and thread stack memory limits degrade latency. In Milestone 09, we upgrade LedgerCore's persistence tier: swapping synchronous drivers for <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">asyncpg</code> (and <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">aiosqlite</code> for testing), establishing an <code class="font-mono text-purple-300">AsyncSession</code> pipeline, converting all endpoints to native <code class="font-mono text-purple-300">async def</code> coroutines, and configuring Alembic to run migrations asynchronously.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Event Loop sockets vs. OS Threadpools</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">create_async_engine</code> &amp; <code class="text-purple-300">asyncpg</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Greenlet bridge under the hood</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defeating <code class="text-purple-300">MissingGreenlet</code> exceptions</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Asynchronous Alembic (<code class="text-purple-300">run_sync</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full async LedgerCore endpoint refactor</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Concurrency: Event Loops vs. Threadpools -->
+        <section id="cs-async-concurrency" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Event Loops vs. OS Threadpools</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When you run synchronous SQLAlchemy code inside an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">async def</code> FastAPI route, you commit the "Sync Library Trap": the blocking DBAPI network call halts Python's single-threaded event loop, freezing all concurrent requests.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To prevent this freeze, traditional synchronous architectures declare routes as plain <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">def</code>. FastAPI detects the synchronous function and offloads execution to an AnyIO **worker threadpool** (capped at 40 threads by default). But OS threads carry significant systems overhead:
+            </p>
+
+            <!-- Threadpool vs Event Loop Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Concurrency Architecture: Worker Threadpools vs. Non-Blocking Event Loops</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Handling 5,000 Concurrent Database Queries</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Threadpool Box -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Synchronous Threadpool (def)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Thread-Bound</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Each concurrent query requires an individual operating system thread:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>Thread 1: [Blocked waiting for PostgreSQL response...]</div>
+                            <div>Thread 2: [Blocked waiting for PostgreSQL response...]</div>
+                            <div>... 38 Threads Active (Threadpool 100% Saturation) ...</div>
+                            <div class="text-rose-400 font-bold">&rarr; Request #41 is queued! Latency surges.</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li>Each thread allocates 8MB stack memory in the OS.</li>
+                            <li>CPU thrashes on register and cache-line context switches.</li>
+                            <li>Cannot scale past ~200-500 concurrent connections per container.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Event Loop Box -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. True Async Event Loop (async def)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Socket Multiplexed</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            A single OS thread manages thousands of non-blocking sockets using Linux <code class="text-emerald-300">epoll</code>:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>Task 1: awaits db.execute() &rarr; registers socket with epoll</div>
+                            <div>Event Loop immediately switches to Task 2, 3, 4...</div>
+                            <div>When DB packets arrive, kernel wakes coroutine instantly!</div>
+                            <div class="text-emerald-400 font-bold">&rarr; Zero threads blocked. Flat RAM consumption.</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li>Each coroutine occupies less than 1KB of Python RAM.</li>
+                            <li>Zero OS thread context-switching overhead.</li>
+                            <li>Easily holds 10,000+ concurrent connections on a single container.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside the Engine: The Greenlet Bridge -->
+        <section id="greenlet-bridge" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Greenlet Bridge</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                SQLAlchemy’s ORM architecture was originally designed around synchronous paradigms: accessing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">account.transactions</code> is a synchronous Python property access, not an <code class="font-mono text-xs">await</code> expression.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To enable non-blocking database drivers (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">asyncpg</code>, <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">aiosqlite</code>) without completely throwing away 15 years of battle-tested ORM internals, SQLAlchemy utilizes the C-extension library <strong>greenlet</strong>:
+            </p>
+
+            <!-- Greenlet Bridge Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Greenlet Execution Context Switch Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: User Coroutine -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">1. User Coroutine</span>
+                        <span class="text-[10px] text-slate-500 font-sans">await session.execute(stmt)</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; greenlet_spawn &rarr;</div>
+
+                    <!-- Step 2: Sync ORM Layer -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. Synchronous ORM Core</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Compiles SQL, generates mappings in isolated greenlet</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; context switch &rarr;</div>
+
+                    <!-- Step 3: Async Driver -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. asyncpg / aiosqlite</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">Awaits non-blocking socket I/O on main event loop</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl text-slate-700 font-sans text-xs border border-slate-200 space-y-1">
+                    <strong class="text-slate-900 font-mono">How it Works:</strong>
+                    <p class="leading-relaxed">
+                        When you call <code class="font-mono text-purple-700">await session.execute(...)</code>, SQLAlchemy spawns an isolated micro-thread of execution via <code class="font-mono text-slate-800">greenlet_spawn</code>. The synchronous ORM logic runs inside this greenlet. Whenever the greenlet reaches a database I/O boundary, it suspends itself, yields control back to the outer Python <code class="font-mono text-emerald-700">asyncio</code> event loop to await the network socket, and resumes seamlessly when the bytes arrive!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Infamous MissingGreenlet Exception -->
+        <section id="missing-greenlet" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The <code>MissingGreenlet</code> Exception &amp; Solutions</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Almost every engineer migrating to async SQLAlchemy encounters this runtime crash:
+                <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-bold">sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place?</code>
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Why Does MissingGreenlet Happen?</h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    Python property access is fundamentally synchronous. When you write <code class="font-mono text-slate-800">account.transactions</code>, Python's language grammar does <strong>not</strong> permit an implicit <code class="font-mono text-purple-700">await</code>. 
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    If <code class="font-mono text-slate-800">transactions</code> was not eager-loaded, SQLAlchemy attempts to trigger a lazy-load query. But because there is no <code class="font-mono text-purple-700">await</code> expression attached to property access, SQLAlchemy cannot yield to the event loop. The driver cannot emit I/O, and the greenlet bridge panics with <code class="font-mono text-rose-700 font-bold">MissingGreenlet</code>!
+                </p>
+
+                <!-- Solutions Grid -->
+                <div class="grid md:grid-cols-2 gap-4 text-xs font-mono pt-2">
+                    <!-- Solution 1: Eager Loading -->
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                        <span class="text-emerald-900 font-bold block text-sm">Solution 1: Eager Load Upfront (Recommended)</span>
+                        <p class="font-sans text-[11px] text-emerald-800 leading-relaxed">
+                            Always explicitly load relationships in the initial query using <code class="font-mono font-bold">selectinload()</code> or <code class="font-mono font-bold">joinedload()</code>:
+                        </p>
+                        <pre class="bg-slate-900 text-emerald-300 p-2.5 rounded-lg text-[10px] overflow-x-auto">
+stmt = (
+    select(Account)
+    .options(<span class="text-amber-300">selectinload(Account.transactions)</span>)
+)
+account = await session.scalar(stmt)
+<span class="text-slate-500"># Now safe to access account.transactions with zero I/O!</span></pre>
+                    </div>
+
+                    <!-- Solution 2: Explicit Refresh -->
+                    <div class="p-4 bg-sky-50 border border-sky-200 rounded-xl space-y-2">
+                        <span class="text-sky-900 font-bold block text-sm">Solution 2: Explicit await session.refresh()</span>
+                        <p class="font-sans text-[11px] text-sky-800 leading-relaxed">
+                            If you already hold an instance and need to populate a relationship later, use the asynchronous refresh method:
+                        </p>
+                        <pre class="bg-slate-900 text-sky-300 p-2.5 rounded-lg text-[10px] overflow-x-auto">
+<span class="text-purple-400">await</span> session.refresh(
+    account, 
+    attribute_names=[<span class="text-amber-300">"transactions"</span>]
+)
+<span class="text-slate-500"># Awaits explicitly on the event loop cleanly!</span></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Async Alembic: Wiring run_sync in env.py -->
+        <section id="async-alembic" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Schema Evolution: Asynchronous Alembic Architecture</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When your application switches its connection URL to an asynchronous driver like <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">postgresql+asyncpg://</code> or <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">sqlite+aiosqlite:///</code>, the standard synchronous Alembic runner from Chapter 08 crashes because it attempts to use synchronous DBAPI connection methods against an async driver.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Alembic provides a native asynchronous template using <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-emerald-700 font-bold">async_engine_from_config</code> and <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-emerald-700 font-bold">connection.run_sync()</code>:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-5 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-2">
+                <div class="text-emerald-400 font-bold">// How Alembic Executes Synchronous DDL over an Async Connection in env.py:</div>
+                <pre>
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> async_engine_from_config
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">do_run_migrations</span>(connection):
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=<span class="text-rose-400">True</span>,
+        render_as_batch=<span class="text-rose-400">True</span>
+    )
+    <span class="text-purple-400">with</span> context.begin_transaction():
+        context.run_migrations()
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">run_async_migrations</span>():
+    <span class="text-slate-500"># 1. Spawn asynchronous engine from configuration</span>
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix=<span class="text-amber-300">"sqlalchemy."</span>,
+        poolclass=pool.NullPool,
+    )
+    <span class="text-slate-500"># 2. Acquire async connection and run migrations via run_sync bridge</span>
+    <span class="text-purple-400">async with</span> connectable.connect() <span class="text-purple-400">as</span> connection:
+        <span class="text-purple-400">await</span> connection.run_sync(do_run_migrations)
+    <span class="text-purple-400">await</span> connectable.dispose()
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">run_migrations_online</span>():
+    asyncio.run(run_async_migrations())</pre>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: LedgerCore Milestone 09 -->
+        <section id="ledgercore-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 09: Full Async Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now execute the full asynchronous migration for LedgerCore. We update <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/config.py</code>, refactor <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/database.py</code> to use <code class="font-mono text-purple-700 font-bold">create_async_engine</code> and <code class="font-mono text-purple-700 font-bold">AsyncSession</code>, and convert all transfer and account endpoints in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code> into non-blocking coroutines.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">config.py</span>                  <span class="text-slate-500"># Async driver protocol URLs (sqlite+aiosqlite)</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">database.py</span>                <span class="text-slate-500"># create_async_engine, AsyncSession, yielding dependency</span></div>
+                <div>│   ├── models.py</div>
+                <div>│   ├── schemas.py</div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># Fully async endpoints using await session.execute()</span></div>
+            </div>
+
+            <!-- File 1: app/config.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Async Driver Protocol Configuration: <code class="text-purple-700">app/config.py</code></span>
+                    <span class="text-slate-400">Settings Update</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/config.py: Update DATABASE_URL default to async driver protocol</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Settings</span>(BaseSettings):
+    APP_NAME: str = <span class="text-amber-300">"LedgerCore Financial Engine"</span>
+    ENVIRONMENT: str = Field(default=<span class="text-amber-300">"development"</span>)
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># ASYNC DATABASE DRIVER PROTOCOLS:</span>
+    <span class="text-slate-500"># SQLite: "sqlite+aiosqlite:///./ledgercore.db"</span>
+    <span class="text-slate-500"># PostgreSQL: "postgresql+asyncpg://user:password@localhost:5432/ledgercore"</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    DATABASE_URL: str = Field(
+        default=<span class="text-amber-300">"sqlite+aiosqlite:///./ledgercore.db"</span>,
+        description=<span class="text-amber-300">"Async database URI"</span>
+    )
+
+    DB_POOL_SIZE: int = Field(default=10)
+    DB_MAX_OVERFLOW: int = Field(default=20)
+    DB_ECHO_SQL: bool = Field(default=<span class="text-rose-400">False</span>)
+
+    model_config = SettingsConfigDict(env_file=<span class="text-amber-300">".env"</span>, case_sensitive=<span class="text-rose-400">True</span>)</pre>
+            </div>
+
+            <!-- File 2: app/database.py (Async Engine & AsyncSession) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Async Engine Factory: <code class="text-purple-700">app/database.py</code></span>
+                    <span class="text-slate-400">AsyncSession &amp; AsyncEngine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># LedgerCore Backend - Asynchronous Engine &amp; Session Factory (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> (
+    create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
+)
+<span class="text-purple-400">from</span> sqlalchemy.pool <span class="text-purple-400">import</span> AsyncAdaptedQueuePool, StaticPool
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+
+<span class="text-slate-500"># 1. Configure Async Engine singleton</span>
+engine_kwargs = {
+    <span class="text-amber-300">"echo"</span>: settings.DB_ECHO_SQL,
+}
+
+<span class="text-purple-400">if</span> settings.DATABASE_URL.startswith(<span class="text-amber-300">"sqlite"</span>):
+    engine_kwargs[<span class="text-amber-300">"connect_args"</span>] = {<span class="text-amber-300">"check_same_thread"</span>: <span class="text-rose-400">False</span>}
+<span class="text-purple-400">else</span>:
+    engine_kwargs.update({
+        <span class="text-amber-300">"poolclass"</span>: AsyncAdaptedQueuePool,
+        <span class="text-amber-300">"pool_size"</span>: settings.DB_POOL_SIZE,
+        <span class="text-amber-300">"max_overflow"</span>: settings.DB_MAX_OVERFLOW,
+        <span class="text-amber-300">"pool_pre_ping"</span>: <span class="text-rose-400">True</span>,
+    })
+
+async_engine: AsyncEngine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
+
+<span class="text-slate-500"># 2. AsyncSession Factory</span>
+AsyncSessionLocal = async_sessionmaker(
+    bind=async_engine,
+    class_=AsyncSession,
+    autocommit=<span class="text-rose-400">False</span>,
+    autoflush=<span class="text-rose-400">False</span>,
+    expire_on_commit=<span class="text-rose-400">False</span>  <span class="text-slate-500"># CRITICAL: Prevents MissingGreenlet on response serialization!</span>
+)
+
+<span class="text-slate-500"># 3. FastAPI Asynchronous Yielding Dependency</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_async_db_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""Yields an isolated AsyncSession cleanly attached to the request event loop."""</span>
+    <span class="text-purple-400">async with</span> AsyncSessionLocal() <span class="text-purple-400">as</span> session:
+        <span class="text-purple-400">yield</span> session</pre>
+            </div>
+
+            <!-- File 3: app/main.py Refactored to Native Async -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Native Async API Endpoints: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Asynchronous Operations</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: Refactored async endpoints</span>
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, Depends, HTTPException, status
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> selectinload
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> async_engine, get_async_db_session
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> Account, AccountStatus, TransferTransaction
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> AccountCreate, AccountResponse, TransferRequest, TransferResponse
+
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/api/v1/accounts"</span>, response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_account</span>(
+    payload: AccountCreate,
+    session: AsyncSession = Depends(get_async_db_session)
+):
+    <span class="text-slate-500"># Non-blocking query execution</span>
+    stmt = select(Account).where(Account.account_number == payload.account_number)
+    existing = <span class="text-purple-400">await</span> session.scalar(stmt)
+    <span class="text-purple-400">if</span> existing:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=409, detail=<span class="text-amber-300">"Account number registered."</span>)
+
+    new_account = Account(
+        account_number=payload.account_number,
+        owner_name=payload.owner_name,
+        balance=payload.initial_balance,
+        currency=<span class="text-amber-300">"USD"</span>
+    )
+    session.add(new_account)
+    <span class="text-purple-400">await</span> session.commit()
+    <span class="text-purple-400">await</span> session.refresh(new_account)
+    <span class="text-purple-400">return</span> new_account
+
+
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/api/v1/transfers"</span>, response_model=TransferResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">transfer_funds_async</span>(
+    payload: TransferRequest,
+    session: AsyncSession = Depends(get_async_db_session)
+):
+    <span class="text-slate-500">"""
+    NATIVE ASYNCHRONOUS ROW-LOCKED TRANSFER:
+    Acquires exclusive locks using .with_for_update() non-blockingly over TCP!
+    """</span>
+    sender_basic = <span class="text-purple-400">await</span> session.scalar(select(Account.id).where(Account.account_number == payload.sender_account_number))
+    recipient_basic = <span class="text-purple-400">await</span> session.scalar(select(Account.id).where(Account.account_number == payload.recipient_account_number))
+
+    <span class="text-purple-400">if not</span> sender_basic <span class="text-purple-400">or not</span> recipient_basic:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Account not found."</span>)
+
+    sorted_ids = sorted([sender_basic, recipient_basic])
+
+    <span class="text-purple-400">try</span>:
+        stmt = (
+            select(Account)
+            .where(Account.id.in_(sorted_ids))
+            .order_by(Account.id.asc())
+            .<span class="text-emerald-400 font-bold">with_for_update()</span>
+        )
+        locked_accounts = (<span class="text-purple-400">await</span> session.scalars(stmt)).all()
+        account_map = {acc.id: acc <span class="text-purple-400">for</span> acc <span class="text-purple-400">in</span> locked_accounts}
+
+        sender = account_map[sender_basic]
+        recipient = account_map[recipient_basic]
+
+        <span class="text-purple-400">if</span> sender.balance &lt; payload.amount:
+            <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Insufficient funds."</span>)
+
+        sender.balance -= payload.amount
+        recipient.balance += payload.amount
+
+        transfer_record = TransferTransaction(
+            account_id=sender.id,
+            amount=payload.amount,
+            destination_account_number=recipient.account_number,
+            routing_reference=payload.routing_reference
+        )
+        session.add(transfer_record)
+        <span class="text-purple-400">await</span> session.commit()
+
+        <span class="text-purple-400">return</span> TransferResponse(
+            status=<span class="text-amber-300">"success"</span>,
+            transfer_uuid=transfer_record.uuid,
+            sender_account_number=sender.account_number,
+            recipient_account_number=recipient.account_number,
+            transferred_amount=payload.amount,
+            fee_applied=<span class="text-rose-400">False</span>,
+            sender_new_balance=sender.balance
+        )
+    <span class="text-purple-400">except</span> HTTPException:
+        <span class="text-purple-400">await</span> session.rollback()
+        <span class="text-purple-400">raise</span>
+    <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+        <span class="text-purple-400">await</span> session.rollback()
+        <span class="text-purple-400">raise</span> HTTPException(status_code=500, detail=str(exc))</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Sharing AsyncSessions Across asyncio.gather()</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Passing the same <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">session</code> to multiple coroutines running in parallel via <code class="font-mono text-rose-900">asyncio.gather(task1(session), task2(session))</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this corrupts transactions:</strong> An <code class="font-mono">AsyncSession</code> is <strong>not task-safe or concurrent-safe</strong>. It wraps a single underlying database connection socket. If two concurrent coroutines try to emit queries across the same socket simultaneously, <code class="font-mono">asyncpg</code> will immediately crash with <code class="font-mono text-rose-950 font-bold">InterfaceError: cannot perform operation: another operation is in progress</code>.
+                        <strong>Rule:</strong> Never share an AsyncSession across concurrent tasks. Each task must check out its own session from the factory!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting to await session.commit()</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">session.commit()</code> without the <code class="font-mono text-rose-900 font-bold">await</code> keyword.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent failures:</strong> In an async session, <code class="font-mono">session.commit()</code> returns a coroutine object. If you omit <code class="font-mono">await</code>, Python creates the coroutine but never executes it! The transaction never commits to disk, the HTTP request returns successfully, but the database changes vanish completely into thin air with zero errors raised.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Install async drivers (<code class="font-mono text-emerald-400">aiosqlite</code> or <code class="font-mono text-emerald-400">asyncpg</code>), boot Uvicorn, and execute non-blocking financial transactions:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Drivers -->
+                <div>
+                    <span class="text-slate-500"># 1. Install async drivers:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install aiosqlite asyncpg
+                    </div>
+                </div>
+
+                <!-- Step 2: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 2. Start LedgerCore API in native async mode:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 3: Create Account -->
+                <div>
+                    <span class="text-slate-500"># 3. Post a new Account asynchronously:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/accounts \
+                        -H "Content-Type: application/json" \
+                        -d '{"account_number": "ACC-ASYNC-001", "owner_name": "Async Capital", "initial_balance": "50000.0000"}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Request executes directly on the single-threaded event loop with zero threadpool context-switching overhead!
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's async API in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: FastAPI Patterns, Partial Updates &amp; Microservice Scaling</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering real-world web realities: Safe PATCH updates without field clobbering via <code class="font-mono">exclude_unset=True</code>, routing queries between Read-Replicas and Primary writers, and database tenant sharding.</p>
+            </div>
+            <a href="Chapter 10 - FastAPI Patterns, Partial Updates and Microservice Scaling.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 10: Scaling Relational Persistence: Read-Replicas, Connection Pooling &amp; Sharding</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 10 - Relational Persistence at Scale)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 10 &bull; Database Architecture &amp; Partitioning
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Scaling Relational Persistence: Read-Replicas, Connection Pooling &amp; Sharding
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Breaking single-node database ceilings: Sizing optimal connection pools with PostgreSQL/PgBouncer physics, orchestrating Master-Replica splits with <strong>Read-After-Write consistency guarantees</strong>, implementing <strong>Consistent Hashing Shard Routers</strong> in SQLAlchemy 2.0, and scaling the relational core of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 10: High-Scale Sharded RDBMS Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 09, we proved storage engine physics across B-Trees and LSM-Trees. In Milestone 10, we scale the relational backbone of <strong>OmniRoute</strong>. While telemetry coordinates flow into append-only LSM logs, our financial trip records, rider accounts, and driver tax payouts must remain within relational ACID boundaries. However, a single PostgreSQL instance caps out at ~10,000 write transactions/sec and 4TB disk storage. We engineer an enterprise <strong>Dynamic Master/Replica Splitter</strong> with a 2-second replication lag pinning window to prevent stale reads, mathematically size our connection pools, and construct a <strong>Consistent Hashing Shard Router</strong> in FastAPI and async SQLAlchemy 2.0 to distribute rider trip ledgers across multiple physical database partitions.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 10 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The PostgreSQL Process-Per-Connection Cost</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The HikariCP / PgBouncer Connection Sizing Formula</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Asynchronous Replication Lag &amp; The Read-After-Write Hazard</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Sharding Strategies: Range, Directory, Hash vs. Consistent</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Shard Key Selection &amp; Co-Locating Relational Aggregates</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Case Study: Pinterest Sharding 50 Billion Pins across MySQL</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete Sharded SQLAlchemy 2.0 Engine &amp; PyTest Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- The Scaling Limits of Single-Node RDBMS & Connection Physics -->
+        <section id="connection-physics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Database Hardware Limits</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Single-Node Ceiling &amp; Connection Pool Physics</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Relational databases (PostgreSQL, MySQL) are designed around the assumption of a single source of truth. When scaling traffic, beginner engineers attempt to increase database capacity by throwing bigger hardware at the machine (Vertical Scaling / Scaling Up).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Eventually, vertical scaling hits physical hardware barriers: memory bus saturation, NVMe controller limits, and most lethally, <strong>Connection Memory Exhaustion</strong>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Postgres Connection Overhead -->
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-rose-900 text-sm block">1. The Process-Per-Connection Overhead</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        Unlike modern asynchronous servers that handle 50,000 sockets per thread, <strong>PostgreSQL forks an entire operating system process for every single client connection</strong>.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                        <div>&bull; RAM cost per connection: ~5MB to 10MB</div>
+                        <div>&bull; 2,000 connections = 10 to 20 GB of RAM wasted on OS buffers!</div>
+                        <div>&bull; CPU context switching: Hundreds of idle processes thrash CPU L1/L2 caches</div>
+                        <div class="text-rose-400 font-bold">&rarr; At 5,000 connections, Postgres spends 90% CPU just context switching!</div>
+                    </div>
+                </div>
+
+                <!-- Connection Pool Math -->
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-emerald-900 text-sm block">2. The Connection Pool Sizing Formula</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        Brett Wooldridge (creator of HikariCP) and the PostgreSQL engineering team proved that **fewer connections yield higher throughput**:
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-400 text-center text-xs">
+                        \text{Pool Size} = (2 \times \text{CPU Cores}) + \text{Disk Spindles}
+                    </div>
+                    <p class="text-[10px] text-slate-600 font-sans">
+                        On a 16-core NVMe server, the optimal pool size is only **32 to 40 connections**. Placing an external connection pooler (like **PgBouncer**) allows 10,000 application pods to multiplex over just 40 active database worker processes!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine an executive meeting room with 12 chairs.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    If 500 employees want to speak with the CEO, you do not jam 500 physical folding chairs into that small room! The room becomes so packed that people can't breathe, nobody can walk to the whiteboard, and conversations devolve into screaming (Context Switching Collapse).
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Instead, you keep 12 chairs in the room (The Connection Pool). An assistant outside in the hallway (PgBouncer) lines people up. As soon as one conversation finishes, the person leaves, and the next person sits down. Work finishes 50x faster with 12 chairs than with 500 chairs!
+                </p>
+            </div>
+        </section>
+
+        <!-- READ-REPLICAS & THE READ-AFTER-WRITE HAZARD -->
+        <section id="read-replicas" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Replication Dynamics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Read-Replicas &amp; The "Read-Your-Own-Writes" Consistency Hazard
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Primary-Secondary Topologies &bull; Asynchronous WAL Streaming &bull; Replication Lag
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In web applications, read traffic typically outnumbers write traffic by **10:1 or 100:1**. The first architectural step to scaling beyond a single database is deploying **Read-Replicas**:
+            </p>
+
+            <!-- Visual Flowchart: Read Replicas & Lag Trap -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Read/Write Splitting &amp; The Replication Lag Race Condition
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <!-- Client Action -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 text-center space-y-1">
+                        <span class="text-sky-300 font-bold block text-sm">Rider App</span>
+                        <div class="text-[10px] text-slate-300">1. Updates Name: "Alice" &rarr; "Dr. Alice"</div>
+                        <div class="text-[10px] text-amber-300">2. Page redirects immediately to GET /profile</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&rarr; routes &rarr;</div>
+
+                    <!-- Primary DB -->
+                    <div class="p-4 bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl w-full md:w-56 text-center space-y-1">
+                        <span class="text-emerald-400 font-bold block text-sm">Primary (Master) DB</span>
+                        <div class="text-[10px] text-emerald-200">Writes: UPDATE users ...</div>
+                        <div class="text-[9px] text-slate-400">Commits "Dr. Alice" instantly</div>
+                    </div>
+
+                    <div class="text-rose-400 font-bold text-base">&rarr; WAL stream (200ms lag) &rarr;</div>
+
+                    <!-- Lagging Replica -->
+                    <div class="p-4 bg-rose-950/80 border-2 border-rose-500 rounded-2xl w-full md:w-56 text-center space-y-1">
+                        <span class="text-rose-400 font-bold block text-sm">Read-Replica DB</span>
+                        <div class="text-[10px] text-rose-200">Reads: SELECT name FROM users</div>
+                        <div class="text-[9px] text-rose-300 font-bold">Returns stale: "Alice"!</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-rose-400 font-mono">The User Experience Disaster:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The user updates their profile, hits save, the screen reloads, and they still see their old name! Confused, they click "Save" five more times, filing support tickets. This is the classic <strong>Read-Your-Own-Writes Consistency Hazard</strong> caused by asynchronous WAL streaming delay.
+                    </p>
+                </div>
+            </div>
+
+            <!-- The Architectural Remedy -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans text-xs">
+                <span class="font-bold text-slate-900 text-sm font-mono block">The Solution: Read-Your-Own-Writes Session Pinning</span>
+                <p class="text-slate-700 leading-relaxed">
+                    How do production architectures like Instagram, GitHub, and OmniRoute prevent stale reads without giving up read-replica scaling?
+                </p>
+                <div class="grid md:grid-cols-2 gap-4 font-mono text-[11px] pt-1">
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <strong class="text-sky-700 font-bold block">1. Replication Lag Fallback (GTID / LSN Tracking)</strong>
+                        <p class="text-slate-600 font-sans">
+                            When writing to the Primary, record the transaction's Log Sequence Number (LSN). When routing read queries, inspect the replica's current replay LSN. If the replica is behind, route the read to the Primary!
+                        </p>
+                    </div>
+                    <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
+                        <strong class="text-emerald-700 font-bold block">2. Temporal Primary Pinning (Session Cookie)</strong>
+                        <p class="text-slate-600 font-sans">
+                            Whenever a user executes a write (POST/PUT/DELETE), set a timestamp cookie or in-memory flag: <code class="font-mono text-emerald-800">last_write_at = time.time()</code>. For the next <strong>2.0 seconds</strong>, all reads from that specific user bypass replicas and hit the Primary directly!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DATABASE SHARDING ARCHITECTURE -->
+        <section id="sharding-architecture" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Horizontal Partitioning
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Database Sharding: Scaling Beyond 10,000 Writes/sec
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Shard Key Selection &bull; Consistent Hashing &bull; The Cross-Shard Join Trap
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Read-replicas scale reads, but **they do not scale writes**. Every single write must still execute on the single Primary instance. When write traffic exceeds the physical write IOPS of a single primary node, you must divide your database horizontally into independent databases called <strong>Shards</strong>.
+            </p>
+
+            <!-- Sharding Strategies Table -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Sharding Strategy</th>
+                            <th class="p-3">How it Works</th>
+                            <th class="p-3 text-emerald-700">Advantages</th>
+                            <th class="p-3 text-rose-700">Fatal Vulnerabilities</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Range-Based</td>
+                            <td class="p-3 font-sans">Partition by value ranges (e.g., Rider IDs A–F &rarr; Shard 1, G–M &rarr; Shard 2).</td>
+                            <td class="p-3 font-sans text-emerald-700">Simple range queries.</td>
+                            <td class="p-3 font-sans text-rose-700 font-bold">Catastrophic Hot Spots! Sharding by date dumps 100% of today's writes onto Shard 1.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Directory / Lookup</td>
+                            <td class="p-3 font-sans">A central lookup service maps `user_id &rarr; shard_id`.</td>
+                            <td class="p-3 font-sans text-emerald-700">Complete flexibility to move tenants.</td>
+                            <td class="p-3 font-sans text-rose-700 font-bold">Extra network hop on every query; lookup database is a single point of failure!</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-rose-50/50">
+                            <td class="p-3 font-bold text-rose-900">Naive Hash Modulo</td>
+                            <td class="p-3 font-sans">`shard_id = hash(key) % N` where $N$ is total shard count.</td>
+                            <td class="p-3 font-sans text-emerald-700">Uniform distribution.</td>
+                            <td class="p-3 font-sans text-rose-700 font-bold">Resharding Nightmare: Adding 1 shard moves (N-1)/N &approx; 90% of data across the network!</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-emerald-50/50">
+                            <td class="p-3 font-bold text-emerald-900">Consistent Hashing</td>
+                            <td class="p-3 font-sans">Keys and virtual shards mapped to a 32-bit circular hash ring.</td>
+                            <td class="p-3 font-sans text-emerald-700 font-bold">Adding a shard moves only K/N keys from its neighbor. Rest of cluster untouched!</td>
+                            <td class="p-3 font-sans text-slate-600">Requires virtual nodes to prevent uneven partition distribution.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Shard Key Selection & Co-Location Deep Dive -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-4 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-emerald-400 font-bold text-sm">Shard Key Selection: The Golden Rule of Entity Co-Location</span>
+                    <span class="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/30">Data Modeling Rules</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    The most critical decision when sharding is selecting the <strong>Shard Key (Partition Key)</strong>. 
+                    In OmniRoute, trips involve both `rider_id` and `driver_id`. If you shard `trips` by `trip_id` and `riders` by `rider_id`, fetching a rider's trip history requires querying **every single database shard in the cluster** (Scatter-Gather / Fan-Out Query).
+                </p>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-[11px]">
+                    <div>&bull; <strong>The Co-Location Rule:</strong> Always shard child entities by the parent root ID. In OmniRoute, `trip_orders`, `rider_profiles`, and `payment_receipts` all contain `rider_id` and use `rider_id` as their shard key.</div>
+                    <div>&bull; <strong>The Architectural Reward:</strong> 100% of a rider's trips, payments, and reviews live on the <em>exact same physical database shard</em>! Complex SQL joins and multi-table ACID transactions execute at local memory speeds without distributed 2PC locking!</div>
+                </div>
+            </div>
+
+            <!-- Pinterest Case Study Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-3 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-sky-300 font-bold text-sm">Case Study: How Pinterest Scaled to 50 Billion Pins on MySQL</span>
+                    <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-500/30">Industrial Sharding Masterclass</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    In 2013, Pinterest suffered frequent database crashes as pins exploded into the tens of billions. Rather than adopting unproven NoSQL engines, they engineered a sharding masterclass on top of plain MySQL:
+                </p>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1 text-[11px]">
+                    <div>1. <strong>Pre-allocated 8,192 Virtual Shards:</strong> Instead of sharding across physical servers, they divided data into 8,192 virtual logical databases.</div>
+                    <div>2. <strong>Mapped to Physical Hardware:</strong> At launch, they placed 512 virtual shards on each of 16 MySQL database instances. As traffic grew, they moved virtual databases across servers using replication, never touching code!</div>
+                    <div>3. <strong>Embedded Shard ID in Primary Keys:</strong> Every Pin ID generated is a 64-bit integer embedding the virtual shard ID: <code class="text-emerald-400 font-mono">[Timestamp: 34 bits][Shard ID: 16 bits][Sequence: 14 bits]</code>. Reading a pin never requires looking up where it lives; the ID itself tells the router the exact shard!</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 10 -->
+        <section id="omniroute-milestone-10" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 10: Sharded Persistence &amp; Read/Write Router</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 10 for <strong>OmniRoute</strong>: a high-scale Sharded Persistence Engine. Below is the complete implementation featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Read/Write Splitter with Temporal Pinning:</strong> Directing mutations to the Primary and queries to Replicas, while pinning reads to the Primary for 2.0 seconds after any write to guarantee Read-After-Write consistency.</li>
+                <li><strong>Consistent Hashing Shard Router:</strong> Dividing trip records across distinct physical database shards using virtual node ring distribution.</li>
+                <li><strong>Asynchronous SQLAlchemy 2.0 Multi-Engine Manager:</strong> Managing independent connection pools across Primary, Replica, and Shard engines simultaneously.</li>
+                <li><strong>Automated PyTest Battery:</strong> Testing replication split routing, stale read prevention, and shard isolation.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 10)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── persistence/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>          <span class="text-slate-500"># Milestone 10: Sharded Trip Ledger Entity (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">router_engine.py</span>   <span class="text-slate-500"># Milestone 10: Master/Replica Splitter &amp; Consistent Shard Ring</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>          <span class="text-slate-500"># Milestone 10: FastAPI Sharded Trip Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_sharded_persistence.py</span> <span class="text-slate-500"># Milestone 10 Sharding &amp; Read-Your-Writes Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/persistence/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Sharded Ledger Schema: <code class="text-purple-700">src/omniroute/persistence/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Persistence - Sharded Trip Ledger Data Model</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ShardedTripRecordModel</span>(Base):
+    <span class="text-slate-500">"""
+    SHARDED FINANCIAL TRIP RECORD:
+    Uses 'rider_id' as the partition shard key.
+    All trip orders, receipts, and reviews for this rider live on the same physical shard.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"sharded_trip_records"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    rider_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)  <span class="text-slate-500"># SHARD KEY</span>
+    driver_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    fare_amount: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    status: Mapped[str] = mapped_column(String(20), default=<span class="text-amber-300">"SETTLED"</span>)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/persistence/router_engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Master/Replica Splitter &amp; Consistent Shard Router: <code class="text-purple-700">src/omniroute/persistence/router_engine.py</code></span>
+                    <span class="text-slate-400">Multi-Engine Persistence Manager</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Persistence - Consistent Shard Ring &amp; Read/Write Splitter</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> bisect
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession, async_sessionmaker, create_async_engine
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ConsistentHashShardRing</span>:
+    <span class="text-slate-500">"""Consistent Hashing Ring mapping partition keys to physical database shards."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, vnodes_per_shard: int = 100):
+        self._vnodes = vnodes_per_shard
+        self._ring: List[int] = []
+        self._hash_to_shard: Dict[int, str] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_hash</span>(self, key: str) -> int:
+        <span class="text-purple-400">return</span> int(hashlib.md5(key.encode(<span class="text-amber-300">"utf-8"</span>)).hexdigest(), 16) &amp; 0xFFFFFFFF
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_shard</span>(self, shard_id: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">for</span> v <span class="text-purple-400">in range</span>(self._vnodes):
+            h = self._hash(f<span class="text-amber-300">"{shard_id}#vnode_{v}"</span>)
+            bisect.insort(self._ring, h)
+            self._hash_to_shard[h] = shard_id
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">resolve_shard</span>(self, partition_key: str) -> str:
+        <span class="text-purple-400">if not</span> self._ring:
+            <span class="text-purple-400">raise</span> RuntimeError(<span class="text-amber-300">"Shard ring is empty!"</span>)
+        h = self._hash(partition_key)
+        idx = bisect.bisect_right(self._ring, h)
+        <span class="text-purple-400">if</span> idx == len(self._ring):
+            idx = 0
+        <span class="text-purple-400">return</span> self._hash_to_shard[self._ring[idx]]
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ShardedPersistenceEngine</span>:
+    <span class="text-slate-500">"""
+    ENTERPRISE RELATIONAL SCALING ENGINE:
+    1. Read/Write Splitter: Directs mutations to Primary, reads to Replica.
+    2. Read-After-Write Consistency: Pins user to Primary for 2.0s post-mutation.
+    3. Consistent Shard Router: Divides data across physical database nodes.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, ring: ConsistentHashShardRing, pin_duration_sec: float = 2.0):
+        self.ring = ring
+        self.pin_duration_sec = pin_duration_sec
+        <span class="text-slate-500"># Maps shard_id -&gt; { "primary": async_sessionmaker, "replica": async_sessionmaker }</span>
+        self._shard_clusters: Dict[str, Dict[str, async_sessionmaker[AsyncSession]]] = {}
+        <span class="text-slate-500"># Session Pinning: user_id -&gt; last_write_timestamp</span>
+        self._user_last_write: Dict[str, float] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_shard_cluster</span>(self, shard_id: str, primary_url: str, replica_url: str) -> <span class="text-rose-400">None</span>:
+        p_engine = create_async_engine(primary_url, pool_size=10, max_overflow=5)
+        r_engine = create_async_engine(replica_url, pool_size=10, max_overflow=5)
+        self._shard_clusters[shard_id] = {
+            <span class="text-amber-300">"primary"</span>: async_sessionmaker(p_engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession),
+            <span class="text-amber-300">"replica"</span>: async_sessionmaker(r_engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+        }
+        self.ring.add_shard(shard_id)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_user_write</span>(self, user_id: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Pins user to Primary database for next 2 seconds."""</span>
+        self._user_last_write[user_id] = time.time()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_session</span>(self, partition_key: str, is_write: bool = <span class="text-rose-400">False</span>) -> tuple[async_sessionmaker[AsyncSession], str, str]:
+        shard_id = self.ring.resolve_shard(partition_key)
+        cluster = self._shard_clusters[shard_id]
+
+        <span class="text-slate-500"># Read-After-Write Safety Check:</span>
+        now = time.time()
+        last_write = self._user_last_write.get(partition_key, 0.0)
+        recently_written = (now - last_write) &lt; self.pin_duration_sec
+
+        <span class="text-purple-400">if</span> is_write <span class="text-purple-400">or</span> recently_written:
+            <span class="text-purple-400">return</span> cluster[<span class="text-amber-300">"primary"</span>], shard_id, <span class="text-amber-300">"PRIMARY"</span>
+        <span class="text-purple-400">return</span> cluster[<span class="text-amber-300">"replica"</span>], shard_id, <span class="text-amber-300">"REPLICA"</span></pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Sharded FastAPI Controller: <code class="text-purple-700">src/omniroute/persistence/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Dynamic Shard Routing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> omniroute.persistence.router_engine <span class="text-purple-400">import</span> ShardedPersistenceEngine
+<span class="text-purple-400">from</span> omniroute.persistence.models <span class="text-purple-400">import</span> ShardedTripRecordModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/sharded-trips"</span>, tags=[<span class="text-amber-300">"Sharded Relational Trips"</span>])
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CreateTripDTO</span>(BaseModel):
+    rider_id: str = Field(..., description=<span class="text-amber-300">"SHARD KEY"</span>)
+    driver_id: str
+    fare_amount: float
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_persistence_engine</span>() -> ShardedPersistenceEngine:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/record"</span>, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_sharded_trip</span>(
+    dto: CreateTripDTO,
+    engine: ShardedPersistenceEngine = Depends(get_persistence_engine)
+):
+    <span class="text-slate-500"># 1. Resolve target shard Primary database</span>
+    session_factory, shard_id, target_role = engine.get_session(dto.rider_id, is_write=<span class="text-rose-400">True</span>)
+
+    <span class="text-purple-400">async with</span> session_factory() <span class="text-purple-400">as</span> session:
+        record = ShardedTripRecordModel(
+            rider_id=dto.rider_id,
+            driver_id=dto.driver_id,
+            fare_amount=dto.fare_amount
+        )
+        session.add(record)
+        <span class="text-purple-400">await</span> session.commit()
+        <span class="text-purple-400">await</span> session.refresh(record)
+
+    <span class="text-slate-500"># 2. Pin user to Primary for 2.0s to prevent stale reads</span>
+    engine.record_user_write(dto.rider_id)
+
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"trip_id"</span>: record.id,
+        <span class="text-amber-300">"assigned_shard"</span>: shard_id,
+        <span class="text-amber-300">"routed_to"</span>: target_role,
+        <span class="text-amber-300">"rider_id"</span>: dto.rider_id
+    }
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/rider/{rider_id}"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_rider_trips</span>(
+    rider_id: str,
+    engine: ShardedPersistenceEngine = Depends(get_persistence_engine)
+):
+    <span class="text-slate-500"># Dynamically routes to Primary if written recently, otherwise Replica!</span>
+    session_factory, shard_id, target_role = engine.get_session(rider_id, is_write=<span class="text-rose-400">False</span>)
+
+    <span class="text-purple-400">async with</span> session_factory() <span class="text-purple-400">as</span> session:
+        stmt = select(ShardedTripRecordModel).where(ShardedTripRecordModel.rider_id == rider_id)
+        result = <span class="text-purple-400">await</span> session.execute(stmt)
+        trips = result.scalars().all()
+
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"rider_id"</span>: rider_id,
+        <span class="text-amber-300">"assigned_shard"</span>: shard_id,
+        <span class="text-amber-300">"served_by"</span>: target_role,
+        <span class="text-amber-300">"trip_count"</span>: len(trips)
+    }</pre>
+            </div>
+
+            <!-- File 4: tests/test_sharded_persistence.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Sharded Persistence Verification Suite: <code class="text-purple-700">tests/test_sharded_persistence.py</code></span>
+                    <span class="text-slate-400">PyTest Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine
+
+<span class="text-purple-400">from</span> omniroute.persistence.models <span class="text-purple-400">import</span> Base
+<span class="text-purple-400">from</span> omniroute.persistence.router_engine <span class="text-purple-400">import</span> ConsistentHashShardRing, ShardedPersistenceEngine
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestShardedPersistenceSuite</span>:
+    <span class="text-slate-500">"""Verifies read/write splitting, consistent hashing distribution, and read-after-write pinning."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_read_your_own_writes_session_pinning</span>(self):
+        ring = ConsistentHashShardRing(vnodes_per_shard=50)
+        engine = ShardedPersistenceEngine(ring=ring, pin_duration_sec=0.1)
+
+        <span class="text-slate-500"># Setup 1 Shard with distinct Primary and Replica SQLite in-memory databases</span>
+        engine.register_shard_cluster(
+            shard_id=<span class="text-amber-300">"shard_us_east"</span>,
+            primary_url=<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>,
+            replica_url=<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>
+        )
+
+        user_id = <span class="text-amber-300">"rider_alice_99"</span>
+
+        <span class="text-slate-500"># Initial state: Pure read &rarr; Routes to REPLICA</span>
+        _, _, role = engine.get_session(user_id, is_write=<span class="text-rose-400">False</span>)
+        assert role == <span class="text-amber-300">"REPLICA"</span>
+
+        <span class="text-slate-500"># User performs write action</span>
+        engine.record_user_write(user_id)
+
+        <span class="text-slate-500"># Immediately following write: Read MUST route to PRIMARY!</span>
+        _, _, role_pinned = engine.get_session(user_id, is_write=<span class="text-rose-400">False</span>)
+        assert role_pinned == <span class="text-amber-300">"PRIMARY"</span>
+
+        <span class="text-slate-500"># Wait 0.12s for pinning window to expire &rarr; Returns to REPLICA</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.12)
+        _, _, role_expired = engine.get_session(user_id, is_write=<span class="text-rose-400">False</span>)
+        assert role_expired == <span class="text-amber-300">"REPLICA"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_consistent_hashing_shard_isolation</span>(self):
+        ring = ConsistentHashShardRing(vnodes_per_shard=100)
+        ring.add_shard(<span class="text-amber-300">"shard_europe"</span>)
+        ring.add_shard(<span class="text-amber-300">"shard_americas"</span>)
+
+        <span class="text-slate-500"># Verify determinism: Same rider key always resolves to exact same shard</span>
+        shard_1 = ring.resolve_shard(<span class="text-amber-300">"rider_101"</span>)
+        shard_2 = ring.resolve_shard(<span class="text-amber-300">"rider_101"</span>)
+        assert shard_1 == shard_2
+        assert shard_1 <span class="text-purple-400">in</span> [<span class="text-amber-300">"shard_europe"</span>, <span class="text-amber-300">"shard_americas"</span>]</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; RDBMS Scaling Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The 5,000 DB Connection Fallacy</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring each FastAPI application instance to open 100 database connections across 50 container pods (5,000 active connections).
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> In PostgreSQL, 5,000 connections allocate 50 GB of RAM in process memory alone. The Linux kernel spends 95% of its CPU time context switching across forked processes instead of running queries. <strong>Use a centralized pooler (PgBouncer) and cap active DB worker processes to $(2 \times \text{Cores}) + \text{Disk}$.</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Low-Cardinality Shard Key Blunder</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Sharding a global table by a low-cardinality enum or status flag, such as `country_code` or `order_status`.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes catastrophic hot shards:</strong> If 85% of your orders originate in the United States, 85% of your entire global write traffic hits `Shard_US`. Meanwhile, `Shard_Japan` and `Shard_Germany` sit idle at 1% CPU. The US shard crashes while the cluster remains unutilized. <strong>Always choose high-cardinality keys with uniform hash distributions (e.g. `rider_id` or `uuid`).</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 10</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the sharding and read/write splitting test battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Sharded Persistence test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_sharded_persistence.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.15s. Confirms read-after-write session pinning, master/replica splitting, and consistent hash partition isolation!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test Consistent Hash Ring resolution in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from omniroute.persistence.router_engine import ConsistentHashShardRing; r = ConsistentHashShardRing(); r.add_shard('shard_east'); r.add_shard('shard_west'); print('Rider 1 -&gt;', r.resolve_shard('rider_001')); print('Rider 2 -&gt;', r.resolve_shard('rider_002'))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates deterministic O(log N) partition routing across virtual shard nodes!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 11 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 11: Polyglot Persistence: Combining RDBMS, Key-Value, Document, Graph &amp; Time-Series</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving beyond relational databases: Orchestrating composite backends with PostgreSQL, Redis, Neo4j, and ClickHouse without dual-write synchronization drift using Change Data Capture (CDC).</p>
+            </div>
+            <a href="Chapter 11 - Polyglot Persistence - Combining RDBMS, Key-Value, Document, Graph and Time-Series.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 11 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

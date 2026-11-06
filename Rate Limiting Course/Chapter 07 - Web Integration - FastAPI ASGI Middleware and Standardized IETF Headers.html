@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Web Integration: FastAPI ASGI Middleware &amp; Standardized IETF Headers</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 07 - Pure ASGI Middleware &amp; IETF Headers)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Web Integration &amp; Standards Compliance
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Web Integration: FastAPI ASGI Middleware &amp; Standardized IETF Headers
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating at the edge of the Python web stack: Why rate limiting must run at the outermost ASGI pipeline boundary, bypassing Starlette's memory-buffering <code class="font-mono text-emerald-400">BaseHTTPMiddleware</code> with a pure ASGI implementation, intercepting outgoing streams via the <code class="font-mono text-emerald-400">send</code> callable, stamping RFC 6585 and IETF draft rate-limit headers on all responses, and deploying the complete web layer of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 07: Pure ASGI Middleware Gateway</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 06, we built the mathematical models, hot-reloading YAML engines, atomic Redis Lua scripts, and fail-open/closed resiliency adapters. In Milestone 07, we connect SentinelFlow directly to <strong>FastAPI</strong>. We construct a high-throughput, **pure ASGI middleware** that intercepts traffic at the earliest possible stage—rejecting abusive requests before JSON deserialization, Pydantic validation, or database dependencies consume server CPU cycles. We wrap the ASGI <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">send</code> pipeline to inject standardized IETF headers (<code class="font-mono text-purple-300">RateLimit-Limit</code>, <code class="font-mono text-purple-300">RateLimit-Remaining</code>, <code class="font-mono text-purple-300">RateLimit-Reset</code>, <code class="font-mono text-purple-300">Retry-After</code>) on both allowed and throttled responses.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Route Guards vs. Edge ASGI Interception</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Eliminating <code class="text-purple-300">BaseHTTPMiddleware</code> Streaming Pitfalls</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Wrapping the ASGI <code class="text-purple-300">send</code> Callable</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Compliance with IETF RateLimit Header Drafts</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Whitelist Exemptions for Health Probes</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> End-to-End In-Memory ASGI Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Middleware Interception Topology -->
+        <section id="cs-interception-topology" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Pipeline Interception Topology &amp; Pure ASGI</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A critical design decision when integrating rate limiting into a web framework is <strong>where to place the enforcement check</strong> in the request lifecycle.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Many developers place rate limiting inside route controllers using FastAPI dependencies: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">@router.post("/items", dependencies=[Depends(rate_limit)])</code>. In production, this introduces a catastrophic security vulnerability: <strong>The CPU Starvation Exploit</strong>.
+            </p>
+
+            <!-- Interception Topology Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    FastAPI Request Ingestion Topology: Edge Interception vs. Route Dependency
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Bad Approach -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Route Dependency (Depends)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Vulnerable</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Request enters server &rarr; executes entire web pipeline <em>before</em> rate check:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>1. Reads 10MB JSON body from TCP socket</div>
+                            <div>2. Parses JSON tokens in Python / Rust</div>
+                            <div>3. Validates complex Pydantic models (CPU Heavy!)</div>
+                            <div>4. Checks out DB connection from pool via Depends()</div>
+                            <div class="text-rose-400 font-bold">5. FINALLY checks rate limit &rarr; Rejects with 429!</div>
+                        </div>
+                        <p class="text-rose-400 font-sans text-[10px]">
+                            &cross; <strong>The Vulnerability:</strong> An attacker sends 1,000 invalid requests per second. Your server spends 99% of its CPU parsing payloads and checking out database sockets for requests you reject anyway!
+                        </p>
+                    </div>
+
+                    <!-- Good Approach -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Outermost Pure ASGI Middleware</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Defensive Standard</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Request hits ASGI entrypoint &rarr; rate limit checked <em>immediately</em>:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>1. Inspects raw ASGI 'scope' dict (path, method, IP)</div>
+                            <div>2. Resolves YAML policy regex in 0.1ms</div>
+                            <div>3. Checks Redis Lua script in 1ms</div>
+                            <div class="text-emerald-400 font-bold">4. If throttled &rarr; Short-circuits with raw HTTP 429!</div>
+                            <div>5. Zero JSON parsing &bull; Zero DB sockets checked out!</div>
+                        </div>
+                        <p class="text-emerald-300 font-sans text-[10px]">
+                            &check; <strong>The Guarantee:</strong> The request body is never read into memory. Your database and CPU cores remain 100% idle while dropping malicious surges.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deep Dive: BaseHTTPMiddleware Streaming Caveat -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    Why Senior Engineers Avoid Starlette's BaseHTTPMiddleware for Rate Limiters
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Starlette provides <code class="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-950">BaseHTTPMiddleware</code> to make writing middleware easy via the <code class="font-mono text-amber-950 font-bold">call_next</code> pattern. However, the official Starlette documentation explicitly notes its limitations:
+                </p>
+                <ul class="list-disc pl-5 text-xs text-amber-900 space-y-1 font-sans">
+                    <li><strong>Memory Buffering:</strong> <code class="font-mono text-amber-950">BaseHTTPMiddleware</code> buffers the response stream in memory to construct a high-level response object. If an endpoint streams a 500MB export, it can add memory pressure and delay chunk transmission.</li>
+                    <li><strong>ContextVar Quirks:</strong> Under high concurrency, asynchronous task contexts managed inside <code class="font-mono text-amber-950">call_next</code> can leak or drop context state across coroutines.</li>
+                </ul>
+                <p class="text-xs text-emerald-900 font-bold font-sans">
+                    <strong>The Solution:</strong> Write a <strong>Pure ASGI Middleware</strong> implementing <code class="font-mono text-emerald-900">async def __call__(self, scope, receive, send)</code>. It operates with zero memory buffering, minimal CPU overhead, and full streaming compatibility.
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. The IETF RateLimit Header Specification -->
+        <section id="ietf-headers" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Standards Compliance: The IETF RateLimit Header Specification</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Historically, tech giants invented ad-hoc headers: GitHub used <code class="font-mono text-xs text-slate-800">X-RateLimit-Limit</code>, Twitter used <code class="font-mono text-xs text-slate-800">X-Rate-Limit-Remaining</code>, and others used custom prefixes. This fragmentation forced frontend engineers and mobile SDK developers to write bespoke rate-handling logic for every vendor.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The IETF (Internet Engineering Task Force) HTTP Working Group formalized the **RateLimit Header Fields for HTTP** draft. SentinelFlow strictly enforces these standards:
+            </p>
+
+            <!-- IETF Headers Matrix -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+                <!-- Limit -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 block text-sm">RateLimit-Limit</span>
+                    <span class="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">Quota Units</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The maximum number of quota units permitted within the active time window (e.g. <code class="font-mono text-slate-800">100</code>).
+                    </p>
+                </div>
+
+                <!-- Remaining -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-emerald-700 block text-sm">RateLimit-Remaining</span>
+                    <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Available Quota</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The number of quota units remaining in the current window. Drops to <code class="font-mono text-rose-700 font-bold">0</code> when throttled.
+                    </p>
+                </div>
+
+                <!-- Reset -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-purple-700 block text-sm">RateLimit-Reset</span>
+                    <span class="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">Delta Seconds</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The number of seconds until the current quota window resets and fresh quota units become available (e.g. <code class="font-mono text-slate-800">18</code>).
+                    </p>
+                </div>
+
+                <!-- Retry-After -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-rose-700 block text-sm">Retry-After</span>
+                    <span class="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-bold">RFC 6585 Mandate</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Included <strong>strictly on HTTP 429</strong> responses. Instructs automated clients and SDKs how long to sleep before retrying.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Pure ASGI Mechanics: Wrapping the send Callable -->
+        <section id="pure-asgi-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Pure ASGI Mechanics: Intercepting the <code>send</code> Callable</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In the ASGI specification, an application receives three arguments: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">scope</code> (a dictionary of request metadata), <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">receive</code> (an async channel for streaming request body chunks), and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">send</code> (an async channel for streaming response frames).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To inject <code class="font-mono text-xs">RateLimit-*</code> headers into successful <code class="font-mono text-xs">200 OK</code> responses without buffering the response body in memory, we wrap the downstream <code class="font-mono text-purple-700 font-bold">send</code> callable:
+            </p>
+
+            <!-- Wrapping Send Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Pure ASGI Send Wrapper Execution Flow
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Layer 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Downstream Controller</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Emits type: "http.response.start"</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; intercepts &rarr;</div>
+
+                    <!-- Layer 2 -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Wrapped send(message)</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Appends (b"ratelimit-remaining", b"42") to raw headers list</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; dispatches &rarr;</div>
+
+                    <!-- Layer 3 -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. ASGI Server (Uvicorn)</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Writes bytes to TCP socket with zero memory buffering!</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Zero Memory Overhead:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Subsequent message frames (<code class="text-white font-mono">type: "http.response.body"</code>) pass through the wrapper untouched. Whether the response is a 20-byte JSON object or a 5-gigabyte streaming video, memory consumption remains constant at ~0 bytes!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: SentinelFlow Milestone 07 -->
+        <section id="sentinelflow-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 07: Pure ASGI Middleware Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/middleware/pure_asgi.py</code>: the high-throughput pure ASGI rate-limiting middleware.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/web/app.py</code>: a production FastAPI gateway exposing authenticated routes, heavy report exports, and health probes.</li>
+                <li>We write an in-memory integration test battery in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_middleware.py</code> using <code class="font-mono text-purple-700 font-bold">httpx.AsyncClient</code> and <code class="font-mono text-purple-700 font-bold">ASGITransport</code>.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 07)</div>
+                <div>sentinelflow/</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── config/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── storage/</div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">middleware/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">pure_asgi.py</span>          <span class="text-slate-500"># Milestone 07: Pure ASGI Middleware Engine</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">web/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">app.py</span>                <span class="text-slate-500"># Milestone 07: Production FastAPI Service</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── integration/</div>
+                <div>        ├── test_redis_lua.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_middleware.py</span>        <span class="text-slate-500"># Milestone 07: In-Memory ASGI Test Battery</span></div>
+            </div>
+
+            <!-- File 1: src/sentinelflow/middleware/pure_asgi.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Pure ASGI Middleware: <code class="text-purple-700">src/sentinelflow/middleware/pure_asgi.py</code></span>
+                    <span class="text-slate-400">Zero-Buffering Interceptor</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Middleware - Pure ASGI Rate Limiter (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable, Any, Dict, List, Tuple
+<span class="text-purple-400">from</span> sentinelflow.config.watcher <span class="text-purple-400">import</span> PolicyWatcher
+<span class="text-purple-400">from</span> sentinelflow.core.key_extractor <span class="text-purple-400">import</span> KeyExtractor
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+<span class="text-purple-400">from</span> sentinelflow.storage.resilient_redis <span class="text-purple-400">import</span> ResilientRateLimiter
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SentinelFlowMiddleware</span>:
+    <span class="text-slate-500">"""
+    HIGH-PERFORMANCE PURE ASGI RATE LIMITING MIDDLEWARE:
+    Intercepts traffic at the outermost network boundary.
+    Rejects throttled clients with RFC 6585 JSON before request bodies are read.
+    Wraps 'send' to inject IETF headers with zero response memory buffering.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        app: Callable,
+        policy_watcher: PolicyWatcher,
+        rate_limiter: ResilientRateLimiter,
+        key_extractor: KeyExtractor
+    ):
+        self.app = app
+        self.policy_watcher = policy_watcher
+        self.rate_limiter = rate_limiter
+        self.key_extractor = key_extractor
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">__call__</span>(self, scope: Dict[str, Any], receive: Callable, send: Callable) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># 1. Pass through non-HTTP connections (WebSockets, Lifespan) untouched</span>
+        <span class="text-purple-400">if</span> scope[<span class="text-amber-300">"type"</span>] != <span class="text-amber-300">"http"</span>:
+            <span class="text-purple-400">await</span> self.app(scope, receive, send)
+            <span class="text-purple-400">return</span>
+
+        path = scope.get(<span class="text-amber-300">"path"</span>, <span class="text-amber-300">"/"</span>)
+        method = scope.get(<span class="text-amber-300">"method"</span>, <span class="text-amber-300">"GET"</span>).upper()
+
+        engine = self.policy_watcher.engine
+
+        <span class="text-slate-500"># 2. Check Exemption Patterns (/health, /metrics)</span>
+        <span class="text-purple-400">if</span> engine.is_exempt(path):
+            <span class="text-purple-400">await</span> self.app(scope, receive, send)
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># 3. Extract Headers for Client Identity &amp; Tiering</span>
+        raw_headers: List[Tuple[bytes, bytes]] = scope.get(<span class="text-amber-300">"headers"</span>, [])
+        headers_dict = {k.decode(<span class="text-amber-300">"latin1"</span>).lower(): v.decode(<span class="text-amber-300">"latin1"</span>) <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> raw_headers}
+
+        direct_ip = scope.get(<span class="text-amber-300">"client"</span>, (<span class="text-amber-300">"127.0.0.1"</span>, 0))[0]
+        client_ip = self.key_extractor.extract_client_ip(
+            direct_ip=direct_ip,
+            x_forwarded_for=headers_dict.get(<span class="text-amber-300">"x-forwarded-for"</span>)
+        )
+
+        <span class="text-slate-500"># Resolve Tier from API Key or Bearer Token (defaults to anonymous)</span>
+        api_key = headers_dict.get(<span class="text-amber-300">"x-api-key"</span>)
+        client_tier = <span class="text-amber-300">"enterprise"</span> <span class="text-purple-400">if</span> api_key == <span class="text-amber-300">"secret_enterprise_key"</span> <span class="text-purple-400">else</span> <span class="text-amber-300">"anonymous"</span>
+        client_identifier = api_key <span class="text-purple-400">if</span> api_key <span class="text-purple-400">else</span> client_ip
+
+        <span class="text-slate-500"># 4. Resolve Rate Policy via Precompiled Regex</span>
+        parsed_rate, cost = engine.resolve(path=path, method=method, client_tier=client_tier)
+
+        <span class="text-slate-500"># Format composite storage key</span>
+        storage_key = f<span class="text-amber-300">"&#123;client_tier&#125;:&#123;client_identifier&#125;:&#123;method&#125;:&#123;path&#125;"</span>
+
+        <span class="text-slate-500"># 5. Execute Storage Rate Limit Check (Redis Lua or Local Fallback)</span>
+        rate_result: RateLimitResult = <span class="text-purple-400">await</span> self.rate_limiter.acquire_with_fallback(
+            key=storage_key,
+            limit=parsed_rate.limit,
+            window_seconds=parsed_rate.window_seconds,
+        )
+
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-slate-500"># 6. DEFENSIVE SHORT-CIRCUIT: Drop throttled requests immediately!</span>
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-purple-400">if not</span> rate_result.allowed:
+            <span class="text-purple-400">await</span> self._send_429_response(send, rate_result)
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-slate-500"># 7. WRAP SEND CALLABLE: Inject IETF headers on 200 OK without buffering!</span>
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">send_with_rate_limit_headers</span>(message: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+            <span class="text-purple-400">if</span> message[<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"http.response.start"</span>:
+                headers = list(message.get(<span class="text-amber-300">"headers"</span>, []))
+                <span class="text-purple-400">for</span> hk, hv <span class="text-purple-400">in</span> rate_result.to_headers().items():
+                    headers.append((hk.lower().encode(<span class="text-amber-300">"latin1"</span>), hv.encode(<span class="text-amber-300">"latin1"</span>)))
+                message[<span class="text-amber-300">"headers"</span>] = headers
+
+            <span class="text-purple-400">await</span> send(message)
+
+        <span class="text-purple-400">await</span> self.app(scope, receive, send_with_rate_limit_headers)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_send_429_response</span>(self, send: Callable, result: RateLimitResult) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Emits raw HTTP 429 Too Many Requests response frames directly over ASGI."""</span>
+        error_body = json.dumps({
+            <span class="text-amber-300">"error"</span>: <span class="text-amber-300">"TooManyRequests"</span>,
+            <span class="text-amber-300">"message"</span>: f<span class="text-amber-300">"Rate limit exceeded. Quota resets in &#123;result.reset_after_seconds:.1f&#125;s"</span>,
+            <span class="text-amber-300">"limit"</span>: result.limit,
+            <span class="text-amber-300">"retry_after_seconds"</span>: int(result.reset_after_seconds)
+        }).encode(<span class="text-amber-300">"utf-8"</span>)
+
+        headers = [
+            (b<span class="text-amber-300">"content-type"</span>, b<span class="text-amber-300">"application/json"</span>),
+            (b<span class="text-amber-300">"content-length"</span>, str(len(error_body)).encode(<span class="text-amber-300">"latin1"</span>)),
+        ]
+        <span class="text-purple-400">for</span> hk, hv <span class="text-purple-400">in</span> result.to_headers().items():
+            headers.append((hk.lower().encode(<span class="text-amber-300">"latin1"</span>), hv.encode(<span class="text-amber-300">"latin1"</span>)))
+
+        <span class="text-purple-400">await</span> send({
+            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.start"</span>,
+            <span class="text-amber-300">"status"</span>: 429,
+            <span class="text-amber-300">"headers"</span>: headers
+        })
+        <span class="text-purple-400">await</span> send({
+            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.body"</span>,
+            <span class="text-amber-300">"body"</span>: error_body
+        })</pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/web/app.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Production FastAPI Application: <code class="text-purple-700">src/sentinelflow/web/app.py</code></span>
+                    <span class="text-slate-400">Gateway Wire-Up</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Web - FastAPI Gateway Microservice (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, status
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+
+<span class="text-purple-400">from</span> sentinelflow.config.watcher <span class="text-purple-400">import</span> PolicyWatcher
+<span class="text-purple-400">from</span> sentinelflow.core.key_extractor <span class="text-purple-400">import</span> KeyExtractor
+<span class="text-purple-400">from</span> sentinelflow.storage.redis_manager <span class="text-purple-400">import</span> RedisRateLimiter
+<span class="text-purple-400">from</span> sentinelflow.storage.resilient_redis <span class="text-purple-400">import</span> ResilientRateLimiter
+<span class="text-purple-400">from</span> sentinelflow.middleware.pure_asgi <span class="text-purple-400">import</span> SentinelFlowMiddleware
+
+CONFIG_PATH = Path(<span class="text-amber-300">"config/rate_limits.yml"</span>)
+
+<span class="text-purple-400">@asynccontextmanager</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">lifespan</span>(app: FastAPI):
+    <span class="text-slate-500"># Boot: Initialize Redis connection pools &amp; load Lua scripts</span>
+    redis_limiter = RedisRateLimiter()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">await</span> redis_limiter.initialize()
+    <span class="text-purple-400">except</span> Exception:
+        pass  <span class="text-slate-500"># Resilient wrapper falls back to in-memory on local boot</span>
+
+    app.state.redis_limiter = redis_limiter
+    <span class="text-purple-400">yield</span>
+    <span class="text-purple-400">await</span> redis_limiter.close()
+
+app = FastAPI(title=<span class="text-amber-300">"SentinelFlow Gateway"</span>, lifespan=lifespan)
+
+<span class="text-slate-500"># Instantiate components</span>
+policy_watcher = PolicyWatcher(config_path=CONFIG_PATH)
+redis_limiter = RedisRateLimiter()
+resilient_storage = ResilientRateLimiter(redis_limiter=redis_limiter)
+key_extractor = KeyExtractor()
+
+<span class="text-slate-500"># Mount Pure ASGI Middleware as outermost interceptor!</span>
+app.add_middleware(
+    SentinelFlowMiddleware,
+    policy_watcher=policy_watcher,
+    rate_limiter=resilient_storage,
+    key_extractor=key_extractor
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LoginPayload</span>(BaseModel):
+    username: str
+    password: str
+
+<span class="text-purple-400">@app.get</span>(<span class="text-amber-300">"/health"</span>, tags=[<span class="text-amber-300">"System"</span>])
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">health_probe</span>():
+    <span class="text-slate-500">"""Exempt from rate limits: Orchestrators can poll infinitely."""</span>
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"healthy"</span>}
+
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/api/v1/auth/login"</span>, status_code=status.HTTP_200_OK, tags=[<span class="text-amber-300">"Auth"</span>])
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">login</span>(payload: LoginPayload):
+    <span class="text-slate-500">"""Protected by strict auth_login YAML route policy (5/minute default)."""</span>
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"message"</span>: f<span class="text-amber-300">"Authenticated &#123;payload.username&#125;"</span>}
+
+<span class="text-purple-400">@app.get</span>(<span class="text-amber-300">"/api/v1/items"</span>, tags=[<span class="text-amber-300">"Data"</span>])
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_items</span>():
+    <span class="text-slate-500">"""Protected by global client tier quotas."""</span>
+    <span class="text-purple-400">return</span> [{<span class="text-amber-300">"id"</span>: 1, <span class="text-amber-300">"name"</span>: <span class="text-amber-300">"Item Alpha"</span>}]</pre>
+            </div>
+
+            <!-- File 3: tests/integration/test_middleware.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. In-Memory ASGI Test Battery: <code class="text-purple-700">tests/integration/test_middleware.py</code></span>
+                    <span class="text-slate-400">Sub-Millisecond Wire Assertion</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">import</span> httpx
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> ASGITransport
+<span class="text-purple-400">from</span> sentinelflow.web.app <span class="text-purple-400">import</span> app
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">client</span>():
+    transport = ASGITransport(app=app)
+    <span class="text-purple-400">async with</span> httpx.AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://sentinelflow.test"</span>) <span class="text-purple-400">as</span> ac:
+        <span class="text-purple-400">yield</span> ac
+
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestASGIRateLimitingMiddleware</span>:
+    <span class="text-slate-500">"""Verifies pure ASGI interception, IETF header injection, and 429 short-circuits."""</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_health_probe_is_completely_exempt_from_headers</span>(self, client: httpx.AsyncClient):
+        response = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/health"</span>)
+        assert response.status_code == 200
+        <span class="text-slate-500"># Exempt endpoints must not leak rate limit headers</span>
+        assert <span class="text-amber-300">"ratelimit-limit"</span> <span class="text-purple-400">not in</span> response.headers
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_successful_request_injects_ietf_ratelimit_headers</span>(self, client: httpx.AsyncClient):
+        response = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/api/v1/items"</span>)
+        assert response.status_code == 200
+        
+        <span class="text-slate-500"># Mandatory IETF Headers verified</span>
+        assert <span class="text-amber-300">"ratelimit-limit"</span> <span class="text-purple-400">in</span> response.headers
+        assert <span class="text-amber-300">"ratelimit-remaining"</span> <span class="text-purple-400">in</span> response.headers
+        assert <span class="text-amber-300">"ratelimit-reset"</span> <span class="text-purple-400">in</span> response.headers
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_rate_limit_exhaustion_short_circuits_with_429</span>(self, client: httpx.AsyncClient):
+        <span class="text-slate-500"># POST /api/v1/auth/login has default limit of 5 per minute</span>
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(5):
+            res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/auth/login"</span>, json={<span class="text-amber-300">"username"</span>: <span class="text-amber-300">"admin"</span>, <span class="text-amber-300">"password"</span>: <span class="text-amber-300">"p"</span>})
+            assert res.status_code == 200
+
+        <span class="text-slate-500"># 6th request MUST be short-circuited with HTTP 429 Too Many Requests</span>
+        blocked_res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/auth/login"</span>, json={<span class="text-amber-300">"username"</span>: <span class="text-amber-300">"admin"</span>, <span class="text-amber-300">"password"</span>: <span class="text-amber-300">"p"</span>})
+        assert blocked_res.status_code == 429
+
+        <span class="text-slate-500"># Verify RFC 6585 JSON Error payload and Retry-After header</span>
+        data = blocked_res.json()
+        assert data[<span class="text-amber-300">"error"</span>] == <span class="text-amber-300">"TooManyRequests"</span>
+        assert <span class="text-amber-300">"retry-after"</span> <span class="text-purple-400">in</span> blocked_res.headers
+        assert int(blocked_res.headers[<span class="text-amber-300">"retry-after"</span>]) &gt;= 1</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Rate Limiting Inside Route Handlers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Placing rate-limit checks inside controller logic: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">@app.post("/items") async def create(db=Depends(get_db)): check_rate()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes server crashes:</strong> Placing the rate limiter inside the route allows the request to pass through JSON body parsing, Pydantic validation, and database connection checkout <em>before</em> getting blocked. Under a DDoS attack, your database connection pool is completely exhausted by malicious requests that you reject anyway! Always rate limit at the <strong>outermost ASGI middleware</strong> layer.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Omitting Headers on 200 OK Responses</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Returning <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">RateLimit-*</code> headers only when returning HTTP 429.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this harms clients:</strong> If a server returns headers only upon failure, legitimate client SDKs cannot tell how close they are to their limit. They must blindly fire requests until they crash into a 429 error! Stamping headers on successful 200 responses allows clients to throttle themselves proactively.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to boot the FastAPI microservice, inspect live IETF headers via curl, and execute the in-memory ASGI test battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install FastAPI, HTTPX ASGI transport, and Uvicorn:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install fastapi httpx "uvicorn[standard]"
+                    </div>
+                </div>
+
+                <!-- Step 2: Run ASGI Test Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the in-memory ASGI integration test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_middleware.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.08s. Confirms header injection, 429 short-circuits, and health probe exemptions!
+                    </span>
+                </div>
+
+                <!-- Step 3: Boot Uvicorn & Curl -->
+                <div>
+                    <span class="text-slate-500"># 3. Boot SentinelFlow and inspect IETF response headers via curl:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        uvicorn sentinelflow.web.app:app --reload &amp;<br>
+                        curl -i http://127.0.0.1:8000/api/v1/items
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Inspect output headers: <code class="text-emerald-400 font-mono">ratelimit-limit: 10</code>, <code class="text-emerald-400 font-mono">ratelimit-remaining: 9</code>, <code class="text-emerald-400 font-mono">ratelimit-reset: ...</code> stamped directly onto HTTP 200 OK!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Operational Engineering: Typer CLI Benchmarking, Chaos Testing &amp; The Staff Audit</h4>
+                <p class="text-xs text-slate-500 font-sans">Operating traffic control in production: Building an operator CLI with Typer, measuring the sub-millisecond latency budget, mitigating thundering herds with reset jitter, and executing the 10-Point Production Audit.</p>
+            </div>
+            <a href="Chapter 08 - Operational Engineering - Typer CLI Benchmarking, Chaos Testing and The Staff Audit.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

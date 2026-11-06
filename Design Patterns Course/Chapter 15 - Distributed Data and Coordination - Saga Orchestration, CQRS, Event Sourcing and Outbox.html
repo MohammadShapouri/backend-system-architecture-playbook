@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 15: Distributed Data &amp; Coordination: Saga Orchestration, CQRS, Event Sourcing &amp; Outbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 15 - Distributed Data &amp; Coordination)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 15 &bull; Distributed Systems &amp; Data Consistency
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Distributed Data &amp; Coordination: Saga Orchestration, CQRS, Event Sourcing &amp; Outbox
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Maintaining data consistency across isolated database boundaries without Two-Phase Commit (2PC): Coordinating multi-service workflows with <strong>Saga Orchestrators</strong> and compensating rollbacks, isolating read and write workloads with <strong>CQRS</strong>, recording immutable audit histories with <strong>Event Sourcing</strong>, eliminating dual-write corruption using the <strong>Transactional Outbox Pattern</strong>, and engineering the distributed clearing fabric of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NexusCore Milestone 15: Distributed Data &amp; Coordination</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 14, we engineered distributed resilience using Circuit Breakers, Bulkheads, and Jittered Retries. In Milestone 15, we tackle the hardest challenge in microservice architecture: <strong>Managing Data Consistency Across Distributed Databases</strong>. In a monolithic system, an ACID database transaction guarantees all-or-nothing atomicity. In NexusCore's distributed microservices—where the Order Service, Account Ledger, and Custody Clearing maintain isolated databases—traditional database transactions cannot cross service boundaries. We engineer a production <strong>Saga Orchestrator</strong> with automated compensating transactions, separate read and write projections using <strong>CQRS</strong>, build an append-only <strong>Event Sourcing</strong> engine, and implement the <strong>Transactional Outbox Pattern</strong> to guarantee 100% reliable messaging without distributed deadlocks.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 15 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Death of ACID &amp; Why 2PC Fails at Scale</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #42: Saga Orchestration &amp; Compensation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #43: CQRS (Command Query Segregation)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #44: Event Sourcing &amp; State Rehydration</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #45: The Transactional Outbox Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete Distributed Coordination PyTest Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory -->
+        <section id="distributed-data-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Computer Science Foundations</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Death of ACID: CAP Theorem, PACELC &amp; The Two-Phase Commit Trap</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In single-database architectures, developers rely on local database transactions: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">BEGIN TRANSACTION ... COMMIT</code>. If an error occurs midway, the database engine uses its Write-Ahead Log (WAL) to revert modified pages, providing mathematical **Atomicity, Consistency, Isolation, and Durability (ACID)**.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In distributed systems (Microservices), each independent service owns its private database. A business transaction (such as a financial trade settlement) must modify data across multiple physical databases across the network:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- 2PC Problem -->
+                <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                    <span class="font-bold text-rose-400 text-sm block">1. Why Two-Phase Commit (2PC) Fails in the Cloud</span>
+                    <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                        Historically, architects attempted to achieve distributed ACID using <strong>Two-Phase Commit (2PC / XA Transactions)</strong>. A coordinator asks all databases to prepare, locks rows across all nodes, and orders a commit.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1 font-mono">
+                        <div>&bull; Locks are held across remote network round-trips!</div>
+                        <div>&bull; If Node 3 hangs or drops packets, Nodes 1 &amp; 2 stay locked!</div>
+                        <div>&bull; Coordinator failure causes permanent global deadlocks!</div>
+                        <div class="text-rose-400 font-bold">&rarr; 2PC latency balloons to seconds; availability collapses to near zero!</div>
+                    </div>
+                </div>
+
+                <!-- Eventual Consistency -->
+                <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                    <span class="font-bold text-emerald-400 text-sm block">2. The Modern Cloud Solution: BASE &amp; Sagas</span>
+                    <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                        Modern distributed architecture embraces <strong>BASE</strong> (Basically Available, Soft state, Eventual consistency).
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1 font-mono">
+                        <div>&bull; Every service commits locally within its own private database.</div>
+                        <div>&bull; Zero distributed locks are held across network boundaries.</div>
+                        <div>&bull; Multi-service workflows are coordinated as a <strong>Saga</strong>.</div>
+                        <div class="text-emerald-400 font-bold">&check; System achieves massive availability and sub-millisecond local speed!</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: SAGA PATTERN -->
+        <section id="pattern-saga" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Pattern #42
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Saga (Orchestrated Distributed Transactions)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Distributed Consistency Pattern &bull; Hector Garcia-Molina (1987) &amp; Chris Richardson (*Microservices Patterns*)
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine booking a complete summer vacation package: <strong>Step 1: Book Flight</strong> &rarr; <strong>Step 2: Book Hotel</strong> &rarr; <strong>Step 3: Book Rental Car</strong>.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    These are three independent companies with separate computer systems across the globe. You successfully book the flight (Step 1) and your credit card is charged. You successfully book the hotel (Step 2) and your room is reserved. But when you attempt to book the rental car (Step 3), the rental agency informs you they are completely sold out!
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    You do not keep the non-refundable flight and hotel stranded! Instead, an automated coordinator triggers <strong>Compensating Actions in reverse order</strong>: it cancels the hotel room (issuing a full refund) and cancels the airline ticket (issuing a refund). The entire trip is safely unwound back to the baseline state!
+                </p>
+            </div>
+
+            <!-- The Problem: Partial Distributed Mutation Failure -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Partial Distributed Mutation Failures</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Executing a trade settlement in NexusCore requires three distinct steps across separate databases:
+                </p>
+                <ol class="list-decimal pl-5 text-xs font-mono text-slate-600 space-y-1">
+                    <li><strong>Account Ledger Service:</strong> Deducts $50,000 from client's cash balance.</li>
+                    <li><strong>Market Clearing Service:</strong> Matches the order against the exchange book.</li>
+                    <li><strong>Asset Custody Service:</strong> Transfers 1.0 BTC into client's digital asset vault.</li>
+                </ol>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    What happens if Step 1 and Step 2 succeed, but Step 3 fails because the Custody Vault is undergoing maintenance? Without a Saga, the client's $50,000 is gone, the trade is recorded as cleared, but the client receives zero Bitcoin! <strong>A Saga guarantees that if Step 3 fails, Steps 2 and 1 are compensated and rolled back automatically.</strong>
+                </p>
+            </div>
+
+            <!-- Visual Flowchart of Saga Pattern -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Saga Orchestration: Forward Execution vs. Compensating Rollback
+                </div>
+
+                <div class="space-y-6">
+                    <!-- Forward Flow -->
+                    <div class="space-y-2">
+                        <span class="text-emerald-400 font-bold block text-center">// 1. Normal Forward Execution Flow (All Steps Commit Locally)</span>
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                            <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Step 1: Reserve Funds</span>
+                                <span class="text-[9px] text-slate-400">Account Service commits $50k hold</span>
+                            </div>
+                            <div class="text-emerald-400 font-bold">&rarr;</div>
+                            <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Step 2: Match Trade</span>
+                                <span class="text-[9px] text-slate-400">Exchange Service commits fill</span>
+                            </div>
+                            <div class="text-emerald-400 font-bold">&rarr;</div>
+                            <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Step 3: Transfer Asset</span>
+                                <span class="text-[9px] text-slate-400">Custody Service commits 1.0 BTC</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Failure & Compensation Flow -->
+                    <div class="space-y-2 border-t border-slate-800 pt-4">
+                        <span class="text-rose-400 font-bold block text-center">// 2. Failure at Step 3 &rarr; Trigger Compensating Transactions in Reverse!</span>
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                            <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Compensate 1: Refund Hold</span>
+                                <span class="text-[9px] text-slate-400">Releases $50k hold back to client</span>
+                            </div>
+                            <div class="text-rose-400 font-bold">&larr; unwinds &larr;</div>
+                            <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Compensate 2: Void Match</span>
+                                <span class="text-[9px] text-slate-400">Cancels matched fill record</span>
+                            </div>
+                            <div class="text-rose-400 font-bold">&larr; triggers &larr;</div>
+                            <div class="p-3 bg-rose-950/80 border border-rose-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-rose-300 font-bold block">Step 3 FAILS!</span>
+                                <span class="text-[9px] text-rose-200">Custody vault offline!</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Orchestration vs. Choreography:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        In <strong>Choreography</strong>, services react to raw domain events without a central coordinator (can become hard to trace as services scale). In <strong>Orchestration</strong>, a central <code class="text-white font-mono">SagaOrchestrator</code> class explicitly commands each step, tracks state in a database, and coordinates rollbacks. NexusCore uses Orchestration for mission-critical auditability.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Saga -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Saga</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>A business process spans multiple independent microservices, each with its own private database.</li>
+                        <li>Transactions are long-running (seconds to minutes) where holding database locks would destroy system throughput.</li>
+                        <li>Every forward step can be mathematically compensated with an equivalent inverse action (e.g., credit reverses debit).</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>All operations live inside a single monolithic relational database (use standard ACID transactions with a Unit of Work!).</li>
+                        <li>An action cannot be compensated (e.g. sending a physical wire transfer to an irreversible third-party bank without escrow).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: CQRS -->
+        <section id="pattern-cqrs" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Pattern #43
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: CQRS (Command Query Responsibility Segregation)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Architectural Data Pattern &bull; Greg Young &amp; Martin Fowler
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine the order desk and pickup counter at a bustling metropolitan postal service depot.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    When you drop off a package to be shipped (A Command / Write), you stand at the <strong>intake desk</strong>. The clerk weighs the package, inspects customs paperwork, validates dimensions, charges postage, stamps a tracking barcode, and logs it into the shipping manifest. This is heavy, highly validated, sequential work.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans font-bold">
+                    Meanwhile, thousands of customers waiting outside do not ask the intake clerk for status updates! They look up at an overhead digital display board (The Query / Read). The display board is pre-computed, denormalized, and fast. It does zero validation and executes zero writes; it simply displays tracking numbers ready for pickup in microseconds!
+                </p>
+            </div>
+
+            <!-- The Problem: The Single Data Model Compromise -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Conflicting Read and Write Requirements</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In traditional systems, a single data model is forced to handle both operations:
+                </p>
+                <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                    <li><strong>Write Requirements:</strong> Highly normalized tables (3rd Normal Form), strict ACID constraints, row-level locks, invariant validation.</li>
+                    <li><strong>Read Requirements:</strong> Denormalized flat views, fast joins across 10 tables, real-time UI dashboards, high-concurrency read throughput.</li>
+                </ul>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    When both operations hit the same relational model, reads lock out writes, complex analytics queries slow down transaction commits, and indexing for reads hurts write latency. 
+                    <strong>CQRS physically splits the system into two independent paths: the Command Stack and the Query Stack.</strong>
+                </p>
+            </div>
+
+            <!-- Visual Flowchart of CQRS -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-purple-400 uppercase tracking-widest text-[11px]">
+                    CQRS Architectural Segregation: Asymmetric Read/Write Paths
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Command Side -->
+                    <div class="p-5 bg-slate-950 border border-sky-500 rounded-2xl space-y-3">
+                        <span class="text-sky-300 font-bold block text-sm">1. Command Stack (Writes &amp; Mutations)</span>
+                        <div class="space-y-1 text-[11px] text-slate-300 font-sans">
+                            <div>&bull; Operates via: <code class="text-sky-400 font-mono">CreateTradeCommand</code></div>
+                            <div>&bull; Enforces strict domain invariants and risk limits.</div>
+                            <div>&bull; Persists to: Write-optimized relational DB (Postgres).</div>
+                            <div>&bull; Emits: <code class="text-emerald-400 font-mono">TradeExecutedEvent</code> upon commit.</div>
+                        </div>
+                    </div>
+
+                    <!-- Query Side -->
+                    <div class="p-5 bg-slate-950 border border-emerald-500 rounded-2xl space-y-3">
+                        <span class="text-emerald-300 font-bold block text-sm">2. Query Stack (Reads &amp; Projections)</span>
+                        <div class="space-y-1 text-[11px] text-slate-300 font-sans">
+                            <div>&bull; Operates via: <code class="text-emerald-400 font-mono">GetTradeSummaryQuery</code></div>
+                            <div>&bull; Asynchronously consumes domain events.</div>
+                            <div>&bull; Reads from: Denormalized read store (Redis/Elasticsearch).</div>
+                            <div>&bull; Delivers 0.1ms read latency without touching relational tables!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-purple-400 font-mono">Asymmetric Scaling:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        In web systems where reads outnumber writes by 100:1, CQRS allows scaling 50 read-replica nodes or caching layers independently without paying for expensive master write-database instances.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: CQRS -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use CQRS</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Read and write workloads have radically different performance, latency, or scaling requirements.</li>
+                        <li>Complex reporting and UI dashboards require querying data across multiple entities that would require slow 10-table SQL joins.</li>
+                        <li>You are implementing Event Sourcing or domain event-driven architectures.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Simple CRUD applications where read and write models are nearly identical.</li>
+                        <li>Your domain cannot tolerate eventual consistency (the read model updating milliseconds after the write commit).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 3: EVENT SOURCING -->
+        <section id="pattern-event-sourcing" class="space-y-6">
+            <div class="border-b-2 border-sky-500 pb-3">
+                <span class="bg-sky-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Pattern #44
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Event Sourcing (Append-Only State Logs)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Domain Architecture Pattern &bull; Greg Young &amp; Martin Fowler
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine a certified accountant's general ledger or your personal bank account passbook.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Your bank account statement does not consist of a single number written on a chalkboard with an eraser. If you have $500, the bank did not erase $400 and write $500 over it.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A bank maintains an <strong>append-only sequence of immutable historical events</strong>: [Deposited $1,000 on Jan 1] &rarr; [Withdrew $600 on Jan 3] &rarr; [Earned $100 Interest on Jan 31]. Your current balance ($500) is simply the cumulative projection calculated by replaying all historical events from genesis!
+                </p>
+            </div>
+
+            <!-- The Problem: Destructive Updates (CRUD Flaw) -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Destructive Database Updates (Loss of History)</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Standard CRUD databases rely on destructive updates: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">UPDATE accounts SET balance = 500 WHERE id = 101</code>.
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    The moment that SQL query executes, the previous state is permanently erased from physical storage. If a financial regulator asks: <em>"What was this customer's risk exposure at exactly 2:14 PM last Tuesday?"</em>, a CRUD database cannot answer!
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed font-bold">
+                    In Event Sourcing, you never mutate or delete data. You only append events to an immutable event log. Current state is rehydrated on demand by replaying the stream!
+                </p>
+            </div>
+
+            <!-- Visual Flowchart of Event Sourcing -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-sky-400 uppercase tracking-widest text-[11px]">
+                    Event Sourcing: Append-Only Stream &amp; State Rehydration
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Immutable Event Stream</span>
+                        <div class="text-[9px] text-slate-400 font-mono space-y-0.5 text-left bg-slate-900 p-2 rounded">
+                            <div>1. AccountOpened (Bal: $0)</div>
+                            <div>2. FundsDeposited (+ $1000)</div>
+                            <div>3. TradeExecuted (- $400)</div>
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&rarr; replayed through &rarr;</div>
+
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">2. Aggregate Rehydration</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">apply_event() sequentially mutates in-memory entity</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&rarr; produces &rarr;</div>
+
+                    <div class="p-3 bg-slate-950 border border-purple-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-300 font-bold block">3. Current State</span>
+                        <div class="text-[10px] text-white font-mono font-bold">Balance: $600.00</div>
+                        <div class="text-[9px] text-slate-400">Time-Travel Audits Enabled!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Event Sourcing -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Event Sourcing</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You require 100% complete, unalterable historical audit trails (banking, trading, legal, insurance).</li>
+                        <li>You need time-travel debugging: reproducing bugs by replaying events up to the exact millisecond of a production crash.</li>
+                        <li>You want to derive new read projections retroactively from historical event data without data migration scripts.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Simple CRUD systems where historical audit trails have zero business value.</li>
+                        <li>Systems with high event volume where snapshotting mechanisms are not implemented (replaying 100,000,000 events on every read causes massive latency).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 4: TRANSACTIONAL OUTBOX -->
+        <section id="pattern-outbox" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Pattern #45
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Transactional Outbox (Dual-Write Immunity)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Reliable Messaging Pattern &bull; Chris Richardson (*Microservices Patterns*)
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-amber-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Imagine an executive at a law firm signing a high-stakes corporate contract.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    The lawyer signs the agreement, locks the original document inside the fireproof office vault, and simultaneously drops a certified copy into the wooden <strong>"Outbox" tray on their physical desk</strong> during the exact same office session.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans font-bold">
+                    The lawyer does not stop their legal work, run down to the street, and wait on the curb for a mail courier. A dedicated mail clerk empties the outbox tray every 10 minutes and delivers it to the postal service. If the postal service is closed, the letter sits safely in the outbox tray until it reopens. Nothing is ever lost!
+                </p>
+            </div>
+
+            <!-- The Problem: The Dual-Write Hazard -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: The Dual-Write Disaster</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In event-driven microservices, an operation often requires updating a database AND publishing an event to a message broker (RabbitMQ/Kafka):
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: The Unprotected Dual-Write Disaster</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute_order_unprotected</span>(order: Order):
+    <span class="text-slate-500"># Step 1: Database Commit</span>
+    <span class="text-purple-400">await</span> database.orders.insert(order)
+    
+    <span class="text-slate-500"># Step 2: Publish Event to Kafka</span>
+    <span class="text-slate-500"># CATASTROPHE: The pod gets SIGKILL / OOM-killed right here!</span>
+    <span class="text-slate-500"># Database committed, but Kafka event is NEVER SENT! Downstream services never settle!</span>
+    <span class="text-purple-400">await</span> message_broker.publish(<span class="text-amber-300">"orders.created"</span>, order.to_json())</pre>
+            </div>
+
+            <!-- Visual Flowchart of Outbox -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    The Transactional Outbox Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">1. Local ACID TX</span>
+                        <div class="text-[9px] text-slate-300 font-mono">
+                            BEGIN TX<br>
+                            INSERT INTO orders ...<br>
+                            INSERT INTO outbox_events ...<br>
+                            COMMIT TX
+                        </div>
+                    </div>
+
+                    <div class="text-amber-400 font-bold text-base">&rarr; polled by &rarr;</div>
+
+                    <div class="p-3 bg-amber-950/80 border border-amber-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-amber-300 font-bold block">2. Outbox Relay</span>
+                        <div class="text-[10px] text-amber-200 font-sans">Background poller or CDC worker tails outbox records</div>
+                    </div>
+
+                    <div class="text-amber-400 font-bold text-base">&rarr; reliable push &rarr;</div>
+
+                    <div class="p-3 bg-slate-950 border border-sky-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">3. Message Broker</span>
+                        <div class="text-[10px] text-white font-mono font-bold">Kafka / RabbitMQ</div>
+                        <div class="text-[9px] text-slate-400">Guaranteed At-Least-Once Delivery!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Outbox -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Transactional Outbox</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You need to reliably publish events to a message broker (RabbitMQ/Kafka) whenever a database entity is inserted or updated.</li>
+                        <li>You want to eliminate the Dual-Write hazard without distributed Two-Phase Commit locks.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The application does not use external asynchronous message queues.</li>
+                        <li>You can tolerate lost events (e.g. non-critical ephemeral clickstream metrics).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: NEXUSCORE MILESTONE 15 -->
+        <section id="nexuscore-milestone-15" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 15: Distributed Data &amp; Coordination Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 15 for <strong>NexusCore</strong>. Below is the production-grade implementation unifying all four distributed data patterns: an orchestrated trade settlement Saga with compensating transactions, a CQRS command/query split, an Event Sourcing balance stream, and a Transactional Outbox worker:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 15)</div>
+                <div>nexuscore/</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">distributed/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">saga.py</span>             <span class="text-slate-500"># Milestone 15: Orchestrated Saga &amp; Compensations</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">cqrs.py</span>             <span class="text-slate-500"># Milestone 15: Command vs. Query Responsibility Segregation</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">eventsourcing.py</span>    <span class="text-slate-500"># Milestone 15: Append-Only Stream &amp; Rehydration</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">outbox.py</span>           <span class="text-slate-500"># Milestone 15: Transactional Outbox &amp; Poller Relay</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_distributed_saga.py</span>  <span class="text-slate-500"># Milestone 15 Distributed Coordination Battery</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/distributed/saga.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Orchestrated Trade Saga: <code class="text-purple-700">src/nexuscore/distributed/saga.py</code></span>
+                    <span class="text-slate-400">Saga Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Distributed - Orchestrated Saga with Compensating Transactions</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Any, Dict
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ISagaStep</span>(ABC):
+    <span class="text-slate-500">"""Every Saga step must define both a forward action and a compensating inverse."""</span>
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">name</span>(self) -> str:
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, context: Dict[str, Any]) -> bool:
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SagaOrchestrator</span>:
+    <span class="text-slate-500">"""
+    SAGA ORCHESTRATOR PATTERN:
+    Executes sequential distributed steps across microservices.
+    If any step fails, compensates all previously executed steps in strict reverse order!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, steps: List[ISagaStep]):
+        self.steps = steps
+        self.executed_steps: List[ISagaStep] = []
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any]) -> bool:
+        self.executed_steps = []
+
+        <span class="text-purple-400">for</span> step <span class="text-purple-400">in</span> self.steps:
+            <span class="text-purple-400">try</span>:
+                success = <span class="text-purple-400">await</span> step.execute(context)
+                <span class="text-purple-400">if</span> success:
+                    self.executed_steps.append(step)
+                <span class="text-purple-400">else</span>:
+                    <span class="text-slate-500"># Step reported business failure &rarr; Trigger rollback</span>
+                    <span class="text-purple-400">await</span> self._compensate_all(context)
+                    <span class="text-purple-400">return False</span>
+            <span class="text-purple-400">except</span> Exception:
+                <span class="text-slate-500"># Step crashed with technical exception &rarr; Trigger rollback</span>
+                <span class="text-purple-400">await</span> self._compensate_all(context)
+                <span class="text-purple-400">return False</span>
+
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_compensate_all</span>(self, context: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Reverse LIFO order compensation:</span>
+        <span class="text-purple-400">for</span> step <span class="text-purple-400">in</span> reversed(self.executed_steps):
+            <span class="text-purple-400">await</span> step.compensate(context)</pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/distributed/cqrs.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Command-Query Segregation: <code class="text-purple-700">src/nexuscore/distributed/cqrs.py</code></span>
+                    <span class="text-slate-400">CQRS Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Distributed - CQRS Command / Query Segregation</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Optional
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CreateTradeCommand</span>:
+    <span class="text-slate-500">"""Write Model: Intent to change state."""</span>
+    trade_id: str
+    symbol: str
+    amount: float
+    user_id: str
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TradeSummaryView</span>:
+    <span class="text-slate-500">"""Read Model: Denormalized, flat projection optimized for 0.1ms reads."""</span>
+    trade_id: str
+    display_text: str
+    amount_usd: float
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CQRSProjectionStore</span>:
+    <span class="text-slate-500">"""
+    CQRS SEPARATION:
+    Maintains independent write execution and denormalized read views.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._write_db: Dict[str, CreateTradeCommand] = {}
+        self._read_projections: Dict[str, TradeSummaryView] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">handle_command</span>(self, cmd: CreateTradeCommand) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># 1. Mutate normalized write model</span>
+        self._write_db[cmd.trade_id] = cmd
+
+        <span class="text-slate-500"># 2. Asynchronously project to denormalized read view</span>
+        self._read_projections[cmd.trade_id] = TradeSummaryView(
+            trade_id=cmd.trade_id,
+            display_text=f<span class="text-amber-300">"Trade {cmd.symbol} (${cmd.amount:,.2f}) for {cmd.user_id}"</span>,
+            amount_usd=cmd.amount
+        )
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">query_view</span>(self, trade_id: str) -> Optional[TradeSummaryView]:
+        <span class="text-slate-500"># Reads touch ONLY the read view without joining normalized tables!</span>
+        <span class="text-purple-400">return</span> self._read_projections.get(trade_id)</pre>
+            </div>
+
+            <!-- File 3: src/nexuscore/distributed/eventsourcing.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Append-Only Event Store &amp; Rehydration: <code class="text-purple-700">src/nexuscore/distributed/eventsourcing.py</code></span>
+                    <span class="text-slate-400">Event Sourcing Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Distributed - Event Sourcing State Rehydration</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Dict, Any
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DomainEvent</span>:
+    event_type: str
+    data: Dict[str, Any]
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EventSourcedAccount</span>:
+    <span class="text-slate-500">"""
+    EVENT SOURCED AGGREGATE:
+    State is NOT stored as a mutable balance.
+    Current balance is computed by replaying immutable historical events from the stream!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, account_id: str):
+        self.account_id = account_id
+        self.balance: float = 0.0
+        self.version: int = 0
+        self._uncommitted_events: List[DomainEvent] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">deposit</span>(self, amount: float) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> amount &lt;= 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Deposit must be positive"</span>)
+        event = DomainEvent(<span class="text-amber-300">"FUNDS_DEPOSITED"</span>, {<span class="text-amber-300">"amount"</span>: amount})
+        self._apply(event)
+        self._uncommitted_events.append(event)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">withdraw</span>(self, amount: float) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> self.balance &lt; amount:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Insufficient funds"</span>)
+        event = DomainEvent(<span class="text-amber-300">"FUNDS_WITHDRAWN"</span>, {<span class="text-amber-300">"amount"</span>: amount})
+        self._apply(event)
+        self._uncommitted_events.append(event)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_apply</span>(self, event: DomainEvent) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># State mutation logic: purely deterministic event replayer</span>
+        <span class="text-purple-400">if</span> event.event_type == <span class="text-amber-300">"FUNDS_DEPOSITED"</span>:
+            self.balance += event.data[<span class="text-amber-300">"amount"</span>]
+        <span class="text-purple-400">elif</span> event.event_type == <span class="text-amber-300">"FUNDS_WITHDRAWN"</span>:
+            self.balance -= event.data[<span class="text-amber-300">"amount"</span>]
+        self.version += 1
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rehydrate</span>(cls, account_id: str, history: List[DomainEvent]) -> <span class="text-amber-300">"EventSourcedAccount"</span>:
+        <span class="text-slate-500">"""Reconstructs exact entity state by sequentially replaying event history."""</span>
+        acc = cls(account_id)
+        <span class="text-purple-400">for</span> event <span class="text-purple-400">in</span> history:
+            acc._apply(event)
+        <span class="text-purple-400">return</span> acc</pre>
+            </div>
+
+            <!-- File 4: src/nexuscore/distributed/outbox.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Transactional Outbox Pattern: <code class="text-purple-700">src/nexuscore/distributed/outbox.py</code></span>
+                    <span class="text-slate-400">Dual-Write Immunity</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Distributed - Transactional Outbox Pattern</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Dict, Any
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OutboxRecord</span>:
+    id: int
+    topic: str
+    payload: str
+    published: bool = <span class="text-rose-400">False</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionalOutboxService</span>:
+    <span class="text-slate-500">"""
+    DUAL-WRITE DEFENSE:
+    Entities and outbox records are committed in the SAME local database transaction.
+    A background relay polls the outbox and publishes messages to the broker.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._database_rows: List[Dict[str, Any]] = []
+        self._outbox_table: List[OutboxRecord] = []
+        self._broker_messages: List[str] = []
+        self._next_id = 1
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">save_entity_and_outbox</span>(self, entity_data: Dict[str, Any], topic: str, event_payload: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Simulates: BEGIN TRANSACTION</span>
+        self._database_rows.append(entity_data)
+        record = OutboxRecord(id=self._next_id, topic=topic, payload=event_payload)
+        self._next_id += 1
+        self._outbox_table.append(record)
+        <span class="text-slate-500"># Simulates: COMMIT TRANSACTION (Both succeed or neither does!)</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">relay_outbox_to_broker</span>(self) -> int:
+        <span class="text-slate-500">"""Background worker polls unpublished outbox records and pushes to message broker."""</span>
+        dispatched = 0
+        <span class="text-purple-400">for</span> record <span class="text-purple-400">in</span> self._outbox_table:
+            <span class="text-purple-400">if not</span> record.published:
+                <span class="text-slate-500"># Publish to Kafka / RabbitMQ broker:</span>
+                self._broker_messages.append(record.payload)
+                record.published = <span class="text-rose-400">True</span>
+                dispatched += 1
+        <span class="text-purple-400">return</span> dispatched</pre>
+            </div>
+
+            <!-- File 5: tests/test_distributed_saga.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Distributed Coordination Test Battery: <code class="text-purple-700">tests/test_distributed_saga.py</code></span>
+                    <span class="text-slate-400">Full Verification Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> nexuscore.distributed.saga <span class="text-purple-400">import</span> SagaOrchestrator, ISagaStep
+<span class="text-purple-400">from</span> nexuscore.distributed.cqrs <span class="text-purple-400">import</span> CQRSProjectionStore, CreateTradeCommand
+<span class="text-purple-400">from</span> nexuscore.distributed.eventsourcing <span class="text-purple-400">import</span> EventSourcedAccount, DomainEvent
+<span class="text-purple-400">from</span> nexuscore.distributed.outbox <span class="text-purple-400">import</span> TransactionalOutboxService
+
+
+<span class="text-slate-500"># Concrete Saga Mock Steps for Verification</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ReserveFundsStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"ReserveFunds"</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, ctx): ctx[<span class="text-amber-300">"funds_reserved"</span>] = <span class="text-rose-400">True</span>; <span class="text-purple-400">return True</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, ctx): ctx[<span class="text-amber-300">"funds_reserved"</span>] = <span class="text-rose-400">False</span>; <span class="text-purple-400">return True</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MatchOrderStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"MatchOrder"</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, ctx): ctx[<span class="text-amber-300">"order_matched"</span>] = <span class="text-rose-400">True</span>; <span class="text-purple-400">return True</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, ctx): ctx[<span class="text-amber-300">"order_matched"</span>] = <span class="text-rose-400">False</span>; <span class="text-purple-400">return True</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FailingCustodyStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"CustodyTransfer"</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, ctx): <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Simulates failure at Step 3!</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, ctx): <span class="text-purple-400">return True</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDistributedCoordination</span>:
+    <span class="text-slate-500">"""Verifies Saga rollback, CQRS views, Event Sourcing replay, and Outbox atomicity."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_saga_orchestrator_compensates_on_mid_pipeline_failure</span>(self):
+        context = {<span class="text-amber-300">"trade_id"</span>: <span class="text-amber-300">"tx_99"</span>}
+        orchestrator = SagaOrchestrator([
+            ReserveFundsStep(),
+            MatchOrderStep(),
+            FailingCustodyStep()  <span class="text-slate-500"># Fails here</span>
+        ])
+
+        success = <span class="text-purple-400">await</span> orchestrator.execute(context)
+        assert success <span class="text-purple-400">is False</span>
+        <span class="text-slate-500"># Verified: Compensating transactions rolled back steps 1 and 2!</span>
+        assert context[<span class="text-amber-300">"funds_reserved"</span>] <span class="text-purple-400">is False</span>
+        assert context[<span class="text-amber-300">"order_matched"</span>] <span class="text-purple-400">is False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cqrs_segregates_commands_and_query_projections</span>(self):
+        cqrs = CQRSProjectionStore()
+        cmd = CreateTradeCommand(<span class="text-amber-300">"t1"</span>, <span class="text-amber-300">"BTC"</span>, 50000.0, <span class="text-amber-300">"usr_1"</span>)
+        cqrs.handle_command(cmd)
+
+        view = cqrs.query_view(<span class="text-amber-300">"t1"</span>)
+        assert view <span class="text-purple-400">is not None</span>
+        assert view.amount_usd == 50000.0
+        assert <span class="text-amber-300">"Trade BTC ($50,000.00)"</span> <span class="text-purple-400">in</span> view.display_text
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_event_sourcing_rehydrates_balance_from_stream</span>(self):
+        history = [
+            DomainEvent(<span class="text-amber-300">"FUNDS_DEPOSITED"</span>, {<span class="text-amber-300">"amount"</span>: 1000.0}),
+            DomainEvent(<span class="text-amber-300">"FUNDS_WITHDRAWN"</span>, {<span class="text-amber-300">"amount"</span>: 300.0}),
+            DomainEvent(<span class="text-amber-300">"FUNDS_DEPOSITED"</span>, {<span class="text-amber-300">"amount"</span>: 50.0})
+        ]
+        account = EventSourcedAccount.rehydrate(<span class="text-amber-300">"acc_42"</span>, history)
+        assert account.balance == 750.0
+        assert account.version == 3
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_transactional_outbox_relays_events_reliably</span>(self):
+        outbox = TransactionalOutboxService()
+        <span class="text-purple-400">await</span> outbox.save_entity_and_outbox(
+            entity_data={<span class="text-amber-300">"order_id"</span>: <span class="text-amber-300">"ord_1"</span>},
+            topic=<span class="text-amber-300">"orders"</span>,
+            event_payload=<span class="text-amber-300">'{"event": "ORDER_CREATED"}'</span>
+        )
+
+        assert len(outbox._outbox_table) == 1
+        assert len(outbox._broker_messages) == 0
+
+        dispatched = <span class="text-purple-400">await</span> outbox.relay_outbox_to_broker()
+        assert dispatched == 1
+        assert len(outbox._broker_messages) == 1
+        assert outbox._outbox_table[0].published <span class="text-purple-400">is True</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Pivot Transaction Hazard in Sagas</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Designing a Saga where an irreversible action (e.g., executing an un-cancellable SWIFT wire transfer or sending a physical push email) occurs <em>before</em> steps that might fail.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes disasters:</strong> In a Saga, the <strong>Pivot Step</strong> is the point of no return. Once the pivot transaction executes, subsequent steps <strong>MUST NEVER FAIL</strong> because you cannot mathematically compensate an irreversible action! Always place irreversible external actions as the very final step of a Saga.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Event Sourcing Without Snapshotting</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Rehydrating an Event-Sourced entity by replaying 5,000,000 historical events from scratch on every single HTTP GET request.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys latency:</strong> Replaying millions of historical event records in Python takes seconds of pure CPU time. <strong>Always pair Event Sourcing with Periodic Snapshots:</strong> store a snapshot every 1,000 events, load the snapshot in 0.1ms, and replay only the trailing 15 events!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 15</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the distributed coordination test battery and verify Saga rollbacks, CQRS views, and Event Sourcing:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Distributed Data test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_distributed_saga.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms Saga compensation rollback, CQRS projection segregation, Event Sourcing balance rehydration, and Outbox relay!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Inspect Event Sourced rehydration in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from nexuscore.distributed.eventsourcing import EventSourcedAccount; a = EventSourcedAccount('A1'); a.deposit(500); a.withdraw(120); print(f'Account Version: {a.version} | Computed Balance: ${a.balance}')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Account Version: 2 | Computed Balance: $380.0</code> calculated purely from event stream!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 16 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 16: Enterprise Integration Patterns (EIP): Content-Based Routers, Splitter, Aggregator &amp; DLQ</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering asynchronous message flows with Gregor Hohpe's EIP: Dynamically routing financial messages, splitting bulk payroll batches into individual payments, re-aggregating confirmations, and handling poison pills with Dead Letter Queues (DLQ).</p>
+            </div>
+            <a href="Chapter 16 - Enterprise Integration Patterns EIP - Content-Based Routers, Splitter, Aggregator and DLQ.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 16 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

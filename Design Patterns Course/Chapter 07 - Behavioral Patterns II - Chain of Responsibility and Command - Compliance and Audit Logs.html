@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Behavioral Patterns II: Chain of Responsibility &amp; Command: Compliance &amp; Audit Logs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 07 - Compliance Chain &amp; Transaction Commands)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Behavioral Patterns II
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Behavioral Patterns II: Chain of Responsibility &amp; Command: Compliance &amp; Audit Logs
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling request senders from execution handlers and encapsulating transactional operations: Structuring multi-stage inspection pipelines with the <strong>Chain of Responsibility</strong>, transforming financial mutations into reversible first-class objects with the <strong>Command Pattern</strong>, implementing tamper-evident undo/redo journals, and building the compliance engine of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NexusCore Milestone 07: Compliance Pipelines &amp; Transactional Commands</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 06, we built dynamic fee strategies, immutable clearing templates, and an order state machine. In Milestone 07, we confront two mission-critical financial requirements: <strong>Regulatory Compliance Verification</strong> and <strong>Auditable Ledger Reversibility</strong>. Before an order touches market matching engines, it must pass sequential scrutiny: Sanctions verification, KYC tier checks, and Anti-Money Laundering (AML) velocity rules. We model this as a flexible <strong>Chain of Responsibility</strong>. Then, we encapsulate account debits, credits, and asset transfers into executable, reversible <strong>Command objects</strong>, providing NexusCore with an immutable audit journal supporting point-in-time rollbacks.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #16: Chain of Responsibility</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #17: Command Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Short-Circuiting vs. Non-Short-Circuiting Chains</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Encapsulating Method Calls as First-Class Objects</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Transaction Journal with Reversible Undo Stack</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full Compliance &amp; Command PyTest Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory -->
+        <section id="behavioral-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Architecture Fundamentals</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Decoupling Senders, Receivers &amp; Action Invocations</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In tightly coupled applications, the component initiating a request directly invokes the component executing the request. For example, an API endpoint function directly invokes <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">database.execute_update(...)</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                This direct coupling creates severe structural liabilities:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-2 font-sans">
+                <li>
+                    <strong>Sender-Receiver Entanglement:</strong> The sender must know the exact concrete class, constructor arguments, and method signatures of every handler that might process the request.
+                </li>
+                <li>
+                    <strong>Loss of Temporal Flexibility:</strong> When an action is directly executed as a method call, it cannot be queued, logged to disk, delayed, retried later, or undone upon failure.
+                </li>
+            </ul>
+
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-2">
+                <span class="font-bold text-emerald-950 text-sm block font-mono">// The Two Architectural Solutions:</span>
+                <p class="text-xs text-emerald-900 leading-relaxed font-sans">
+                    <strong>Chain of Responsibility</strong> decouples the sender from multiple potential receivers by passing the request along a pipeline until a handler resolves it. <strong>Command</strong> decouples the sender from the receiver by packaging the request, its receiver, and its execution parameters into an independent object that can be passed around, queued, or reversed.
+                </p>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: CHAIN OF RESPONSIBILITY -->
+        <section id="pattern-cor" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #16
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Chain of Responsibility
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Behavioral Pattern &bull; Gang of Four (GoF) Reference p. 223
+                </p>
+            </div>
+
+            <!-- 1. Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine passing through an international airport security checkpoint before boarding an overseas flight.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    You do not enter an office where a single security officer checks your passport, operates an X-ray scanner, conducts a metal detector wand search, inspects customs declarations, and tests for hazardous chemicals all at once.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Instead, you pass through a sequential chain of specialized checkpoints: Officer 1 checks passport validity; if valid, you move to Officer 2 at the metal detector; if clear, you pass to Officer 3 at luggage inspection. If Officer 1 finds a forged passport, you are stopped immediately (short-circuited), and no subsequent officers waste time scanning your bags!
+                </p>
+            </div>
+
+            <!-- 2. The Problem: Monolithic Validation Functions -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: The Monolithic Validation Monolith</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    In enterprise finance, trade compliance involves verifying international sanctions lists, checking user KYC tiers, testing transaction size against anti-money laundering thresholds, and verifying daily trading velocity.
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Without Chain of Responsibility, developers write a monolithic function containing dozens of nested checks. Adding a new rule or reordering checks requires modifying a massive file, risking regressions in working validation code:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: The Monolithic Hardcoded Compliance Function</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">MonolithicComplianceService</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_trade</span>(self, user_id: str, amount: float, country: str) -> bool:
+        <span class="text-slate-500"># Check 1: Sanctions check</span>
+        <span class="text-purple-400">if</span> country <span class="text-purple-400">in</span> [<span class="text-amber-300">"NORTH_KOREA"</span>, <span class="text-amber-300">"IRAN"</span>]:
+            <span class="text-purple-400">return False</span>
+            
+        <span class="text-slate-500"># Check 2: KYC Level check</span>
+        kyc_level = db.get_user_kyc(user_id)
+        <span class="text-purple-400">if</span> amount &gt; 10000 <span class="text-purple-400">and</span> kyc_level &lt; 2:
+            <span class="text-purple-400">return False</span>
+
+        <span class="text-slate-500"># Check 3: Daily volume limit check</span>
+        daily_spent = db.get_daily_volume(user_id)
+        <span class="text-purple-400">if</span> daily_spent + amount &gt; 50000:
+            <span class="text-purple-400">return False</span>
+            
+        <span class="text-slate-500"># Every time legal or risk adds a new rule, this monolithic method grows!</span>
+        <span class="text-slate-500"># You cannot reorder checks, disable one for VIPs, or test each check in isolation.</span>
+        <span class="text-purple-400">return True</span></pre>
+            </div>
+
+            <!-- Visual Flowchart of Chain of Responsibility -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Chain of Responsibility Inspection Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                    <!-- Stage 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-52 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. SanctionsCheckHandler</span>
+                        <span class="text-[9px] text-slate-400">Checks OFAC lists</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; passes &rarr;</div>
+
+                    <!-- Stage 2 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-52 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. KycTierCheckHandler</span>
+                        <span class="text-[9px] text-purple-200">Verifies account limits</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; passes &rarr;</div>
+
+                    <!-- Stage 3 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-52 space-y-1">
+                        <span class="text-amber-300 font-bold block">3. AmlThresholdHandler</span>
+                        <span class="text-[9px] text-amber-200">Checks suspicious volume</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; all pass &rarr;</div>
+
+                    <!-- Stage 4 -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-48 space-y-1">
+                        <span class="text-emerald-300 font-bold block">Approved</span>
+                        <span class="text-[9px] text-emerald-200">Dispatched to market</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Short-Circuiting Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        If any handler in the chain encounters a violation (e.g. SanctionsCheck fails), it terminates the chain immediately and returns a rejection result. Handlers 2 and 3 are never invoked, saving database lookups and network calls.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Chain of Responsibility -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Chain of Responsibility</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>More than one object may handle a request, and the exact handler isn't known beforehand (or should be determined dynamically).</li>
+                        <li>You want to issue a request to one of several objects without specifying the receiver explicitly.</li>
+                        <li>The set of objects that can handle a request, or their order of execution, should be specified dynamically at runtime.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Chain of Responsibility</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Every single handler in the pipeline must execute unconditionally without short-circuiting (Consider an observer or composite instead).</li>
+                        <li>The sequence has strict, rigid, unchangeable dependencies where later steps directly need variables produced by earlier steps (Consider <strong>Template Method</strong> or <strong>Pipeline</strong>).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: COMMAND -->
+        <section id="pattern-command" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #17
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Command (Action / Transaction)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Behavioral Pattern &bull; Gang of Four (GoF) Reference p. 233
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine placing an order at a diner restaurant.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    You do not barge into the kitchen, grab the chef's spatula, and instruct them verbally: "Cook 2 eggs over-easy and toast 1 bagel."
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans font-bold">
+                    Instead, the waiter writes your request down on an Order Pad (The Command). The order slip is an independent object: it contains all necessary parameters (table number, items, special requests), it can sit in an incoming order queue, it can be passed to whichever chef is available, it can be logged in the accounting register, and if you change your mind 10 seconds later, the waiter can pull the slip off the clip and cancel it (Undo)!
+                </p>
+            </div>
+
+            <!-- The Problem: Direct Method Invocations Cannot Be Undone or Queued -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Transient Method Calls</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    When you call a method directly (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">ledger.transfer(from_acc, to_acc, 5000)</code>), that operation evaporates from memory as soon as the stack frame pops. If a distributed multi-step transaction fails on step 3 of 4, how do you undo steps 1 and 2?
+                </p>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    The <strong>Command Pattern</strong> solves this by packaging the receiver, the action, and the parameters into a first-class object that implements two critical methods: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">execute()</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">undo()</code>.
+                </p>
+            </div>
+
+            <!-- Visual Flowchart of Command Pattern -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-purple-400 uppercase tracking-widest text-[11px]">
+                    Command Pattern Architectural Components
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-center">
+                    <!-- Invoker -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block text-sm">Invoker / Journal</span>
+                        <span class="text-[10px] text-slate-400 font-sans">TransactionManager</span>
+                        <div class="text-[9px] text-slate-300 font-mono mt-1">
+                            Holds: history_stack<br>Calls: command.execute()<br>Can call: command.undo()
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold text-base">&rarr; executes &rarr;</div>
+
+                    <!-- Command Interface -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-300 font-bold block text-sm">&lt;&lt;interface&gt;&gt;</span>
+                        <span class="text-xs font-bold text-white">ITransactionCommand</span>
+                        <div class="text-[9px] text-purple-200 font-mono">
+                            + execute()<br>+ undo()
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold text-base">&rarr; mutates &rarr;</div>
+
+                    <!-- Receiver -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block text-sm">Receiver</span>
+                        <span class="text-xs font-bold text-white">LedgerAccount</span>
+                        <div class="text-[9px] text-emerald-200 font-mono">
+                            Actual business entity holding state and balance
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-purple-400 font-mono">Audit &amp; Replayability Guarantee:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Because commands are standalone objects, they can be serialized to a persistent database table or Kafka topic. If the server crashes, NexusCore restarts, reads the command log, and replays all commands sequentially to rebuild identical account balances!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Command -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Command</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You need to support undo/redo operations or transactional rollbacks.</li>
+                        <li>You want to parameterize objects with operations, queue requests, or execute them asynchronously.</li>
+                        <li>You need to log changes to disk so that system state can be reconstructed following a crash (audit log / event sourcing foundation).</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Command</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have simple synchronous operations where undo, queuing, and serialization are never required.</li>
+                        <li>Creating a command class for every simple getter or single-line operation introduces unnecessary class sprawl.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: NEXUSCORE MILESTONE 07 -->
+        <section id="nexuscore-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 07: Compliance Chain &amp; Transaction Command Journal</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 07 for <strong>NexusCore</strong>. Below is the production-grade implementation of both behavioral patterns: a sequential compliance verification chain with automated short-circuiting, followed by a reversible transaction command journal with full undo/rollback capabilities:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 07)</div>
+                <div>nexuscore/</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── payments/</div>
+                <div>│       ├── orders/</div>
+                <div>│       ├── adapters/</div>
+                <div>│       ├── ledger/</div>
+                <div>│       ├── facade/</div>
+                <div>│       ├── execution/</div>
+                <div>│       ├── portfolio/</div>
+                <div>│       ├── market/</div>
+                <div>│       ├── fees/</div>
+                <div>│       ├── clearing/</div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">compliance/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">chain.py</span>             <span class="text-slate-500"># Milestone 07: Chain of Responsibility</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">commands/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">transaction.py</span>       <span class="text-slate-500"># Milestone 07: Reversible Command Journal</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_chain_and_command.py</span>        <span class="text-slate-500"># Milestone 07 PyTest Verification Suite</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/compliance/chain.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Compliance Verification Chain: <code class="text-purple-700">src/nexuscore/compliance/chain.py</code></span>
+                    <span class="text-slate-400">Chain of Responsibility Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Compliance - Chain of Responsibility for Trade Inspection</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, Set
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TradeContext</span>:
+    <span class="text-slate-500">"""Request payload passing through the compliance pipeline."""</span>
+    user_id: str
+    country_code: str
+    kyc_level: int
+    amount: float
+    currency: str
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ComplianceResult</span>:
+    <span class="text-slate-500">"""Evaluation result issued by handlers."""</span>
+    passed: bool
+    rejected_by: Optional[str] = <span class="text-rose-400">None</span>
+    reason: Optional[str] = <span class="text-rose-400">None</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># BASE HANDLER</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AbstractComplianceHandler</span>(ABC):
+    <span class="text-slate-500">"""
+    CHAIN OF RESPONSIBILITY BASE HANDLER:
+    Maintains a reference to the next handler in the pipeline.
+    Provides standard handle() propagation with short-circuiting on failure.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._next_handler: Optional[<span class="text-amber-300">"AbstractComplianceHandler"</span>] = <span class="text-rose-400">None</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">set_next</span>(self, handler: <span class="text-amber-300">"AbstractComplianceHandler"</span>) -> <span class="text-amber-300">"AbstractComplianceHandler"</span>:
+        <span class="text-slate-500">"""Enables fluent chaining: handler_a.set_next(handler_b).set_next(handler_c)"""</span>
+        self._next_handler = handler
+        <span class="text-purple-400">return</span> handler
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">handle</span>(self, context: TradeContext) -> ComplianceResult:
+        <span class="text-slate-500"># Execute self check:</span>
+        result = self._check(context)
+        <span class="text-purple-400">if not</span> result.passed:
+            <span class="text-slate-500"># SHORT-CIRCUIT: Do not proceed further down the chain!</span>
+            <span class="text-purple-400">return</span> result
+
+        <span class="text-slate-500"># If check passed and there is a next handler, delegate:</span>
+        <span class="text-purple-400">if</span> self._next_handler:
+            <span class="text-purple-400">return</span> self._next_handler.handle(context)
+
+        <span class="text-slate-500"># End of chain reached successfully:</span>
+        <span class="text-purple-400">return</span> ComplianceResult(passed=<span class="text-rose-400">True</span>)
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_check</span>(self, context: TradeContext) -> ComplianceResult:
+        <span class="text-slate-500">"""Subclasses implement specific regulatory logic."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CONCRETE HANDLERS</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SanctionsListHandler</span>(AbstractComplianceHandler):
+    <span class="text-slate-500">"""Handler 1: Verifies international OFAC / UN sanctions."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, blocked_countries: Optional[Set[str]] = <span class="text-rose-400">None</span>):
+        super().__init__()
+        self._blocked = blocked_countries <span class="text-purple-400">or</span> {<span class="text-amber-300">"PRK"</span>, <span class="text-amber-300">"IRN"</span>, <span class="text-amber-300">"SYR"</span>}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_check</span>(self, context: TradeContext) -> ComplianceResult:
+        <span class="text-purple-400">if</span> context.country_code.upper() <span class="text-purple-400">in</span> self._blocked:
+            <span class="text-purple-400">return</span> ComplianceResult(
+                passed=<span class="text-rose-400">False</span>,
+                rejected_by=<span class="text-amber-300">"SanctionsListHandler"</span>,
+                reason=f<span class="text-amber-300">"Jurisdiction '{context.country_code}' is sanctioned."</span>
+            )
+        <span class="text-purple-400">return</span> ComplianceResult(passed=<span class="text-rose-400">True</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">KycTierLimitHandler</span>(AbstractComplianceHandler):
+    <span class="text-slate-500">"""Handler 2: Enforces trade volume ceiling based on customer KYC level."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_check</span>(self, context: TradeContext) -> ComplianceResult:
+        <span class="text-slate-500"># Tier 1 users cannot trade over $1,000; Tier 2 over $100,000</span>
+        limits = {1: 1_000.0, 2: 100_000.0, 3: 10_000_000.0}
+        max_allowed = limits.get(context.kyc_level, 0.0)
+
+        <span class="text-purple-400">if</span> context.amount &gt; max_allowed:
+            <span class="text-purple-400">return</span> ComplianceResult(
+                passed=<span class="text-rose-400">False</span>,
+                rejected_by=<span class="text-amber-300">"KycTierLimitHandler"</span>,
+                reason=f<span class="text-amber-300">"Amount ${context.amount:,.2f} exceeds KYC Tier {context.kyc_level} limit of ${max_allowed:,.2f}."</span>
+            )
+        <span class="text-purple-400">return</span> ComplianceResult(passed=<span class="text-rose-400">True</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AmlThresholdHandler</span>(AbstractComplianceHandler):
+    <span class="text-slate-500">"""Handler 3: Flags single transactions over $500,000 for compliance review."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_check</span>(self, context: TradeContext) -> ComplianceResult:
+        <span class="text-purple-400">if</span> context.amount &gt;= 500_000.0:
+            <span class="text-purple-400">return</span> ComplianceResult(
+                passed=<span class="text-rose-400">False</span>,
+                rejected_by=<span class="text-amber-300">"AmlThresholdHandler"</span>,
+                reason=<span class="text-amber-300">"Transaction exceeds single-operation AML threshold of $500,000."</span>
+            )
+        <span class="text-purple-400">return</span> ComplianceResult(passed=<span class="text-rose-400">True</span>)</pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/commands/transaction.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Reversible Transaction Commands: <code class="text-purple-700">src/nexuscore/commands/transaction.py</code></span>
+                    <span class="text-slate-400">Command Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Commands - Reversible Transaction Commands &amp; Audit Journal</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Dict, Any
+<span class="text-purple-400">from</span> nexuscore.ledger.bridge <span class="text-purple-400">import</span> LedgerAccount
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE COMMAND INTERFACE</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ITransactionCommand</span>(ABC):
+    <span class="text-slate-500">"""
+    COMMAND INTERFACE:
+    Encapsulates an action, its arguments, and its rollback logic.
+    """</span>
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">command_id</span>(self) -> str:
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute</span>(self) -> bool:
+        <span class="text-slate-500">"""Executes the forward transaction."""</span>
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">undo</span>(self) -> bool:
+        <span class="text-slate-500">"""Rolls back / compensates the transaction exactly."""</span>
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">to_audit_dict</span>(self) -> Dict[str, Any]:
+        <span class="text-slate-500">"""Serializes state for persistence and replayability."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CONCRETE COMMAND: Deposit / Credit Command</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DepositFundsCommand</span>(ITransactionCommand):
+    <span class="text-slate-500">"""Concrete Command to credit an account."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, account: LedgerAccount, amount: float, reference: str):
+        self._command_id = f<span class="text-amber-300">"cmd_dep_{uuid.uuid4().hex[:8]}"</span>
+        self.account = account
+        self.amount = amount
+        self.reference = reference
+        self._executed = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">command_id</span>(self) -> str:
+        <span class="text-purple-400">return</span> self._command_id
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute</span>(self) -> bool:
+        <span class="text-slate-500"># Credits positive amount to ledger:</span>
+        success = self.account.post_transaction(self._command_id, self.amount, self.reference)
+        self._executed = success
+        <span class="text-purple-400">return</span> success
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">undo</span>(self) -> bool:
+        <span class="text-purple-400">if not</span> self._executed:
+            <span class="text-purple-400">return False</span>
+        <span class="text-slate-500"># Reverses credit by deducting the exact amount:</span>
+        undo_ref = f<span class="text-amber-300">"UNDO:{self._command_id}"</span>
+        <span class="text-purple-400">return</span> self.account.post_transaction(f<span class="text-amber-300">"rev_{self._command_id}"</span>, -self.amount, undo_ref)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">to_audit_dict</span>(self) -> Dict[str, Any]:
+        <span class="text-purple-400">return</span> {
+            <span class="text-amber-300">"command_id"</span>: self._command_id,
+            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"DEPOSIT"</span>,
+            <span class="text-amber-300">"account_id"</span>: self.account.account_id,
+            <span class="text-amber-300">"amount"</span>: self.amount,
+            <span class="text-amber-300">"reference"</span>: self.reference
+        }
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CONCRETE COMMAND: Inter-Account Transfer Command</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransferFundsCommand</span>(ITransactionCommand):
+    <span class="text-slate-500">"""Concrete Command transferring funds between two LedgerAccount receivers."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, from_account: LedgerAccount, to_account: LedgerAccount, amount: float):
+        self._command_id = f<span class="text-amber-300">"cmd_xfer_{uuid.uuid4().hex[:8]}"</span>
+        self.from_account = from_account
+        self.to_account = to_account
+        self.amount = amount
+        self._executed = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">command_id</span>(self) -> str:
+        <span class="text-purple-400">return</span> self._command_id
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute</span>(self) -> bool:
+        <span class="text-slate-500"># 1. Deduct from sender:</span>
+        self.from_account.post_transaction(f<span class="text-amber-300">"deb_{self._command_id}"</span>, -self.amount, f<span class="text-amber-300">"Transfer to {self.to_account.account_id}"</span>)
+        <span class="text-slate-500"># 2. Credit to recipient:</span>
+        self.to_account.post_transaction(f<span class="text-amber-300">"crd_{self._command_id}"</span>, self.amount, f<span class="text-amber-300">"Transfer from {self.from_account.account_id}"</span>)
+        self._executed = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">undo</span>(self) -> bool:
+        <span class="text-purple-400">if not</span> self._executed:
+            <span class="text-purple-400">return False</span>
+        <span class="text-slate-500"># Exact compensation reversal:</span>
+        self.to_account.post_transaction(f<span class="text-amber-300">"und_crd_{self._command_id}"</span>, -self.amount, <span class="text-amber-300">"Reversal: deduct transfer"</span>)
+        self.from_account.post_transaction(f<span class="text-amber-300">"und_deb_{self._command_id}"</span>, self.amount, <span class="text-amber-300">"Reversal: refund transfer"</span>)
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">to_audit_dict</span>(self) -> Dict[str, Any]:
+        <span class="text-purple-400">return</span> {
+            <span class="text-amber-300">"command_id"</span>: self._command_id,
+            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"TRANSFER"</span>,
+            <span class="text-amber-300">"from_account"</span>: self.from_account.account_id,
+            <span class="text-amber-300">"to_account"</span>: self.to_account.account_id,
+            <span class="text-amber-300">"amount"</span>: self.amount
+        }
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># THE INVOKER &amp; JOURNAL</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionJournalInvoker</span>:
+    <span class="text-slate-500">"""
+    THE INVOKER:
+    Executes commands, maintains an execution stack for point-in-time rollbacks (Undo),
+    and logs an audit trail.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._history: List[ITransactionCommand] = []
+        self._audit_log: List[Dict[str, Any]] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute_command</span>(self, command: ITransactionCommand) -> bool:
+        success = command.execute()
+        <span class="text-purple-400">if</span> success:
+            self._history.append(command)
+            entry = command.to_audit_dict()
+            entry[<span class="text-amber-300">"timestamp"</span>] = time.time()
+            self._audit_log.append(entry)
+        <span class="text-purple-400">return</span> success
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">undo_last_command</span>(self) -> bool:
+        <span class="text-slate-500">"""Rolls back the most recent command in LIFO order."""</span>
+        <span class="text-purple-400">if not</span> self._history:
+            <span class="text-purple-400">return False</span>
+        command = self._history.pop()
+        <span class="text-purple-400">return</span> command.undo()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_audit_log</span>(self) -> List[Dict[str, Any]]:
+        <span class="text-purple-400">return</span> list(self._audit_log)</pre>
+            </div>
+
+            <!-- File 3: tests/test_chain_and_command.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Verification Test Battery: <code class="text-purple-700">tests/test_chain_and_command.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> nexuscore.compliance.chain <span class="text-purple-400">import</span> (
+    TradeContext, SanctionsListHandler, KycTierLimitHandler, AmlThresholdHandler
+)
+<span class="text-purple-400">from</span> nexuscore.ledger.bridge <span class="text-purple-400">import</span> InMemoryLedgerStorage, StandardRetailAccount
+<span class="text-purple-400">from</span> nexuscore.commands.transaction <span class="text-purple-400">import</span> (
+    DepositFundsCommand, TransferFundsCommand, TransactionJournalInvoker
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestChainAndCommandSuite</span>:
+    <span class="text-slate-500">"""Verifies Chain of Responsibility short-circuiting and Command undo journaling."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_chain_approves_fully_compliant_trade</span>(self):
+        <span class="text-slate-500"># Build Chain: Sanctions &rarr; KYC &rarr; AML</span>
+        sanctions = SanctionsListHandler()
+        kyc = KycTierLimitHandler()
+        aml = AmlThresholdHandler()
+        sanctions.set_next(kyc).set_next(aml)
+
+        valid_trade = TradeContext(
+            user_id=<span class="text-amber-300">"user_101"</span>,
+            country_code=<span class="text-amber-300">"DEU"</span>,
+            kyc_level=2,
+            amount=5000.0,
+            currency=<span class="text-amber-300">"USD"</span>
+        )
+        res = sanctions.handle(valid_trade)
+        assert res.passed <span class="text-purple-400">is True</span>
+        assert res.rejected_by <span class="text-purple-400">is None</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_chain_short_circuits_on_sanctions_violation</span>(self):
+        sanctions = SanctionsListHandler()
+        kyc = KycTierLimitHandler()
+        sanctions.set_next(kyc)
+
+        sanctioned_trade = TradeContext(
+            user_id=<span class="text-amber-300">"bad_actor"</span>,
+            country_code=<span class="text-amber-300">"PRK"</span>,  <span class="text-slate-500"># North Korea</span>
+            kyc_level=3,
+            amount=500.0,
+            currency=<span class="text-amber-300">"USD"</span>
+        )
+        res = sanctions.handle(sanctioned_trade)
+        assert res.passed <span class="text-purple-400">is False</span>
+        assert res.rejected_by == <span class="text-amber-300">"SanctionsListHandler"</span>
+        assert <span class="text-amber-300">"is sanctioned"</span> <span class="text-purple-400">in</span> res.reason
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_chain_rejects_unqualified_kyc_tier</span>(self):
+        sanctions = SanctionsListHandler()
+        kyc = KycTierLimitHandler()
+        sanctions.set_next(kyc)
+
+        unverified_trade = TradeContext(
+            user_id=<span class="text-amber-300">"newbie"</span>,
+            country_code=<span class="text-amber-300">"USA"</span>,
+            kyc_level=1,          <span class="text-slate-500"># Tier 1 max: $1,000</span>
+            amount=25000.0,       <span class="text-slate-500"># $25,000 exceeds limit</span>
+            currency=<span class="text-amber-300">"USD"</span>
+        )
+        res = sanctions.handle(unverified_trade)
+        assert res.passed <span class="text-purple-400">is False</span>
+        assert res.rejected_by == <span class="text-amber-300">"KycTierLimitHandler"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_command_execution_and_undo_reversal</span>(self):
+        storage = InMemoryLedgerStorage()
+        acc_a = StandardRetailAccount(<span class="text-amber-300">"ACC_A"</span>, storage)
+        acc_b = StandardRetailAccount(<span class="text-amber-300">"ACC_B"</span>, storage)
+
+        invoker = TransactionJournalInvoker()
+
+        <span class="text-slate-500"># 1. Deposit funds into Account A via Command</span>
+        dep_cmd = DepositFundsCommand(acc_a, 1000.0, <span class="text-amber-300">"Payroll"</span>)
+        invoker.execute_command(dep_cmd)
+        assert acc_a.get_current_balance() == 1000.0
+
+        <span class="text-slate-500"># 2. Transfer $400 from A to B via Command</span>
+        xfer_cmd = TransferFundsCommand(acc_a, acc_b, 400.0)
+        invoker.execute_command(xfer_cmd)
+        assert acc_a.get_current_balance() == 600.0
+        assert acc_b.get_current_balance() == 400.0
+
+        <span class="text-slate-500"># 3. Undo transfer command: Balances must revert exactly!</span>
+        invoker.undo_last_command()
+        assert acc_a.get_current_balance() == 1000.0
+        assert acc_b.get_current_balance() == 0.0
+
+        <span class="text-slate-500"># 4. Verify audit log integrity</span>
+        audit = invoker.get_audit_log()
+        assert len(audit) == 2
+        assert audit[0][<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"DEPOSIT"</span>
+        assert audit[1][<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"TRANSFER"</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Broken Chain (Silent Request Drops)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing a Chain of Responsibility where a handler neither resolves the request nor calls <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">super().handle(context)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent failures:</strong> If a handler forgets to pass control to the next handler, requests fall off the end of the chain into the void. The caller receives <code class="font-mono text-rose-950 font-bold">None</code>, leading to silent bugs where validation checks are omitted without raising an error! Always enforce explicit return contracts in base handlers.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Asymmetric Undo in Commands</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing a Command whose <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">undo()</code> method does not restore the receiver's state to the exact pre-execution state.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this corrupts state:</strong> If <code class="font-mono">execute()</code> charges an exchange fee or mutates an account status, but <code class="font-mono">undo()</code> only refunds the principal amount without refunding the fee or restoring status, the ledger becomes mathematically desynchronized. <strong>Undo must be the exact mathematical inverse of execute!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Chain of Responsibility and Command verification suite:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Chain &amp; Command test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_chain_and_command.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.04s. Confirms compliance chain short-circuiting, command execution, and ledger undo rollback!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test command rollback in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from nexuscore.ledger.bridge import InMemoryLedgerStorage, StandardRetailAccount; from nexuscore.commands.transaction import DepositFundsCommand, TransactionJournalInvoker; acc = StandardRetailAccount('A1', InMemoryLedgerStorage()); inv = TransactionJournalInvoker(); inv.execute_command(DepositFundsCommand(acc, 500, 'init')); print('Balance:', acc.get_current_balance()); inv.undo_last_command(); print('After Undo:', acc.get_current_balance())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Balance: 500.0</code> followed by <code class="text-emerald-400 font-mono">After Undo: 0.0</code>!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Behavioral Patterns III: Observer, Mediator &amp; Visitor: Event Desks &amp; AST Audits</h4>
+                <p class="text-xs text-slate-500 font-sans">Decoupling publishers from subscribers with the Observer pattern, centralizing cross-component trade execution with the Mediator, and evaluating compliance expressions across portfolio trees with the Visitor pattern.</p>
+            </div>
+            <a href="Chapter 08 - Behavioral Patterns III - Observer, Mediator and Visitor - Event Desks and AST Audits.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

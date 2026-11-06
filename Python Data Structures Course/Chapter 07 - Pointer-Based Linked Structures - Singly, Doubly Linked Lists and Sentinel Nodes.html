@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Pointer-Based Linked Structures - Singly, Doubly Linked Lists &amp; Sentinel Nodes</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 07 - Transaction Undo Log &amp; Sentinel Node Chains)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Phase 3: Pointer-Based Topologies
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 07: Pointer-Based Linked Structures - Singly, Doubly Linked Lists &amp; Sentinel Nodes
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Transcending flat memory arrays into explicit heap pointer topologies: Deconstructing the architectural tradeoffs between CPU cache locality and $O(1)$ pointer splicing, eliminating null-pointer boundary branches using <strong>Sentinel (Dummy) Nodes</strong>, detecting topology loops with Floyd's Cycle-Finding Algorithm, managing CPython cyclic garbage collection, and engineering the transactional rollback undo log for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Kickoff</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 07: ACID Transaction Undo Log</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Phase 1 and Phase 2, we engineered storage buffers, hash directories, telemetry multisets, priority schedulers, and binary range indices. Now in Phase 3, we build custom node-based data structures from scratch. In Milestone 07, we construct MemForge's <strong>ACID Transaction Undo Log</strong>: a sentinel-guarded doubly linked pointer chain recording inverse transactional operations. When a multi-statement transaction fails or encounters a rollback condition, the engine traverses the pointer chain backwards, reversing mutations in exact reverse order to restore database consistency.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Contiguous Memory vs. Disjoint Node Heap Layout</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Sentinel (Dummy) Node Architectural Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> O(1) Mid-Chain Splicing &amp; Deletion</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Floyd's Cycle-Finding Algorithm (Tortoise &amp; Hare)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cyclic Reference Management &amp; CPython <code class="text-purple-300">gc</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">TransactionUndoLog</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Pointer-Based Node Structures -->
+        <section id="pointer-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Contiguous Arrays vs. Disjoint Pointer Chacing</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Up to this point, our data structures (lists, arrays, deques) have utilized contiguous or blocked memory buffers. In a dynamic array, elements sit at predictable numeric offsets ($i \times \text{element\_size}$), conferring two immense advantages: instant $O(1)$ random access indexing and hardware CPU cache line pre-fetching.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, dynamic arrays exhibit severe architectural weaknesses when building dynamic transactional logs, free-memory allocators, and graph pipelines: inserting or deleting an element at an arbitrary midpoint requires an expensive $O(n)$ physical memory shift (<code class="font-mono text-slate-800">memmove()</code>), and dynamic arrays frequently suffer from capacity reallocation spikes.
+            </p>
+
+            <!-- Memory Allocation Topology Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Physical Memory Topologies: Contiguous Array vs. Disjoint Linked Nodes</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Comparing hardware cache line locality against arbitrary pointer splicing</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <!-- Contiguous Array Memory -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">1. Contiguous Dynamic Array (list)</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-300 px-2 py-0.5 rounded font-bold">Hardware Locality</span>
+                        </div>
+                        
+                        <div class="space-y-2 text-[10px]">
+                            <span class="text-slate-400 font-sans block">// Packed consecutive pointers in RAM:</span>
+                            <div class="grid grid-cols-4 gap-1 text-center font-bold">
+                                <div class="bg-slate-800 text-sky-300 p-2 rounded">Slot 0<br><span class="text-[8px] text-slate-500">0x1000</span></div>
+                                <div class="bg-slate-800 text-sky-300 p-2 rounded">Slot 1<br><span class="text-[8px] text-slate-500">0x1008</span></div>
+                                <div class="bg-slate-800 text-sky-300 p-2 rounded">Slot 2<br><span class="text-[8px] text-slate-500">0x1010</span></div>
+                                <div class="bg-slate-800 text-sky-300 p-2 rounded">Slot 3<br><span class="text-[8px] text-slate-500">0x1018</span></div>
+                            </div>
+                        </div>
+
+                        <ul class="space-y-1.5 text-[11px] text-slate-400 font-sans list-disc pl-4">
+                            <li><strong class="text-slate-200">Instant Access:</strong> Address of index $i$ is simply $\text{base} + (i \times 8)$. True $O(1)$ random indexing.</li>
+                            <li><strong class="text-slate-200">Cache Friendly:</strong> CPU fetches 64-byte cache lines; multiple adjacent elements arrive in a single memory cycle.</li>
+                            <li><strong class="text-rose-400">Deletion Flaw:</strong> Deleting Slot 1 forces $O(n)$ memory shifts of Slots 2 and 3 leftward.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Disjoint Heap Nodes -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Pointer-Linked Nodes (Doubly Linked)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold">Instant Splicing</span>
+                        </div>
+
+                        <div class="space-y-2 text-[10px]">
+                            <span class="text-slate-400 font-sans block">// Scattered heap allocations connected via explicit addresses:</span>
+                            <div class="flex items-center justify-between text-center gap-1">
+                                <div class="bg-slate-800 text-emerald-300 p-1.5 rounded flex-1">
+                                    Node A (0x7F04)<br><span class="text-[8px] text-slate-500">next &rarr; 0x9B10</span>
+                                </div>
+                                <span class="text-emerald-400 font-bold">&hArr;</span>
+                                <div class="bg-slate-800 text-emerald-300 p-1.5 rounded flex-1">
+                                    Node B (0x9B10)<br><span class="text-[8px] text-slate-500">&larr; prev | next &rarr;</span>
+                                </div>
+                                <span class="text-emerald-400 font-bold">&hArr;</span>
+                                <div class="bg-slate-800 text-emerald-300 p-1.5 rounded flex-1">
+                                    Node C (0x2A00)<br><span class="text-[8px] text-slate-500">&larr; prev 0x9B10</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <ul class="space-y-1.5 text-[11px] text-slate-400 font-sans list-disc pl-4">
+                            <li><strong class="text-slate-200">O(1) Mid-Chain Splicing:</strong> Given a pointer to Node B, deleting it requires updating only 2 pointers. Zero memory shifting.</li>
+                            <li><strong class="text-rose-400">Pointer Chasing:</strong> Nodes reside at random heap addresses. Traversing causes frequent CPU cache misses.</li>
+                            <li><strong class="text-rose-400">Zero Indexing:</strong> Accessing index $i$ requires walking $i$ pointers from the head. Strictly $O(n)$ access.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Complexity Comparison Table -->
+                <div class="overflow-x-auto pt-2">
+                    <table class="w-full text-left border-collapse text-[11px]">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400">
+                                <th class="py-2 px-2 font-bold font-sans">Operation</th>
+                                <th class="py-2 px-2 font-bold font-sans">Dynamic Array (list)</th>
+                                <th class="py-2 px-2 font-bold font-sans">Singly Linked List</th>
+                                <th class="py-2 px-2 font-bold font-sans">Doubly Linked List (Sentinel-Guarded)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                            <tr>
+                                <td class="py-2 px-2 font-bold font-sans text-slate-200">Random Access a[i]</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1)</td>
+                                <td class="py-2 px-2 text-rose-400 font-bold">O(n)</td>
+                                <td class="py-2 px-2 text-rose-400 font-bold">O(n)</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-2 font-bold font-sans text-slate-200">Prepend / Insert at Head</td>
+                                <td class="py-2 px-2 text-rose-400 font-bold">O(n) (memmove shift)</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1)</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1)</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-2 font-bold font-sans text-slate-200">Append / Insert at Tail</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1) Amortized</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1) (with tail pointer)</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1)</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 px-2 font-bold font-sans text-slate-200">Delete Known Node (Given Pointer)</td>
+                                <td class="py-2 px-2 text-rose-400 font-bold">O(n) (shifting pointers)</td>
+                                <td class="py-2 px-2 text-rose-400 font-bold">O(n) (must find predecessor)</td>
+                                <td class="py-2 px-2 text-emerald-400 font-bold">O(1) (instant relink)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Sentinel Node Architectural Pattern -->
+        <section id="sentinel-pattern" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architectural Elegance: Sentinel (Dummy) Boundary Nodes</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When beginner developers implement linked lists, their code becomes littered with fragile conditional checks:
+            </p>
+            <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 font-mono text-xs space-y-1">
+                <div>if self.head is None: ...</div>
+                <div>elif node_to_delete == self.head: ...</div>
+                <div>elif node_to_delete == self.tail: ...</div>
+                <div>else: ... # Vulnerable to null pointer exceptions!</div>
+            </div>
+            <p class="text-slate-700 leading-relaxed">
+                Senior systems architects eliminate 100% of these edge cases using the <strong>Sentinel Node Pattern</strong> (also called Dummy Head and Dummy Tail).
+            </p>
+
+            <!-- Sentinel Node Visual Architecture Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Sentinel-Guarded Doubly Linked List Topology</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Every real payload node is guaranteed to have non-null prev and next pointers</p>
+                </div>
+
+                <!-- Sentinel Diagram -->
+                <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                    <!-- Dummy Head -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-36 space-y-1">
+                        <span class="text-purple-300 font-bold block text-[11px]">[SENTINEL HEAD]</span>
+                        <div class="text-[9px] text-slate-400 font-sans">prev = None</div>
+                        <div class="text-[9px] text-emerald-400">next &rarr; Node 1</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&hArr;</div>
+
+                    <!-- User Node 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-emerald-400 font-bold block text-[11px]">Real Node 1 (Action A)</span>
+                        <div class="text-[9px] text-slate-400 font-sans">&larr; prev: Sentinel Head</div>
+                        <div class="text-[9px] text-slate-400 font-sans">next: Real Node 2 &rarr;</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&hArr;</div>
+
+                    <!-- User Node 2 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-emerald-400 font-bold block text-[11px]">Real Node 2 (Action B)</span>
+                        <div class="text-[9px] text-slate-400 font-sans">&larr; prev: Real Node 1</div>
+                        <div class="text-[9px] text-slate-400 font-sans">next: Sentinel Tail &rarr;</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-base">&hArr;</div>
+
+                    <!-- Dummy Tail -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-36 space-y-1">
+                        <span class="text-purple-300 font-bold block text-[11px]">[SENTINEL TAIL]</span>
+                        <div class="text-[9px] text-emerald-400">&larr; prev: Node 2</div>
+                        <div class="text-[9px] text-slate-400 font-sans">next = None</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">The Sentinel Invariants:</strong>
+                    <ul class="list-disc pl-5 space-y-1 text-slate-400 text-[11px]">
+                        <li>An <strong>empty list</strong> is simply initialized with <code class="font-mono text-purple-300">head.next = tail</code> and <code class="font-mono text-purple-300">tail.prev = head</code>.</li>
+                        <li><strong>Zero Special Cases:</strong> Inserting a node before the tail or after the head executes the exact same pointer reassignment formula whether the list contains 0 items or 1,000,000 items.</li>
+                        <li><strong>Safe Deletion:</strong> Removing a known node <code class="font-mono text-slate-300">N</code> is universally achieved in two lines:
+                            <div class="p-2 bg-slate-900 border border-slate-800 rounded-lg font-mono text-emerald-300 mt-1">
+                                N.prev.next = N.next<br>
+                                N.next.prev = N.prev
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Algorithms: Floyd's Cycle Detection & CPython Cyclic GC -->
+        <section id="cycle-detection" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: Floyd's Cycle Detection &amp; CPython Cyclic GC</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Pointer-based structures introduce two subtle runtime hazards: accidental <strong>pointer loops</strong> causing infinite iteration freezing, and <strong>circular reference memory leaks</strong> that bypass standard CPython reference counting.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Floyd's Cycle Detection -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Topology Auditing</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Floyd's Cycle Algorithm (Tortoise &amp; Hare)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        To determine if a linked list contains an unintended cycle without allocating extra memory for a visited hash set:
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1.5">
+                        <li>Maintain two pointers: <code class="font-mono text-slate-800">slow</code> (advances 1 step) and <code class="font-mono text-slate-800">fast</code> (advances 2 steps).</li>
+                        <li>If the list is acyclic, <code class="font-mono">fast</code> reaches the tail / <code class="font-mono">None</code> in $O(n)$ time.</li>
+                        <li>If a cycle exists, the fast pointer loops around and catches up to the slow pointer from behind. The moment <code class="font-mono text-rose-700">slow == fast</code>, a cycle is mathematically proven!</li>
+                        <li><strong>Complexity:</strong> Time: $O(n)$ | Space: strictly $O(1)$ auxiliary memory.</li>
+                    </ul>
+                </div>
+
+                <!-- CPython GC & Reference Cycles -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-rose-700 uppercase tracking-widest block">Memory Management</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Circular Reference Leaks &amp; gc Module</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        CPython deallocates objects instantly when their reference counter drops to zero (<code class="font-mono text-slate-800">ob_refcnt == 0</code>).
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>The Doubly-Linked Trap:</strong> In a doubly linked list, Node A points to Node B (<code class="font-mono">A.next = B</code>) and Node B points back to Node A (<code class="font-mono">B.prev = A</code>).</li>
+                        <li>Even if your program deletes the parent list reference, A and B still reference each other! Their reference count never drops to zero!</li>
+                        <li><strong>The Solution:</strong> They must wait for CPython's generational cyclic garbage collector (<code class="font-mono text-slate-800">gc.collect()</code>) to break the cycle. In production engines, always implement an explicit <code class="font-mono text-purple-700 font-bold">.clear()</code> method that unlinks all nodes to free memory immediately!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 07 -->
+        <section id="memforge-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 07: Transaction Undo Log Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/txn/undo_log.py</code>: an ACID transactional rollback chain.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The undo log architecture enforces:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Sentinel-guarded doubly linked list nodes storing inverse compensating mutations (<code class="font-mono text-slate-800">key</code>, <code class="font-mono text-slate-800">previous_value</code>, <code class="font-mono text-slate-800">action</code>).</li>
+                <li>Instant $O(1)$ action appending to the tail of the active transaction chain.</li>
+                <li><strong>Transactional Rollback:</strong> Iterates backwards from tail to head, reversing all mutations and restoring original data states upon query failure.</li>
+                <li><strong>Savepoint Support:</strong> Allows rolling back partially to a designated savepoint node while preserving earlier operations.</li>
+                <li>Explicit cyclic reference unlinking on commit or discard to prevent garbage collector latency spikes.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 07)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       ├── scheduler/</div>
+                <div>│       │   └── priority_queue.py         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler</span></div>
+                <div>│       ├── index/</div>
+                <div>│       │   └── sorted_index.py           <span class="text-slate-500"># Milestone 06: Sorted Range Index</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">txn/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">undo_log.py</span>               <span class="text-slate-500"># Milestone 07: Sentinel Doubly Linked Undo Chain</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_priority_queue.py    <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_sorted_index.py      <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_undo_log.py</span>          <span class="text-slate-500"># Milestone 07: Rollback, Savepoints &amp; Cycle Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/txn/undo_log.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Undo Log: <code class="text-purple-700">src/memforge/txn/undo_log.py</code></span>
+                    <span class="text-slate-400">Sentinel Doubly Linked Pointer Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Transaction Engine - Sentinel Doubly Linked Undo Log (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Dict, Iterator, Optional
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UndoNode</span>:
+    <span class="text-slate-500">"""
+    Discrete compensating action node in the doubly linked chain.
+    action: 'RESTORE_VALUE' or 'DELETE_INSERTED'
+    """</span>
+    action: str
+    key: str
+    previous_value: Any
+    prev: Optional[<span class="text-amber-300">"UndoNode"</span>] = <span class="text-rose-400">None</span>
+    next: Optional[<span class="text-amber-300">"UndoNode"</span>] = <span class="text-rose-400">None</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionUndoLog</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION SENTINEL DOUBLY LINKED LIST:
+    Maintains fixed dummy head and dummy tail boundary nodes.
+    Guarantees O(1) appending and rollback without null-pointer checks.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Allocate sentinel boundary nodes with dummy payload</span>
+        self._head = UndoNode(action=<span class="text-amber-300">"__SENTINEL_HEAD__"</span>, key=<span class="text-amber-300">""</span>, previous_value=<span class="text-rose-400">None</span>)
+        self._tail = UndoNode(action=<span class="text-amber-300">"__SENTINEL_TAIL__"</span>, key=<span class="text-amber-300">""</span>, previous_value=<span class="text-rose-400">None</span>)
+
+        <span class="text-slate-500"># Invariant: Empty list links head directly to tail</span>
+        self._head.next = self._tail
+        self._tail.prev = self._head
+        self._length = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total active compensating actions in the undo log."""</span>
+        <span class="text-purple-400">return</span> self._length
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">append_undo_action</span>(self, action: str, key: str, previous_value: Any) -> UndoNode:
+        <span class="text-slate-500">"""
+        Appends an undo action directly before the sentinel tail in O(1) time.
+        Returns the created UndoNode to serve as a transaction savepoint handle.
+        """</span>
+        new_node = UndoNode(action=action, key=key, previous_value=previous_value)
+        predecessor = self._tail.prev
+
+        <span class="text-slate-500"># Splice pointers in 4 steps:</span>
+        new_node.prev = predecessor
+        new_node.next = self._tail
+        predecessor.next = new_node
+        self._tail.prev = new_node
+
+        self._length += 1
+        <span class="text-purple-400">return</span> new_node
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rollback_all</span>(self, target_state_dict: Dict[str, Any]) -> int:
+        <span class="text-slate-500">"""
+        ROLLBACK TRANSACTION:
+        Traverses backwards from tail to head, executing inverse actions
+        directly onto the target state dictionary.
+        Returns count of reverted actions.
+        """</span>
+        <span class="text-purple-400">return</span> self.rollback_to_savepoint(savepoint_node=self._head, target_state_dict=target_state_dict)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rollback_to_savepoint</span>(
+        self,
+        savepoint_node: UndoNode,
+        target_state_dict: Dict[str, Any]
+    ) -> int:
+        <span class="text-slate-500">"""
+        Rolls back actions backwards until reaching savepoint_node.
+        Unlinks all reverted nodes to maintain clean pointer bounds.
+        """</span>
+        reverted_count = 0
+        current = self._tail.prev
+
+        <span class="text-purple-400">while</span> current <span class="text-purple-400">is not</span> self._head <span class="text-purple-400">and</span> current <span class="text-purple-400">is not</span> savepoint_node:
+            <span class="text-slate-500"># Execute compensating action</span>
+            <span class="text-purple-400">if</span> current.action == <span class="text-amber-300">"RESTORE_VALUE"</span>:
+                target_state_dict[current.key] = current.previous_value
+            <span class="text-purple-400">elif</span> current.action == <span class="text-amber-300">"DELETE_INSERTED"</span>:
+                target_state_dict.pop(current.key, <span class="text-rose-400">None</span>)
+
+            reverted_count += 1
+            current = current.prev
+
+        <span class="text-slate-500"># Unlink reverted tail chain: connect savepoint_node directly to tail</span>
+        savepoint_node.next = self._tail
+        self._tail.prev = savepoint_node
+        self._length -= reverted_count
+
+        <span class="text-purple-400">return</span> reverted_count
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">clear</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        EXPLICIT CYCLE-BREAKING PURGE:
+        Breaks all circular node pointers to allow immediate reference count
+        deallocation without burdening the cyclic garbage collector.
+        """</span>
+        current = self._head.next
+        <span class="text-purple-400">while</span> current <span class="text-purple-400">is not</span> self._tail <span class="text-purple-400">and</span> current <span class="text-purple-400">is not None</span>:
+            next_node = current.next
+            current.prev = <span class="text-rose-400">None</span>
+            current.next = <span class="text-rose-400">None</span>
+            current = next_node
+
+        self._head.next = self._tail
+        self._tail.prev = self._head
+        self._length = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">has_cycle</span>(self) -> bool:
+        <span class="text-slate-500">"""
+        TOPOLOGY AUDITOR (Floyd's Tortoise &amp; Hare Algorithm):
+        Proves absence of unintended circular pointer loops in O(n) time and O(1) space.
+        """</span>
+        slow = self._head
+        fast = self._head
+
+        <span class="text-purple-400">while</span> fast <span class="text-purple-400">is not None and</span> fast.next <span class="text-purple-400">is not None</span>:
+            slow = slow.next
+            fast = fast.next.next
+
+            <span class="text-purple-400">if</span> slow <span class="text-purple-400">is</span> fast:
+                <span class="text-purple-400">return</span> <span class="text-rose-400">True</span>
+
+        <span class="text-purple-400">return</span> <span class="text-rose-400">False</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_undo_log.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_undo_log.py</code></span>
+                    <span class="text-slate-400">Rollback, Savepoints &amp; Cycle Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Transaction Undo Log Verification (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.txn.undo_log <span class="text-purple-400">import</span> TransactionUndoLog
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestTransactionUndoLog</span>:
+    <span class="text-slate-500">"""Unit tests asserting transactional state rollbacks, savepoint boundaries, and cycle detection."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_full_transaction_rollback_reverts_state</span>(self):
+        undo_log = TransactionUndoLog()
+        state = {<span class="text-amber-300">"balance_alice"</span>: 1000, <span class="text-amber-300">"balance_bob"</span>: 500}
+
+        <span class="text-slate-500"># Transaction: Alice sends 200 to Bob</span>
+        <span class="text-slate-500"># 1. Deduct from Alice</span>
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, key=<span class="text-amber-300">"balance_alice"</span>, previous_value=1000)
+        state[<span class="text-amber-300">"balance_alice"</span>] = 800
+
+        <span class="text-slate-500"># 2. Add to Bob</span>
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, key=<span class="text-amber-300">"balance_bob"</span>, previous_value=500)
+        state[<span class="text-amber-300">"balance_bob"</span>] = 700
+
+        <span class="text-slate-500"># 3. Create new audit row</span>
+        undo_log.append_undo_action(<span class="text-amber-300">"DELETE_INSERTED"</span>, key=<span class="text-amber-300">"audit_tx_99"</span>, previous_value=<span class="text-rose-400">None</span>)
+        state[<span class="text-amber-300">"audit_tx_99"</span>] = <span class="text-amber-300">"COMPLETED"</span>
+
+        assert len(undo_log) == 3
+        assert state[<span class="text-amber-300">"balance_alice"</span>] == 800
+        assert state[<span class="text-amber-300">"balance_bob"</span>] == 700
+        assert <span class="text-amber-300">"audit_tx_99"</span> <span class="text-purple-400">in</span> state
+
+        <span class="text-slate-500"># Simulate failure: Trigger full rollback!</span>
+        reverted = undo_log.rollback_all(target_state_dict=state)
+        assert reverted == 3
+        assert len(undo_log) == 0
+
+        <span class="text-slate-500"># State must be perfectly restored to initial conditions</span>
+        assert state[<span class="text-amber-300">"balance_alice"</span>] == 1000
+        assert state[<span class="text-amber-300">"balance_bob"</span>] == 500
+        assert <span class="text-amber-300">"audit_tx_99"</span> <span class="text-purple-400">not in</span> state
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_partial_rollback_to_savepoint</span>(self):
+        undo_log = TransactionUndoLog()
+        state = {<span class="text-amber-300">"step"</span>: 0}
+
+        <span class="text-slate-500"># Step 1: Baseline modification</span>
+        savepoint_1 = undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"step"</span>, previous_value=0)
+        state[<span class="text-amber-300">"step"</span>] = 1
+
+        <span class="text-slate-500"># Step 2: Tentative operation</span>
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"step"</span>, previous_value=1)
+        state[<span class="text-amber-300">"step"</span>] = 2
+
+        <span class="text-slate-500"># Step 3: Tentative failure</span>
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"step"</span>, previous_value=2)
+        state[<span class="text-amber-300">"step"</span>] = 3
+
+        assert state[<span class="text-amber-300">"step"</span>] == 3
+        assert len(undo_log) == 3
+
+        <span class="text-slate-500"># Roll back ONLY to savepoint_1 (reverting steps 2 and 3, preserving step 1)</span>
+        reverted = undo_log.rollback_to_savepoint(savepoint_node=savepoint_1, target_state_dict=state)
+        assert reverted == 2
+        assert len(undo_log) == 1
+        assert state[<span class="text-amber-300">"step"</span>] == 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_floyd_cycle_detector_identifies_accidental_loop</span>(self):
+        undo_log = TransactionUndoLog()
+        n1 = undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"a"</span>, 1)
+        n2 = undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"b"</span>, 2)
+        n3 = undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"c"</span>, 3)
+
+        assert undo_log.has_cycle() is <span class="text-rose-400">False</span>
+
+        <span class="text-slate-500"># Intentionally corrupt the pointer structure by introducing an artificial loop</span>
+        n3.next = n1  <span class="text-slate-500"># Loop: n1 &rarr; n2 &rarr; n3 &rarr; n1</span>
+        assert undo_log.has_cycle() is <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_explicit_clear_unlinks_pointers_completely</span>(self):
+        undo_log = TransactionUndoLog()
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"k1"</span>, 10)
+        undo_log.append_undo_action(<span class="text-amber-300">"RESTORE_VALUE"</span>, <span class="text-amber-300">"k2"</span>, 20)
+        assert len(undo_log) == 2
+
+        undo_log.clear()
+        assert len(undo_log) == 0
+        assert undo_log._head.next <span class="text-purple-400">is</span> undo_log._tail
+        assert undo_log._tail.prev <span class="text-purple-400">is</span> undo_log._head</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Orphaned Tail Pointer Catastrophe</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">current.next = new_node</code> before connecting <code class="font-mono text-rose-900 font-bold">new_node.next = current.next</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes memory leaks:</strong> In pointer structures, order of assignment is critical! Reassigning the forward pointer prematurely severs reference to the entire remaining chain, permanently orphaning thousands of nodes in memory.
+                        <strong>Rule:</strong> Always wire the new node's outgoing links <em>first</em>, before overwriting existing chain pointers.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Treating Linked Lists Like Arrays</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Iterating by index in a loop: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">for i in range(len(ll)): val = ll.get_at(i)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes O(n²) bottlenecks:</strong> Each call to <code class="font-mono">get_at(i)</code> walks the pointer chain from the head. Running this in a loop takes $1 + 2 + \dots + n = O(n^2)$ time!
+                        <strong>Fix:</strong> Implement Python's <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__iter__()</code> protocol, yielding consecutive node values directly in a single $O(n)$ traversal.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Spaghetti Null-Pointer Checks</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing custom conditional branches for every insertion or deletion at the boundaries of a linked list.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes bugs:</strong> Any missed edge case yields <code class="font-mono text-rose-950 font-bold">AttributeError: 'NoneType' object has no attribute 'next'</code> in production.
+                        <strong>Fix:</strong> Adopt the <strong>Sentinel Node Pattern</strong>: allocate dummy head and tail nodes so every real node is guaranteed non-null neighbors.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Relying on CPython Refcounting for Cycles</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Discarding a doubly linked list without an explicit unlinking method.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this thrashes RAM:</strong> Doubly linked nodes reference each other bidirectionally (<code class="font-mono">next &hArr; prev</code>), preventing immediate garbage collection upon leaving scope.
+                        <strong>Fix:</strong> Implement an explicit <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">.clear()</code> method that severs all pointers to free heap allocations immediately.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the transactional undo log test suite and verify pointer rollback integrity:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge transaction undo log unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_undo_log.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms state rollbacks, savepoint unlinking, Floyd's cycle detection, and memory clearing.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 07:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, sorted range indices, and sentinel undo chains.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify sentinel node zero-null invariants in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from memforge.txn.undo_log import TransactionUndoLog; l = TransactionUndoLog(); print('Empty head.next is tail:', l._head.next is l._tail); print('Empty tail.prev is head:', l._tail.prev is l._head)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that the sentinel boundaries establish non-null pointer continuity even when the list is completely empty!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Binary Search Trees &amp; Self-Balancing Trees - Tree Traversals, AVL &amp; Rotations</h4>
+                <p class="text-xs text-slate-500 font-sans">Expanding from linear pointer chains into non-linear hierarchical trees: Tree traversals (In-Order, Pre-Order, Post-Order, BFS), the risk of pathological degeneration, and implementing a self-balancing AVL secondary index tree with single and double rotations.</p>
+            </div>
+            <a href="Chapter 08 - Binary Search Trees and Self-Balancing Trees - Tree Traversals, AVL and Rotations.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

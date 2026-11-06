@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Creational Patterns I: Factory Method &amp; Abstract Factory in Multi-Provider Gateways</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 01 - Factory Method &amp; Abstract Factory)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Creational Patterns I
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Creational Patterns I: Factory Method &amp; Abstract Factory in Multi-Provider Gateways
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering the mechanics of object creation: Why calling constructors directly across business logic creates rigid systems, how the <strong>Factory Method</strong> decouples caller from callee via polymorphic virtual constructors, how the <strong>Abstract Factory</strong> orchestrates families of related payment and reporting engines, and how to build the foundational clearing infrastructure of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "NexusCore" Milestone 01</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Throughout this 18-chapter masterclass, we engineer <strong>NexusCore</strong>: an enterprise-grade financial transaction, multi-currency settlement, and automated order execution platform. In this initial milestone, we build the core multi-provider payment routing engine. When customer checkout transactions flow into the gateway, NexusCore must dynamically route payments across third-party providers (<strong>Stripe</strong> for US credit cards, <strong>SEPA Direct Debit</strong> for European bank clearing, and a sandbox <strong>Mock Engine</strong> for automated testing) without littering our business services with hardcoded provider instantiation logic.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern: Factory Method Architecture</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern: Abstract Factory Architecture</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Constructor Anti-Pattern &amp; The Fix</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Single Responsibility &amp; Open-Closed Principles</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full NexusCore Gateway Implementation with Comments</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete PyTest Assertion &amp; Verification Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Architectural Theory -->
+        <section id="foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Architecture Fundamentals</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Why Object Creation Matters: The Physics of Couplings</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In software engineering, every time your code contains the keyword <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">ClassInstantiation()</code> (such as calling a class constructor directly: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">StripeGateway(api_key="sk_live_...")</code>), you create a <strong>tight compile-time / import-time coupling</strong> between the caller and that specific concrete implementation.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When you hardcode object creation inside your business services:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>You violate the Open-Closed Principle (OCP):</strong> To add a new provider (e.g., PayPal or Adyen), you must open and rewrite existing business service files, risking regressions in working code.</li>
+                <li><strong>You break testing isolation:</strong> You cannot easily swap out real network-calling payment providers for lightweight in-memory stubs without monkey-patching or complex test setup.</li>
+                <li><strong>You scatter configuration logic:</strong> API keys, timeouts, retry rules, and endpoint paths become duplicated across every controller that constructs a gateway.</li>
+            </ul>
+
+            <!-- Concrete vs Abstract Coupling Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Coupling Comparison: Direct Constructor Calls vs. Factory Abstraction
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Bad Approach -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Direct Constructor Coupling (Rigid)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">High Friction</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Caller explicitly imports and instantiates concrete classes:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>CheckoutService &rarr; imports StripeGateway</div>
+                            <div>CheckoutService &rarr; imports SepaGateway</div>
+                            <div>CheckoutService &rarr; calls new StripeGateway(cfg)</div>
+                            <div class="text-rose-400 font-bold">&cross; Adding Adyen requires modifying CheckoutService!</div>
+                        </div>
+                        <p class="text-rose-400 font-sans text-[10px]">
+                            Result: High coupling. The business layer must know all implementation details, imports, and configuration mechanics of every vendor.
+                        </p>
+                    </div>
+
+                    <!-- Clean Approach -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Factory Abstraction (Decoupled)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Standard Architecture</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Caller interacts purely with an abstract contract:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>CheckoutService &rarr; depends only on IPaymentGateway</div>
+                            <div>CheckoutService &rarr; calls factory.create_gateway()</div>
+                            <div>Factory decides: returns Stripe, SEPA, or Mock</div>
+                            <div class="text-emerald-400 font-bold">&check; Zero changes to CheckoutService when adding vendors!</div>
+                        </div>
+                        <p class="text-emerald-300 font-sans text-[10px]">
+                            Result: Loose coupling. The business service focuses strictly on processing transactions, unaware of how vendors are constructed.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: FACTORY METHOD -->
+        <section id="pattern-factory-method" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #01
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Factory Method
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Creational Pattern &bull; Gang of Four (GoF) Reference p. 107
+                </p>
+            </div>
+
+            <!-- 1. The Simple Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine ordering a meal at a fast-food drive-through window. You pull up to the speaker and order a <strong>"Value Meal"</strong>. You don't walk into the kitchen, turn on the deep fryer, calibrate the grill temperature, or choose which specific cardboard box holds the burger. 
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    The restaurant staff acts as the <strong>Factory Method</strong>: you request a product by specifying an abstract order, and the kitchen encapsulates the complex creation steps, handing you a finished meal that satisfies the standard "Food Item" contract. Your car never touches the kitchen equipment.
+                </p>
+            </div>
+
+            <!-- 2. Bad Code vs Clean Code -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Hardcoded Conditional Instantiation</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Here is what real-world code looks like when an entry-level engineer handles multiple payment providers without a creational pattern. Notice how the core business function becomes a dumping ground for vendor credentials, imports, and giant conditional branches:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: The Hardcoded Conditional Constructor</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">OrderProcessor</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process_payment</span>(self, order_id: str, amount: float, provider: str, currency: str):
+        <span class="text-slate-500"># The business processor is directly coupled to every vendor's initialization!</span>
+        <span class="text-purple-400">if</span> provider == <span class="text-amber-300">"stripe"</span>:
+            <span class="text-slate-500"># Stripe requires secret keys and API version configurations</span>
+            gateway = StripeGateway(api_key=<span class="text-amber-300">"sk_live_998822"</span>, api_version=<span class="text-amber-300">"2023-10-16"</span>)
+        <span class="text-purple-400">elif</span> provider == <span class="text-amber-300">"sepa"</span>:
+            <span class="text-slate-500"># SEPA requires bank identifier codes, IBAN formatters, and clearing IDs</span>
+            gateway = SepaGateway(creditor_id=<span class="text-amber-300">"DE98ZZZ0999"</span>, bic=<span class="text-amber-300">"MARKDEF1"</span>)
+        <span class="text-purple-400">elif</span> provider == <span class="text-amber-300">"paypal"</span>:
+            <span class="text-slate-500"># PayPal requires OAuth client ID, client secret, and sandbox booleans</span>
+            gateway = PayPalGateway(client_id=<span class="text-amber-300">"id_123"</span>, client_secret=<span class="text-amber-300">"sec_456"</span>, sandbox=<span class="text-rose-400">False</span>)
+        <span class="text-purple-400">else</span>:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Unknown provider: {provider}"</span>)
+
+        <span class="text-slate-500"># If PayPal changes their constructor tomorrow, this business file breaks!</span>
+        <span class="text-slate-500"># If we want to unit test this class, we are forced to mock 3 different vendors!</span>
+        <span class="text-purple-400">return</span> gateway.charge(amount, currency)</pre>
+            </div>
+
+            <!-- Visual Flowchart of Factory Method -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Factory Method Architectural Topology
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">Caller Service</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Calls factory.get_gateway()</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; invokes &rarr;</div>
+
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-emerald-300 font-bold block">GatewayFactory</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Resolves configuration &amp; instantiates concrete gateway</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; returns &rarr;</div>
+
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-300 font-bold block">IPaymentGateway</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Common polymorphic interface (.charge())</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: When to Use & When NOT to Use -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Factory Method</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You don't know ahead of time the exact types and dependencies of the objects your code needs to work with.</li>
+                        <li>You want to provide users of your library or framework with a way to extend its internal components by substituting custom subclasses.</li>
+                        <li>You want to centralize complex initialization logic (reading credentials, pooling network connections) into a single place.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Factory Method</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The object has simple instantiation logic (e.g., standard Python dataclasses with 2 primitive fields). Direct construction is cleaner.</li>
+                        <li>Your system will only ever have one single implementation of an object and you have no business requirements for swapping or mocking.</li>
+                        <li>You are introducing an abstract class and factory just to satisfy dogma ("Patternitis").</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: ABSTRACT FACTORY -->
+        <section id="pattern-abstract-factory" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Design Pattern #02
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Abstract Factory
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Creational Pattern &bull; Gang of Four (GoF) Reference p. 87
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine furnishing an office. You decide you want a specific interior design theme: either a <strong>"Modern Minimalist"</strong> theme or an <strong>"Antique Victorian"</strong> theme. 
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    If you buy a Modern desk, you must also buy a Modern chair and a Modern lamp so the furniture matches. You don't want to accidentally mix an ornate Victorian carved oak desk with an ultra-modern neon plastic chair!
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    An <strong>Abstract Factory</strong> is the furniture showroom that guarantees consistency: when you select the Modern Furniture Factory, calling <code class="font-mono text-purple-950 font-bold">create_chair()</code>, <code class="font-mono text-purple-950 font-bold">create_desk()</code>, and <code class="font-mono text-purple-950 font-bold">create_lamp()</code> guarantees that all items belong to the identical matching family.
+                </p>
+            </div>
+
+            <!-- Abstract Factory in Financial Gateways -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-sm text-slate-700 leading-relaxed">
+                <h3 class="font-bold text-slate-900 text-base font-mono">The Problem in Multi-Provider Gateways</h3>
+                <p>
+                    A real-world payment integration involves more than charging money. A full vendor integration requires a <strong>family of matching, co-dependent components</strong>:
+                </p>
+                <ol class="list-decimal pl-5 space-y-1 text-xs font-mono text-slate-600">
+                    <li><strong>A Payment Gateway:</strong> Executes authorization and capture over the wire.</li>
+                    <li><strong>A Settlement Invoicer:</strong> Generates regulatory invoices formatted for that provider's tax jurisdiction.</li>
+                    <li><strong>A Webhook Dispatcher:</strong> Decodes, cryptographically verifies, and parses asynchronous callback events from that specific vendor.</li>
+                </ol>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    If an application initiates a payment via <strong>Stripe</strong>, but accidentally passes the transaction callback to the <strong>SEPA Webhook Parser</strong>, the cryptographic signature check fails and the invoice is issued with the wrong tax identifiers. 
+                    <strong>Abstract Factory guarantees family compatibility at instantiation time.</strong>
+                </p>
+            </div>
+
+            <!-- Abstract Factory Class Hierarchy (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-purple-400 uppercase tracking-widest text-[11px]">
+                    Abstract Factory Component Family Structure
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <!-- Family 1: Stripe -->
+                    <div class="p-4 bg-slate-950 border border-sky-600 rounded-xl space-y-2">
+                        <span class="text-sky-400 font-bold block text-sm">Family 1: StripeProviderFactory</span>
+                        <div class="space-y-1 text-[11px] text-slate-400 font-sans">
+                            <div>&bull; <code class="text-sky-300 font-mono">create_gateway()</code> &rarr; StripeGateway</div>
+                            <div>&bull; <code class="text-sky-300 font-mono">create_invoicer()</code> &rarr; StripeInvoicer</div>
+                            <div>&bull; <code class="text-sky-300 font-mono">create_webhook_verifier()</code> &rarr; StripeWebhookVerifier</div>
+                        </div>
+                    </div>
+
+                    <!-- Family 2: SEPA -->
+                    <div class="p-4 bg-slate-950 border border-emerald-600 rounded-xl space-y-2">
+                        <span class="text-emerald-400 font-bold block text-sm">Family 2: SepaProviderFactory</span>
+                        <div class="space-y-1 text-[11px] text-slate-400 font-sans">
+                            <div>&bull; <code class="text-emerald-300 font-mono">create_gateway()</code> &rarr; SepaGateway</div>
+                            <div>&bull; <code class="text-emerald-300 font-mono">create_invoicer()</code> &rarr; SepaInvoicer</div>
+                            <div>&bull; <code class="text-emerald-300 font-mono">create_webhook_verifier()</code> &rarr; SepaWebhookVerifier</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-3 rounded-lg text-center text-slate-400 text-[10px]">
+                    The client application accepts an <code class="text-purple-300 font-mono">IPaymentProviderFactory</code> instance and creates compatible components with zero danger of cross-family pollution!
+                </div>
+            </div>
+
+            <!-- Comparison Table: Factory Method vs Abstract Factory -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Dimension</th>
+                            <th class="p-3.5 text-emerald-700">Factory Method</th>
+                            <th class="p-3.5 text-purple-700">Abstract Factory</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Primary Intent</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Creates <strong>a single object</strong> whose exact concrete class is determined by subclasses or parameters.</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Creates <strong>families of related or dependent objects</strong> without specifying their concrete classes.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Creation Mechanism</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Relies on inheritance or a dedicated parameterized creation function/method.</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Relies on object composition: factory itself is an object passed into client code.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Output Scope</td>
+                            <td class="p-3.5 text-slate-600 font-sans">One product interface (e.g., <code class="font-mono">IPaymentGateway</code>).</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Multiple product interfaces (e.g., <code class="font-mono">Gateway</code> + <code class="font-mono">Invoicer</code> + <code class="font-mono">Verifier</code>).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PROJECT IMPLEMENTATION: NEXUSCORE MILESTONE 01 -->
+        <section id="nexuscore-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 01: Multi-Provider Payment Gateway Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble the foundational payment processing module for <strong>NexusCore</strong>. Below is the full, functional code incorporating both Factory Method and Abstract Factory patterns, written with rigorous type hints and step-by-step explanatory comments:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 01)</div>
+                <div>nexuscore/</div>
+                <div>├── pyproject.toml</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── payments/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">contracts.py</span>            <span class="text-slate-500"># Abstract base interfaces &amp; dataclasses</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">providers.py</span>            <span class="text-slate-500"># Concrete Stripe, SEPA &amp; Mock implementations</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">factories.py</span>            <span class="text-slate-500"># Factory Method &amp; Abstract Factory engines</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">service.py</span>              <span class="text-slate-500"># High-level decoupled checkout service</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_payment_factories.py</span>       <span class="text-slate-500"># PyTest verification test suite</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/payments/contracts.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Abstract Domain Contracts: <code class="text-purple-700">src/nexuscore/payments/contracts.py</code></span>
+                    <span class="text-slate-400">Pure Interfaces</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Core - Payment &amp; Settlement Domain Contracts</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PaymentResult</span>:
+    <span class="text-slate-500">"""
+    Immutable value object encapsulating the outcome of a financial charge attempt.
+    """</span>
+    success: bool
+    transaction_id: str
+    amount: float
+    currency: str
+    provider_name: str
+    error_message: Optional[str] = <span class="text-rose-400">None</span>
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Invoice</span>:
+    <span class="text-slate-500">"""
+    Immutable representation of an official regulatory invoice issued by a provider.
+    """</span>
+    invoice_number: str
+    tax_jurisdiction: str
+    gross_amount: float
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Product Interface 1: Payment Gateway</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IPaymentGateway</span>(ABC):
+    <span class="text-slate-500">"""
+    Abstract Contract for initiating charges against remote banking systems.
+    Every provider (Stripe, SEPA, PayPal) MUST adhere to this exact interface.
+    """</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">charge</span>(self, amount: float, currency: str, source_token: str) -> PaymentResult:
+        <span class="text-slate-500">"""Executes a financial charge."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Product Interface 2: Invoicer</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IInvoicer</span>(ABC):
+    <span class="text-slate-500">"""
+    Abstract Contract for generating tax invoices tailored to regional regulatory rules.
+    """</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_invoice</span>(self, transaction_id: str, amount: float) -> Invoice:
+        <span class="text-slate-500">"""Produces a formal tax invoice document."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Product Interface 3: Webhook Verifier</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IWebhookVerifier</span>(ABC):
+    <span class="text-slate-500">"""
+    Abstract Contract for validating HMAC/cryptographic signatures on incoming callbacks.
+    """</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_signature</span>(self, payload: bytes, signature_header: str) -> bool:
+        <span class="text-slate-500">"""Validates cryptographic integrity of a vendor callback."""</span>
+        <span class="text-purple-400">pass</span></pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/payments/providers.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Concrete Vendor Implementations: <code class="text-purple-700">src/nexuscore/payments/providers.py</code></span>
+                    <span class="text-slate-400">Stripe, SEPA, Mock</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Providers - Concrete Vendor Implementations</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> nexuscore.payments.contracts <span class="text-purple-400">import</span> (
+    IPaymentGateway, IInvoicer, IWebhookVerifier, PaymentResult, Invoice
+)
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 1. STRIPE FAMILY (US / International Credit Cards)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StripeGateway</span>(IPaymentGateway):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, api_key: str, endpoint: str = <span class="text-amber-300">"https://api.stripe.com/v1"</span>):
+        <span class="text-slate-500"># Encapsulates Stripe-specific configuration</span>
+        self._api_key = api_key
+        self._endpoint = endpoint
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">charge</span>(self, amount: float, currency: str, source_token: str) -> PaymentResult:
+        <span class="text-slate-500"># In production: Performs HTTP POST to Stripe with Bearer token</span>
+        tx_id = f<span class="text-amber-300">"ch_stripe_{uuid.uuid4().hex[:8]}"</span>
+        <span class="text-purple-400">return</span> PaymentResult(
+            success=<span class="text-rose-400">True</span>,
+            transaction_id=tx_id,
+            amount=amount,
+            currency=currency.upper(),
+            provider_name=<span class="text-amber-300">"Stripe"</span>
+        )
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StripeInvoicer</span>(IInvoicer):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_invoice</span>(self, transaction_id: str, amount: float) -> Invoice:
+        <span class="text-purple-400">return</span> Invoice(
+            invoice_number=f<span class="text-amber-300">"INV-STRIPE-{transaction_id}"</span>,
+            tax_jurisdiction=<span class="text-amber-300">"US-CA"</span>,
+            gross_amount=amount
+        )
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StripeWebhookVerifier</span>(IWebhookVerifier):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_signature</span>(self, payload: bytes, signature_header: str) -> bool:
+        <span class="text-slate-500"># Validates Stripe HMAC-SHA256 signature</span>
+        <span class="text-purple-400">return</span> signature_header.startswith(<span class="text-amber-300">"t="</span>) <span class="text-purple-400">and</span> len(payload) &gt; 0
+
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 2. SEPA FAMILY (European Direct Debit Bank Clearing)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SepaGateway</span>(IPaymentGateway):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, creditor_id: str, bic: str):
+        <span class="text-slate-500"># Encapsulates European Banking Union BIC and Creditor Identifiers</span>
+        self._creditor_id = creditor_id
+        self._bic = bic
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">charge</span>(self, amount: float, currency: str, source_token: str) -> PaymentResult:
+        <span class="text-slate-500"># Enforces Euro-only regulatory rule</span>
+        <span class="text-purple-400">if</span> currency.upper() != <span class="text-amber-300">"EUR"</span>:
+            <span class="text-purple-400">return</span> PaymentResult(
+                success=<span class="text-rose-400">False</span>,
+                transaction_id=<span class="text-amber-300">""</span>,
+                amount=amount,
+                currency=currency,
+                provider_name=<span class="text-amber-300">"SEPA"</span>,
+                error_message=<span class="text-amber-300">"SEPA only clears transactions in EUR"</span>
+            )
+
+        tx_id = f<span class="text-amber-300">"sepa_debit_{uuid.uuid4().hex[:8]}"</span>
+        <span class="text-purple-400">return</span> PaymentResult(
+            success=<span class="text-rose-400">True</span>,
+            transaction_id=tx_id,
+            amount=amount,
+            currency=<span class="text-amber-300">"EUR"</span>,
+            provider_name=<span class="text-amber-300">"SEPA"</span>
+        )
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SepaInvoicer</span>(IInvoicer):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_invoice</span>(self, transaction_id: str, amount: float) -> Invoice:
+        <span class="text-purple-400">return</span> Invoice(
+            invoice_number=f<span class="text-amber-300">"EU-VAT-SEPA-{transaction_id}"</span>,
+            tax_jurisdiction=<span class="text-amber-300">"EU-GERMANY"</span>,
+            gross_amount=amount
+        )
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SepaWebhookVerifier</span>(IWebhookVerifier):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_signature</span>(self, payload: bytes, signature_header: str) -> bool:
+        <span class="text-slate-500"># Validates banking certificate public key</span>
+        <span class="text-purple-400">return</span> signature_header.startswith(<span class="text-amber-300">"sha256-rsa="</span>)
+
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 3. MOCK FAMILY (Zero Network IO for Fast Unit Testing)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockGateway</span>(IPaymentGateway):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">charge</span>(self, amount: float, currency: str, source_token: str) -> PaymentResult:
+        <span class="text-purple-400">return</span> PaymentResult(
+            success=<span class="text-rose-400">True</span>,
+            transaction_id=f<span class="text-amber-300">"mock_tx_{uuid.uuid4().hex[:6]}"</span>,
+            amount=amount,
+            currency=currency.upper(),
+            provider_name=<span class="text-amber-300">"MockEngine"</span>
+        )
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockInvoicer</span>(IInvoicer):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_invoice</span>(self, transaction_id: str, amount: float) -> Invoice:
+        <span class="text-purple-400">return</span> Invoice(invoice_number=f<span class="text-amber-300">"MOCK-{transaction_id}"</span>, tax_jurisdiction=<span class="text-amber-300">"NONE"</span>, gross_amount=amount)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockWebhookVerifier</span>(IWebhookVerifier):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_signature</span>(self, payload: bytes, signature_header: str) -> bool:
+        <span class="text-purple-400">return</span> <span class="text-rose-400">True</span></pre>
+            </div>
+
+            <!-- File 3: src/nexuscore/payments/factories.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Factory Implementation: <code class="text-purple-700">src/nexuscore/payments/factories.py</code></span>
+                    <span class="text-slate-400">Factory Method &amp; Abstract Factory</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Factories - Factory Method &amp; Abstract Factory Engines</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Type
+<span class="text-purple-400">from</span> nexuscore.payments.contracts <span class="text-purple-400">import</span> IPaymentGateway, IInvoicer, IWebhookVerifier
+<span class="text-purple-400">from</span> nexuscore.payments.providers <span class="text-purple-400">import</span> (
+    StripeGateway, StripeInvoicer, StripeWebhookVerifier,
+    SepaGateway, SepaInvoicer, SepaWebhookVerifier,
+    MockGateway, MockInvoicer, MockWebhookVerifier
+)
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># PATTERN 1: FACTORY METHOD (Parameterized / Registry-Driven)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PaymentGatewayFactory</span>:
+    <span class="text-slate-500">"""
+    FACTORY METHOD PATTERN:
+    Responsible for creating single IPaymentGateway objects.
+    Decouples callers from constructor signatures, credentials, and API versions.
+    Open-Closed: New providers can be registered dynamically via 'register_provider'!
+    """</span>
+    _registry: Dict[str, Type[IPaymentGateway]] = {
+        <span class="text-amber-300">"stripe"</span>: StripeGateway,
+        <span class="text-amber-300">"sepa"</span>: SepaGateway,
+        <span class="text-amber-300">"mock"</span>: MockGateway,
+    }
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_provider</span>(cls, name: str, gateway_cls: Type[IPaymentGateway]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Dynamically register a new provider without modifying this class (OCP)."""</span>
+        cls._registry[name.lower()] = gateway_cls
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create</span>(cls, provider_name: str, **kwargs) -> IPaymentGateway:
+        <span class="text-slate-500">"""
+        The Factory Method: Resolves, configures, and instantiates the gateway.
+        """</span>
+        normalized_name = provider_name.strip().lower()
+        <span class="text-purple-400">if</span> normalized_name <span class="text-purple-400">not in</span> cls._registry:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Unknown payment provider: '{provider_name}'. Registered: {list(cls._registry.keys())}"</span>)
+
+        gateway_cls = cls._registry[normalized_name]
+
+        <span class="text-slate-500"># Factory encapsulates configuration mapping for specific providers</span>
+        <span class="text-purple-400">if</span> gateway_cls <span class="text-purple-400">is</span> StripeGateway:
+            api_key = kwargs.get(<span class="text-amber-300">"api_key"</span>, <span class="text-amber-300">"sk_live_default_credential"</span>)
+            <span class="text-purple-400">return</span> StripeGateway(api_key=api_key)
+
+        <span class="text-purple-400">elif</span> gateway_cls <span class="text-purple-400">is</span> SepaGateway:
+            creditor_id = kwargs.get(<span class="text-amber-300">"creditor_id"</span>, <span class="text-amber-300">"DE99ZZZ00000001"</span>)
+            bic = kwargs.get(<span class="text-amber-300">"bic"</span>, <span class="text-amber-300">"MARKDEF1XXX"</span>)
+            <span class="text-purple-400">return</span> SepaGateway(creditor_id=creditor_id, bic=bic)
+
+        <span class="text-purple-400">elif</span> gateway_cls <span class="text-purple-400">is</span> MockGateway:
+            <span class="text-purple-400">return</span> MockGateway()
+
+        <span class="text-slate-500"># Fallback instantiation for dynamically registered providers</span>
+        <span class="text-purple-400">return</span> gateway_cls(**kwargs)
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># PATTERN 2: ABSTRACT FACTORY (Family of Related Components)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IPaymentProviderFactory</span>(ABC):
+    <span class="text-slate-500">"""
+    ABSTRACT FACTORY CONTRACT:
+    Guarantees that an entire family of components (Gateway + Invoicer + Verifier)
+    always belongs to the exact same vendor ecosystem. Prevents mismatched components.
+    """</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_gateway</span>(self) -> IPaymentGateway:
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_invoicer</span>(self) -> IInvoicer:
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_webhook_verifier</span>(self) -> IWebhookVerifier:
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StripeProviderFactory</span>(IPaymentProviderFactory):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, api_key: str):
+        self._api_key = api_key
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_gateway</span>(self) -> IPaymentGateway:
+        <span class="text-purple-400">return</span> StripeGateway(api_key=self._api_key)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_invoicer</span>(self) -> IInvoicer:
+        <span class="text-purple-400">return</span> StripeInvoicer()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_webhook_verifier</span>(self) -> IWebhookVerifier:
+        <span class="text-purple-400">return</span> StripeWebhookVerifier()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SepaProviderFactory</span>(IPaymentProviderFactory):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, creditor_id: str, bic: str):
+        self._creditor_id = creditor_id
+        self._bic = bic
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_gateway</span>(self) -> IPaymentGateway:
+        <span class="text-purple-400">return</span> SepaGateway(creditor_id=self._creditor_id, bic=self._bic)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_invoicer</span>(self) -> IInvoicer:
+        <span class="text-purple-400">return</span> SepaInvoicer()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_webhook_verifier</span>(self) -> IWebhookVerifier:
+        <span class="text-purple-400">return</span> SepaWebhookVerifier()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockProviderFactory</span>(IPaymentProviderFactory):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_gateway</span>(self) -> IPaymentGateway:
+        <span class="text-purple-400">return</span> MockGateway()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_invoicer</span>(self) -> IInvoicer:
+        <span class="text-purple-400">return</span> MockInvoicer()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_webhook_verifier</span>(self) -> IWebhookVerifier:
+        <span class="text-purple-400">return</span> MockWebhookVerifier()</pre>
+            </div>
+
+            <!-- File 4: src/nexuscore/payments/service.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Decoupled Business Service: <code class="text-purple-700">src/nexuscore/payments/service.py</code></span>
+                    <span class="text-slate-400">Client Code</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Service - High-Level Decoupled Checkout Service</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Any
+<span class="text-purple-400">from</span> nexuscore.payments.contracts <span class="text-purple-400">import</span> IPaymentGateway, PaymentResult, Invoice
+<span class="text-purple-400">from</span> nexuscore.payments.factories <span class="text-purple-400">import</span> PaymentGatewayFactory, IPaymentProviderFactory
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderCheckoutService</span>:
+    <span class="text-slate-500">"""
+    BUSINESS SERVICE DEMONSTRATING DECOUPLING:
+    This class has ZERO imports of StripeGateway, SepaGateway, or concrete classes!
+    It relies entirely on factories and contracts.
+    """</span>
+    
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># Usage 1: Consuming Factory Method</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">checkout_with_provider_name</span>(
+        self,
+        order_id: str,
+        amount: float,
+        currency: str,
+        provider_name: str,
+        token: str
+    ) -> PaymentResult:
+        <span class="text-slate-500"># The factory method creates the proper polymorphic gateway</span>
+        gateway: IPaymentGateway = PaymentGatewayFactory.create(provider_name)
+        <span class="text-purple-400">return</span> gateway.charge(amount, currency, source_token=token)
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># Usage 2: Consuming Abstract Factory (Full Family Coherency)</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execute_complete_order_lifecycle</span>(
+        self,
+        factory: IPaymentProviderFactory,
+        amount: float,
+        currency: str,
+        token: str
+    ) -> Dict[str, Any]:
+        <span class="text-slate-500"># Client receives a factory family and constructs consistent components</span>
+        gateway = factory.create_gateway()
+        invoicer = factory.create_invoicer()
+
+        <span class="text-slate-500"># 1. Execute Charge</span>
+        result: PaymentResult = gateway.charge(amount, currency, token)
+        <span class="text-purple-400">if not</span> result.success:
+            <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"FAILED"</span>, <span class="text-amber-300">"error"</span>: result.error_message}
+
+        <span class="text-slate-500"># 2. Issue Invoice using matching invoicer</span>
+        invoice: Invoice = invoicer.generate_invoice(result.transaction_id, amount)
+
+        <span class="text-purple-400">return</span> {
+            <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"COMPLETED"</span>,
+            <span class="text-amber-300">"transaction_id"</span>: result.transaction_id,
+            <span class="text-amber-300">"invoice_number"</span>: invoice.invoice_number,
+            <span class="text-amber-300">"tax_region"</span>: invoice.tax_jurisdiction
+        }</pre>
+            </div>
+
+            <!-- File 5: tests/test_payment_factories.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Verification Test Battery: <code class="text-purple-700">tests/test_payment_factories.py</code></span>
+                    <span class="text-slate-400">100% Coverage Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Test Battery - Factory Method &amp; Abstract Factory Tests</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> nexuscore.payments.factories <span class="text-purple-400">import</span> (
+    PaymentGatewayFactory, StripeProviderFactory, SepaProviderFactory, MockProviderFactory
+)
+<span class="text-purple-400">from</span> nexuscore.payments.providers <span class="text-purple-400">import</span> StripeGateway, SepaGateway, MockGateway
+<span class="text-purple-400">from</span> nexuscore.payments.service <span class="text-purple-400">import</span> OrderCheckoutService
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestFactoryMethodPattern</span>:
+    <span class="text-slate-500">"""Validates polymorphic instantiation and error handling in Factory Method."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_factory_method_creates_proper_concrete_instances</span>(self):
+        stripe = PaymentGatewayFactory.create(<span class="text-amber-300">"stripe"</span>)
+        sepa = PaymentGatewayFactory.create(<span class="text-amber-300">"sepa"</span>)
+        mock = PaymentGatewayFactory.create(<span class="text-amber-300">"mock"</span>)
+
+        <span class="text-slate-500"># Verifies that concrete classes conform to expected types</span>
+        assert isinstance(stripe, StripeGateway)
+        assert isinstance(sepa, SepaGateway)
+        assert isinstance(mock, MockGateway)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_factory_method_rejects_unknown_providers</span>(self):
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">"Unknown payment provider: 'crypto_pay'"</span>):
+            PaymentGatewayFactory.create(<span class="text-amber-300">"crypto_pay"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_open_closed_dynamic_registration</span>(self):
+        <span class="text-slate-500">"""Proves Open-Closed Principle: New provider registered without modifying factory code."""</span>
+        <span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AdyenCustomGateway</span>(MockGateway):
+            <span class="text-purple-400">pass</span>
+
+        PaymentGatewayFactory.register_provider(<span class="text-amber-300">"adyen"</span>, AdyenCustomGateway)
+        inst = PaymentGatewayFactory.create(<span class="text-amber-300">"adyen"</span>)
+        assert isinstance(inst, AdyenCustomGateway)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestAbstractFactoryPattern</span>:
+    <span class="text-slate-500">"""Validates family consistency and end-to-end service execution."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_abstract_factory_guarantees_matching_family_components</span>(self):
+        stripe_family = StripeProviderFactory(api_key=<span class="text-amber-300">"sk_test_123"</span>)
+        gateway = stripe_family.create_gateway()
+        invoicer = stripe_family.create_invoicer()
+        verifier = stripe_family.create_webhook_verifier()
+
+        <span class="text-slate-500"># Verify matching family types</span>
+        assert gateway._api_key == <span class="text-amber-300">"sk_test_123"</span>
+        inv = invoicer.generate_invoice(<span class="text-amber-300">"tx_99"</span>, 150.0)
+        assert inv.tax_jurisdiction == <span class="text-amber-300">"US-CA"</span>
+        assert verifier.verify_signature(b<span class="text-amber-300">"payload"</span>, <span class="text-amber-300">"t=123"</span>) <span class="text-purple-400">is True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_decoupled_order_service_with_mock_factory</span>(self):
+        <span class="text-slate-500">"""Proves business service executes seamlessly in tests using Mock Abstract Factory."""</span>
+        service = OrderCheckoutService()
+        mock_factory = MockProviderFactory()
+
+        result = service.execute_complete_order_lifecycle(
+            factory=mock_factory,
+            amount=299.99,
+            currency=<span class="text-amber-300">"USD"</span>,
+            token=<span class="text-amber-300">"tok_test_card"</span>
+        )
+
+        assert result[<span class="text-amber-300">"status"</span>] == <span class="text-amber-300">"COMPLETED"</span>
+        assert <span class="text-amber-300">"MOCK-mock_tx_"</span> <span class="text-purple-400">in</span> result[<span class="text-amber-300">"invoice_number"</span>]
+        assert result[<span class="text-amber-300">"tax_region"</span>] == <span class="text-amber-300">"NONE"</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Factory of Factories (Over-Abstraction)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">PaymentGatewayFactoryProducerProviderManager</code> to create a factory that creates a factory that returns a simple string formatter.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this harms codebases:</strong> Excessive layers of indirection obscure straightforward logic. If your application only has one static configuration and a single payment vendor that will never change, a simple function or constructor is much more readable. Use factories when polymorphism, dynamic provider resolution, or test isolation is genuinely required.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Leaking Concrete Types in Type Annotations</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Defining a Factory Method that returns an abstract interface, but annotating caller code with concrete types: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">gateway: StripeGateway = factory.create("stripe")</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this defeats the pattern:</strong> If the caller declares a concrete type, your static type checker (mypy) and developer mental model remain tightly coupled to Stripe. If you swap the factory to return <code class="font-mono">SepaGateway</code>, type checking breaks! Always annotate with the <strong>Abstract Interface</strong> (<code class="font-mono text-rose-950 font-bold">gateway: IPaymentGateway</code>).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the environment, execute the test battery, and verify polymorphic gateway execution:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Virtual Environment -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize environment and install test runner:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest
+                    </div>
+                </div>
+
+                <!-- Step 2: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Run the Factory Method &amp; Abstract Factory test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_payment_factories.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.04s. Confirms polymorphic instantiation, dynamic OCP provider registration, and full family component harmony!
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive Verification -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from nexuscore.payments.factories import PaymentGatewayFactory; g = PaymentGatewayFactory.create('stripe'); res = g.charge(99.0, 'USD', 'tok_visa'); print('Provider:', res.provider_name, '| TxID:', res.transaction_id)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs concrete charge result produced dynamically via the Factory Method!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Creational Patterns II: Builder, Prototype &amp; Singleton: Complex Specs &amp; Registries</h4>
+                <p class="text-xs text-slate-500 font-sans">Stepping beyond single constructors: Constructing complex multi-leg algorithmic orders with the Builder, cloning pre-warmed prototypes for HFT speed, and thread-safe Singleton registries.</p>
+            </div>
+            <a href="Chapter 02 - Creational Patterns II - Builder, Prototype and Singleton - Complex Specs and Registries.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

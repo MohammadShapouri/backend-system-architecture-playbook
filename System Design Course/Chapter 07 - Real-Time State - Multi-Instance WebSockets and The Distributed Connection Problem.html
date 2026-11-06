@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Real-Time State: Multi-Instance WebSockets &amp; The Distributed Connection Problem</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 07 - Real-Time Socket Mesh)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Stateful Distributed Systems
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Real-Time State: Multi-Instance WebSockets &amp; The Distributed Connection Problem
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Taming stateful persistence across stateless cloud tiers: Why round-robin load balancers break peer-to-peer real-time sockets, managing multi-device connection registries, decoupling connection state using <strong>Redis Cluster Backplanes</strong>, eliminating zombie TCP connections with microsecond heartbeats, and constructing the distributed socket mesh of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 07: Distributed Real-Time Sockets</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 06, we mathematically proved availability formulas and partitioned our platform into cell-based blast radius domains. In Milestone 07, we confront the <strong>Stateful Distributed Connection Problem</strong>. When a rider opens OmniRoute to request a ride, they establish a long-lived bidirectional WebSocket connection to <strong>Node A</strong>. When an available driver in the same city opens their app, their connection is routed by the L4/L7 load balancer to <strong>Node B</strong>. Because Node A cannot write to Node B's local in-memory socket table, cross-node communication breaks without centralized routing. We architect and implement OmniRoute's <strong>Distributed Socket Mesh &amp; Redis Backplane</strong> using FastAPI, asyncio, and asynchronous SQLAlchemy 2.0.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Stateless HTTP vs. Stateful WebSocket Physics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Multi-Node Cross-Memory Routing Problem</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Redis Pub/Sub Cluster Backplane Topology</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Device Per-User Socket Registries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Linux File Descriptors &amp; TCP Socket Memory Sizing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zombie Connection Pruning &amp; Jittered Reconnects</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete FastAPI &amp; Async SQLAlchemy 2.0 Socket Mesh</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- The Physics of the Stateful Connection Problem -->
+        <section id="socket-physics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Distributed Systems Physics</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Dilemma: Stateless HTTP vs. Stateful WebSockets</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Modern cloud infrastructure is built on the assumption that application servers are **stateless**. If you run 50 replicas of a FastAPI service behind an Application Load Balancer (ALB), standard HTTP requests can hit any instance interchangeably. Request 1 hits Pod A, Request 2 hits Pod B, and the database acts as the shared state coordinator.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                **WebSockets violate this stateless assumption completely.** A WebSocket begins as an HTTP/1.1 request with an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">Upgrade: websocket</code> header. Once upgraded, the underlying TCP connection remains open continuously for minutes, hours, or days.
+            </p>
+
+            <!-- Problem Diagram: Cross-Memory Isolation -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Multi-Instance WebSocket Isolation Trap (Why Naive Round-Robin Fails)
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Node A -->
+                    <div class="p-5 bg-slate-950 border border-sky-500 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">Server Node A (Memory Space 1)</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded">FastAPI Instance 1</span>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg text-slate-300 text-[10px] space-y-1">
+                            <div>Local Socket Table:</div>
+                            <div class="text-emerald-400">&bull; "rider_alice" &rarr; &lt;WebSocket fd=14&gt; (Active)</div>
+                            <div class="text-slate-500">&bull; "driver_bob" &rarr; NOT FOUND ON THIS SERVER</div>
+                        </div>
+                        <p class="text-rose-400 font-sans text-[11px] leading-relaxed">
+                            Alice sends: <em>"Accept ride with Driver Bob"</em>. Server A searches its local memory for Bob's socket. <strong>Bob does not exist in Server A's RAM!</strong> Server A cannot push bytes down Bob's TCP wire.
+                        </p>
+                    </div>
+
+                    <!-- Node B -->
+                    <div class="p-5 bg-slate-950 border border-purple-500 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">Server Node B (Memory Space 2)</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded">FastAPI Instance 2</span>
+                        </div>
+                        <div class="bg-slate-900 p-3 rounded-lg text-slate-300 text-[10px] space-y-1">
+                            <div>Local Socket Table:</div>
+                            <div class="text-emerald-400">&bull; "driver_bob" &rarr; &lt;WebSocket fd=28&gt; (Active)</div>
+                            <div class="text-slate-500">&bull; "rider_alice" &rarr; NOT FOUND ON THIS SERVER</div>
+                        </div>
+                        <p class="text-rose-400 font-sans text-[11px] leading-relaxed">
+                            Driver Bob sits idling on Node B, waiting for dispatch orders. Because Node A and Node B have isolated memory spaces, <strong>Bob never receives Alice's message!</strong>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-rose-400 font-mono">The Flaw of Sticky Sessions:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Sticky sessions (cookie or IP-hash affinity) ensure that Alice always talks to Server A. However, sticky sessions <strong>do not solve peer-to-peer or server-to-peer routing</strong>: Alice cannot force Bob to be connected to Server A! We must decouple connection termination from message routing.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine two people staying at a massive resort hotel with multiple guest buildings.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Alice is staying in <strong>Tower 1</strong>, talking to the Tower 1 lobby concierge. Bob is staying in <strong>Tower 2</strong>, talking to the Tower 2 lobby concierge.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    If Alice asks the Tower 1 concierge: <em>"Please hand this envelope to Bob right now,"</em> the concierge cannot simply reach across their physical counter—Bob isn't standing in Tower 1! The Tower 1 concierge does not guess where Bob is. Instead, the hotel uses a central pneumatic tube system (The Redis Backplane). The concierge drops the envelope into the pneumatic tube labeled "Guest: Bob". The central mailroom routes it to Tower 2, where the Tower 2 concierge grabs it and hands it directly to Bob.
+                </p>
+            </div>
+        </section>
+
+        <!-- THE CLUSTER BACKPLANE ARCHITECTURE -->
+        <section id="backplane-architecture" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Mesh Architecture
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Cluster Backplane: Redis Pub/Sub &amp; Message Brokers
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Slack / Discord Real-Time Mesh &bull; Decoupled Connection Topologies
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                The industry standard solution employed by Discord, Slack, and Uber is the **Distributed Backplane Architecture**. Server instances retain in-memory socket handles locally, but subscribe dynamically to a low-latency pub/sub message broker (Redis Cluster or NATS):
+            </p>
+
+            <!-- Visual Flowchart: Backplane Architecture -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The OmniRoute Real-Time Backplane Mesh Topology
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                    <!-- Server 1 -->
+                    <div class="p-4 bg-slate-950 border border-sky-500 rounded-2xl w-full md:w-56 text-center space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">FastAPI Node 1</span>
+                        <div class="text-[10px] text-slate-300 font-mono">User: Alice (Connected)</div>
+                        <div class="text-[9px] text-slate-400 font-sans">Receives message for Bob</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-emerald-400 font-mono text-[10px]">
+                            PUBLISH "channel:user:bob"
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-lg">&harr; pub/sub &harr;</div>
+
+                    <!-- Redis Cluster -->
+                    <div class="p-5 bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl w-full md:w-60 text-center space-y-2 shadow-xl">
+                        <span class="text-emerald-300 font-bold block text-sm">Redis Pub/Sub Mesh</span>
+                        <div class="text-[10px] text-slate-200 font-sans">In-Memory Backplane Fabric</div>
+                        <div class="text-[9px] text-amber-300 font-mono">Channels: "channel:user:{id}"</div>
+                        <div class="text-[9px] text-slate-400 font-sans">&lt;1ms broadcast transit</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold text-lg">&harr; pub/sub &harr;</div>
+
+                    <!-- Server 2 -->
+                    <div class="p-4 bg-slate-950 border border-purple-500 rounded-2xl w-full md:w-56 text-center space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">FastAPI Node 2</span>
+                        <div class="text-[10px] text-slate-300 font-mono">User: Bob (Connected)</div>
+                        <div class="text-[9px] text-purple-200 font-sans">Subscribed to "channel:user:bob"</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-sky-300 font-mono text-[10px]">
+                            TCP write to Bob's socket
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Multi-Device Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        What if Bob is logged into both his iPad and iPhone simultaneously? His iPad might connect to Node 2, while his iPhone connects to Node 5. In our backplane architecture, both Node 2 and Node 5 subscribe to <code class="text-white font-mono">channel:user:bob</code>. When Alice sends a message, both nodes receive the pub/sub event and forward it to Bob's respective device sockets seamlessly!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- OS PHYSICS: FILE DESCRIPTORS, RAM & HEARTBEATS -->
+        <section id="os-physics" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Operating System Engineering
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Operating System Physics: File Descriptors, Buffers &amp; Zombie Sockets
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Linux C10M Problem &bull; TCP Memory Buffers &bull; Half-Open Sockets
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Operating 1,000,000 concurrent WebSockets requires understanding Linux kernel resource limits:
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- File Descriptors -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 block text-xs">1. File Descriptors (ulimit)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        In UNIX, <em>everything is a file</em>. Every open TCP socket consumes one file descriptor.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-rose-300">
+                        Default ulimit -n: 1024<br>Production: 1,048,576
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        Failing to tune `/etc/security/limits.conf` causes <code class="font-mono text-rose-700">EMFILE: Too many open files</code> crashes at exactly 1,024 users.
+                    </p>
+                </div>
+
+                <!-- TCP Memory Buffers -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-purple-700 block text-xs">2. TCP Memory (rmem / wmem)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Every established socket allocates read and write kernel memory buffers.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-purple-300">
+                        Min Buffer: ~4 KB per socket<br>1M Sockets = ~4 to 8 GB RAM
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        Tuning `net.ipv4.tcp_rmem` and `tcp_wmem` prevents the kernel from allocating 64KB per idle socket.
+                    </p>
+                </div>
+
+                <!-- Zombie Sockets -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-emerald-700 block text-xs">3. Zombie Half-Open Sockets</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        When a mobile driver enters a subway tunnel, the phone drops connection <em>without sending a TCP FIN/RST packet</em>.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-emerald-300 font-bold">
+                        Requires Application Ping/Pong
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        Without periodic 30s application-level heartbeats, the server holds dead ghost sockets in memory for up to 2 hours!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 07 -->
+        <section id="omniroute-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 07: Distributed WebSocket Mesh Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 07 for <strong>OmniRoute</strong>: a production-grade Distributed WebSocket Connection Mesh. Below is the complete implementation featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Local In-Memory Multi-Device Connection Registry:</strong> Maps `user_id -> Set[WebSocket]` to support simultaneous logins.</li>
+                <li><strong>Distributed Redis Pub/Sub Backplane:</strong> Cross-node message routing ensuring server instances can target any user on any container.</li>
+                <li><strong>Heartbeat Monitor:</strong> Automatic pruning of zombie sockets on missed ping intervals.</li>
+                <li><strong>Asynchronous SQLAlchemy 2.0 Audit Entity:</strong> Persisting socket connection events and telemetry delivery metrics.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 07)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── realtime/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>          <span class="text-slate-500"># Milestone 07: Socket Session Audit Schema (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">mesh_manager.py</span>    <span class="text-slate-500"># Milestone 07: Distributed Multi-Instance Backplane</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">socket_router.py</span>   <span class="text-slate-500"># Milestone 07: FastAPI WebSocket &amp; Dispatch Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_distributed_sockets.py</span> <span class="text-slate-500"># Milestone 07 Cross-Node Routing &amp; Zombie Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/realtime/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Socket Session Audit Entity: <code class="text-purple-700">src/omniroute/realtime/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Realtime - Socket Session Audit &amp; Event Telemetry</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, DateTime, Integer
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SocketSessionAuditModel</span>(Base):
+    <span class="text-slate-500">"""
+    REAL-TIME SESSION AUDIT:
+    Tracks connect, disconnect, and heartbeats across server nodes.
+    Used for concurrency monitoring and capacity telemetry.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"socket_session_audits"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    server_node_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=<span class="text-rose-400">False</span>)  <span class="text-slate-500"># CONNECT, DISCONNECT, HEARTBEAT_TIMEOUT</span>
+    active_local_sockets: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/realtime/mesh_manager.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Distributed Connection Mesh Manager: <code class="text-purple-700">src/omniroute/realtime/mesh_manager.py</code></span>
+                    <span class="text-slate-400">Multi-Instance Backplane Architecture</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Realtime - Distributed Socket Mesh &amp; Redis Backplane Manager</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Set, Optional, Callable, Awaitable
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> WebSocket
+
+logger = logging.getLogger(<span class="text-amber-300">"OmniRoute.SocketMesh"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DistributedSocketMeshManager</span>:
+    <span class="text-slate-500">"""
+    DISTRIBUTED WEBSOCKET MANAGER:
+    1. Local Registry: user_id -&gt; Set[WebSocket] (multi-device support).
+    2. Backplane Adapter: Broadcasts messages to Redis channels.
+    3. Listener Task: Consumes Redis messages and dispatches to local sockets.
+    4. Heartbeat Tracker: Detects zombie sockets and purges dead file descriptors.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        node_id: str,
+        publish_fn: Callable[[str, str], Awaitable[<span class="text-rose-400">None</span>]],
+        heartbeat_timeout_sec: float = 30.0
+    ):
+        self.node_id = node_id
+        self._publish_fn = publish_fn
+        self.heartbeat_timeout_sec = heartbeat_timeout_sec
+
+        <span class="text-slate-500"># Local In-Memory State: user_id -&gt; Set[WebSocket]</span>
+        self._local_sockets: Dict[str, Set[WebSocket]] = {}
+        <span class="text-slate-500"># Heartbeat timestamps: websocket -&gt; float</span>
+        self._last_heartbeat: Dict[WebSocket, float] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">register_local_socket</span>(self, user_id: str, websocket: WebSocket) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-purple-400">if</span> user_id <span class="text-purple-400">not in</span> self._local_sockets:
+                self._local_sockets[user_id] = set()
+            self._local_sockets[user_id].add(websocket)
+            self._last_heartbeat[websocket] = time.time()
+
+        logger.info(f<span class="text-amber-300">"[{self.node_id}] User '{user_id}' registered socket. Total local: {len(self._local_sockets[user_id])}"</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">unregister_local_socket</span>(self, user_id: str, websocket: WebSocket) -> int:
+        <span class="text-purple-400">async with</span> self._lock:
+            self._last_heartbeat.pop(websocket, <span class="text-rose-400">None</span>)
+            <span class="text-purple-400">if</span> user_id <span class="text-purple-400">in</span> self._local_sockets:
+                self._local_sockets[user_id].discard(websocket)
+                <span class="text-purple-400">if not</span> self._local_sockets[user_id]:
+                    del self._local_sockets[user_id]
+
+            remaining = len(self._local_sockets.get(user_id, set()))
+            <span class="text-purple-400">return</span> remaining
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_heartbeat</span>(self, websocket: WebSocket) -> <span class="text-rose-400">None</span>:
+        self._last_heartbeat[websocket] = time.time()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">dispatch_peer_message</span>(self, recipient_id: str, payload: dict) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        CROSS-NODE DISPATCH:
+        Publishes the message to the distributed backplane channel for the recipient.
+        Whichever server instance hosts the recipient's socket will deliver it.
+        """</span>
+        channel = f<span class="text-amber-300">"omniroute:user:{recipient_id}"</span>
+        serialized = json.dumps(payload)
+        <span class="text-purple-400">await</span> self._publish_fn(channel, serialized)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">on_backplane_message_received</span>(self, channel: str, payload_str: str) -> int:
+        <span class="text-slate-500">"""
+        CONSUMER HOOK (Called when backplane receives an event):
+        Extracts user_id from channel and pushes to all local device sockets.
+        """</span>
+        user_id = channel.split(<span class="text-amber-300">":"</span>)[-1]
+        sockets_to_send = list(self._local_sockets.get(user_id, set()))
+        delivered_count = 0
+
+        <span class="text-purple-400">for</span> ws <span class="text-purple-400">in</span> sockets_to_send:
+            <span class="text-purple-400">try</span>:
+                <span class="text-purple-400">await</span> ws.send_text(payload_str)
+                delivered_count += 1
+            <span class="text-purple-400">except</span> Exception:
+                logger.warning(f<span class="text-amber-300">"Failed to send to socket for {user_id}. Marking for prune."</span>)
+                <span class="text-purple-400">await</span> self.unregister_local_socket(user_id, ws)
+
+        <span class="text-purple-400">return</span> delivered_count
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">prune_zombie_sockets</span>(self) -> int:
+        <span class="text-slate-500">"""
+        PERIODIC ZOMBIE PRUNER:
+        Scans for sockets that have missed heartbeat pings beyond the timeout threshold.
+        """</span>
+        now = time.time()
+        dead_sockets: List[tuple[str, WebSocket]] = []
+
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-purple-400">for</span> user_id, sockets <span class="text-purple-400">in</span> list(self._local_sockets.items()):
+                <span class="text-purple-400">for</span> ws <span class="text-purple-400">in</span> list(sockets):
+                    last_seen = self._last_heartbeat.get(ws, 0.0)
+                    <span class="text-purple-400">if</span> (now - last_seen) &gt; self.heartbeat_timeout_sec:
+                        dead_sockets.append((user_id, ws))
+
+        <span class="text-purple-400">for</span> user_id, ws <span class="text-purple-400">in</span> dead_sockets:
+            <span class="text-purple-400">try</span>:
+                <span class="text-purple-400">await</span> ws.close(code=1001, reason=<span class="text-amber-300">"Heartbeat timeout"</span>)
+            <span class="text-purple-400">except</span> Exception:
+                <span class="text-purple-400">pass</span>
+            <span class="text-purple-400">await</span> self.unregister_local_socket(user_id, ws)
+
+        <span class="text-purple-400">return</span> len(dead_sockets)</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/socket_router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. FastAPI Socket &amp; Push Controller: <code class="text-purple-700">src/omniroute/api/socket_router.py</code></span>
+                    <span class="text-slate-400">FastAPI WebSocket Route</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, WebSocket, WebSocketDisconnect, Depends, status
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.realtime.mesh_manager <span class="text-purple-400">import</span> DistributedSocketMeshManager
+<span class="text-purple-400">from</span> omniroute.realtime.models <span class="text-purple-400">import</span> SocketSessionAuditModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/realtime"</span>, tags=[<span class="text-amber-300">"Realtime Socket Mesh"</span>])
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PushMessageRequestDTO</span>(BaseModel):
+    recipient_id: str
+    event_type: str
+    data: dict
+
+
+<span class="text-slate-500"># Dependency stubs</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_mesh_manager</span>() -> DistributedSocketMeshManager:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.websocket</span>(<span class="text-amber-300">"/ws/{user_id}"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">realtime_socket_endpoint</span>(
+    websocket: WebSocket,
+    user_id: str,
+    mesh: DistributedSocketMeshManager = Depends(get_mesh_manager),
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-purple-400">await</span> websocket.accept()
+    <span class="text-purple-400">await</span> mesh.register_local_socket(user_id, websocket)
+
+    <span class="text-slate-500"># Log connection audit</span>
+    audit = SocketSessionAuditModel(
+        user_id=user_id,
+        server_node_id=mesh.node_id,
+        event_type=<span class="text-amber-300">"CONNECT"</span>,
+        active_local_sockets=len(mesh._local_sockets.get(user_id, set()))
+    )
+    db.add(audit)
+    <span class="text-purple-400">await</span> db.commit()
+
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">while True</span>:
+            data = <span class="text-purple-400">await</span> websocket.receive_json()
+            <span class="text-purple-400">if</span> data.get(<span class="text-amber-300">"type"</span>) == <span class="text-amber-300">"PING"</span>:
+                mesh.record_heartbeat(websocket)
+                <span class="text-purple-400">await</span> websocket.send_json({<span class="text-amber-300">"type"</span>: <span class="text-amber-300">"PONG"</span>})
+            <span class="text-purple-400">elif</span> data.get(<span class="text-amber-300">"type"</span>) == <span class="text-amber-300">"DISPATCH_MESSAGE"</span>:
+                <span class="text-purple-400">await</span> mesh.dispatch_peer_message(
+                    recipient_id=data[<span class="text-amber-300">"recipient_id"</span>],
+                    payload=data.get(<span class="text-amber-300">"payload"</span>, {})
+                )
+    <span class="text-purple-400">except</span> WebSocketDisconnect:
+        remaining = <span class="text-purple-400">await</span> mesh.unregister_local_socket(user_id, websocket)
+        audit_disc = SocketSessionAuditModel(
+            user_id=user_id,
+            server_node_id=mesh.node_id,
+            event_type=<span class="text-amber-300">"DISCONNECT"</span>,
+            active_local_sockets=remaining
+        )
+        db.add(audit_disc)
+        <span class="text-purple-400">await</span> db.commit()
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/push"</span>,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"REST Endpoint to Push Message Across the Mesh"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">push_message_to_user</span>(
+    dto: PushMessageRequestDTO,
+    mesh: DistributedSocketMeshManager = Depends(get_mesh_manager)
+):
+    <span class="text-purple-400">await</span> mesh.dispatch_peer_message(
+        recipient_id=dto.recipient_id,
+        payload={<span class="text-amber-300">"event"</span>: dto.event_type, <span class="text-amber-300">"data"</span>: dto.data}
+    )
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"DISPATCHED_TO_BACKPLANE"</span>, <span class="text-amber-300">"recipient"</span>: dto.recipient_id}</pre>
+            </div>
+
+            <!-- File 4: tests/test_distributed_sockets.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Distributed Socket Test Suite: <code class="text-purple-700">tests/test_distributed_sockets.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> unittest.mock <span class="text-purple-400">import</span> AsyncMock
+
+<span class="text-purple-400">from</span> omniroute.realtime.mesh_manager <span class="text-purple-400">import</span> DistributedSocketMeshManager
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockWebSocket</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self.sent_messages = []
+        self.closed = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">send_text</span>(self, message: str):
+        self.sent_messages.append(message)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">close</span>(self, code: int = 1000, reason: str = <span class="text-amber-300">""</span>):
+        self.closed = <span class="text-rose-400">True</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDistributedSocketMesh</span>:
+    <span class="text-slate-500">"""Verifies cross-node message routing, multi-device delivery, and zombie socket pruning."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_cross_node_backplane_dispatch</span>(self):
+        backplane_bus = {}
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">mock_publish</span>(channel: str, message: str):
+            backplane_bus[channel] = message
+
+        <span class="text-slate-500"># Setup 2 simulated server instances</span>
+        node_1 = DistributedSocketMeshManager(node_id=<span class="text-amber-300">"node_1"</span>, publish_fn=mock_publish)
+        node_2 = DistributedSocketMeshManager(node_id=<span class="text-amber-300">"node_2"</span>, publish_fn=mock_publish)
+
+        <span class="text-slate-500"># Connect Alice to Node 1</span>
+        ws_alice = MockWebSocket()
+        <span class="text-purple-400">await</span> node_1.register_local_socket(<span class="text-amber-300">"alice"</span>, ws_alice)
+
+        <span class="text-slate-500"># Connect Bob to Node 2</span>
+        ws_bob = MockWebSocket()
+        <span class="text-purple-400">await</span> node_2.register_local_socket(<span class="text-amber-300">"bob"</span>, ws_bob)
+
+        <span class="text-slate-500"># Alice on Node 1 sends message to Bob (on Node 2)</span>
+        <span class="text-purple-400">await</span> node_1.dispatch_peer_message(<span class="text-amber-300">"bob"</span>, {<span class="text-amber-300">"text"</span>: <span class="text-amber-300">"Ride accepted!"</span>})
+
+        <span class="text-slate-500"># Verify backplane caught publication</span>
+        assert <span class="text-amber-300">"omniroute:user:bob"</span> <span class="text-purple-400">in</span> backplane_bus
+
+        <span class="text-slate-500"># Node 2 consumes from backplane</span>
+        delivered = <span class="text-purple-400">await</span> node_2.on_backplane_message_received(
+            <span class="text-amber-300">"omniroute:user:bob"</span>, backplane_bus[<span class="text-amber-300">"omniroute:user:bob"</span>]
+        )
+
+        assert delivered == 1
+        assert len(ws_bob.sent_messages) == 1
+        assert <span class="text-amber-300">"Ride accepted!"</span> <span class="text-purple-400">in</span> ws_bob.sent_messages[0]
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_multi_device_fanout</span>(self):
+        node = DistributedSocketMeshManager(node_id=<span class="text-amber-300">"node_1"</span>, publish_fn=AsyncMock())
+
+        <span class="text-slate-500"># Driver Bob connects on both Mobile and Dashboard Tablet</span>
+        ws_phone = MockWebSocket()
+        ws_tablet = MockWebSocket()
+        <span class="text-purple-400">await</span> node.register_local_socket(<span class="text-amber-300">"bob"</span>, ws_phone)
+        <span class="text-purple-400">await</span> node.register_local_socket(<span class="text-amber-300">"bob"</span>, ws_tablet)
+
+        <span class="text-slate-500"># Deliver dispatch message</span>
+        delivered = <span class="text-purple-400">await</span> node.on_backplane_message_received(
+            <span class="text-amber-300">"omniroute:user:bob"</span>, <span class="text-amber-300">'{"alert": "New pickup"}'</span>
+        )
+
+        <span class="text-slate-500"># Must deliver to BOTH devices simultaneously</span>
+        assert delivered == 2
+        assert len(ws_phone.sent_messages) == 1
+        assert len(ws_tablet.sent_messages) == 1
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_zombie_socket_pruning_on_heartbeat_timeout</span>(self):
+        node = DistributedSocketMeshManager(node_id=<span class="text-amber-300">"node_1"</span>, publish_fn=AsyncMock(), heartbeat_timeout_sec=0.05)
+        ws = MockWebSocket()
+        <span class="text-purple-400">await</span> node.register_local_socket(<span class="text-amber-300">"ghost_driver"</span>, ws)
+
+        <span class="text-slate-500"># Sleep to simulate driver going into tunnel without sending PING</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.08)
+
+        pruned = <span class="text-purple-400">await</span> node.prune_zombie_sockets()
+        assert pruned == 1
+        assert ws.closed <span class="text-purple-400">is True</span>
+        assert <span class="text-amber-300">"ghost_driver"</span> <span class="text-purple-400">not in</span> node._local_sockets</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Real-Time Socket Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Single-Node In-Memory Dict Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">active_sockets = {}</code> inside a FastAPI module and deploying it to an auto-scaling Kubernetes cluster without a pub/sub backplane.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this drops half your messages:</strong> The moment your Kubernetes cluster scales from 1 replica to 2 replicas, the two pods have isolated memory address spaces. Half of your drivers are connected to Pod 1, half to Pod 2. Messages sent between drivers and riders across different pods vanish silently! <strong>Always couple multi-instance WebSockets with a distributed backplane (Redis Pub/Sub or NATS).</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Thundering Reconnection Avalanche</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring client apps to immediately retry lost WebSocket connections in a tight loop: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">onclose = () => connect()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes rolling deploy crashes:</strong> When Node 1 restarts during a deployment, 50,000 active sockets disconnect simultaneously. If all 50,000 clients reconnect at millisecond 0, they slam Node 2 with 50,000 SSL/TLS handshakes, crashing Node 2 and triggering a cascading failure! <strong>Always enforce Exponential Backoff with Full Jitter on client reconnects.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the multi-instance socket mesh test battery and verify backplane dispatch and zombie pruning:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Real-Time Socket Mesh test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_distributed_sockets.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.14s. Confirms cross-instance message routing, multi-device delivery, and heartbeat zombie pruning!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate multi-device message dispatch in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from omniroute.realtime.mesh_manager import DistributedSocketMeshManager; from tests.test_distributed_sockets import MockWebSocket; m = DistributedSocketMeshManager('n1', lambda c, p: None); ws = MockWebSocket(); asyncio.run(m.register_local_socket('user_1', ws)); asyncio.run(m.on_backplane_message_received('omniroute:user:user_1', '{\"msg\": \"hello\"}')); print('Delivered:', ws.sent_messages)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Delivered: ['{"msg": "hello"}']</code> delivered via simulated backplane!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Long-Polling vs. Server-Sent Events vs. WebSockets &amp; WebTransport</h4>
+                <p class="text-xs text-slate-500 font-sans">Comparing communication protocols: Battery consumption, HTTP/2 multiplexing, unidirectional SSE streams vs. bidirectional WebSockets, and emerging HTTP/3 WebTransport.</p>
+            </div>
+            <a href="Chapter 08 - Long-Polling vs. Server-Sent Events vs. WebSockets and WebTransport.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

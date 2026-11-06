@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 08: Schema Evolution with Alembic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 08 - Schema Evolution &amp; Multi-Currency Migration)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Schema Versioning &amp; Database Evolution
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Schema Evolution with Alembic
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Zero-downtime database migrations: Why <code class="font-mono text-emerald-400">create_all()</code> is fatal in production, the mechanics of the revision DAG, wiring <code class="font-mono text-emerald-400">env.py</code> with <code class="font-mono text-emerald-400">compare_type=True</code>, executing 3-step non-nullable data backfills, resolving team branch divergence, and upgrading LedgerCore for multi-currency banking.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 08: Going Multi-Currency via Alembic</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Until now, LedgerCore created tables via <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Base.metadata.create_all()</code> on startup. In production, business requirements change: LedgerCore must now support international currencies (USD, EUR, GBP). We cannot drop the database because existing customer balances would be destroyed. In Milestone 08, we dismantle <code class="font-mono text-purple-300">create_all()</code>, integrate Alembic, establish our baseline revision, and execute a 3-step schema and data migration to add a non-nullable <code class="font-mono text-purple-300">currency</code> column with backfilled historical data.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The revision Directed Acyclic Graph (DAG)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hardening <code class="text-purple-300">alembic/env.py</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cross-database <code class="text-purple-300">batch_alter_table</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> 3-Step zero-downtime non-nullable backfill</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Resolving team branch conflicts (<code class="text-purple-300">merge</code>)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Schema Drift & Revision Trees -->
+        <section id="cs-schema-drift" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Schema Drift &amp; The Revision DAG</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In production, relational databases are stateful, long-lived infrastructure. Unlike stateless application containers that can be deleted and redeployed at will, the database accumulates gigabytes of customer state.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Calling <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">Base.metadata.create_all(bind=engine)</code> emits <code class="font-mono text-xs">CREATE TABLE IF NOT EXISTS</code>. It only creates tables that are completely missing. <strong>It cannot alter existing columns, add check constraints, adjust index types, or rename fields.</strong> Over time, code definitions and database schemas diverge—a catastrophic state known as <strong>Schema Drift</strong>.
+            </p>
+
+            <!-- Revision DAG Architecture Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Alembic Revision Directed Acyclic Graph (DAG)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">How Alembic Tracks Version History Inside the Database</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 max-w-3xl mx-auto">
+                    <!-- Revision 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5 text-center">
+                        <span class="text-sky-300 font-bold block text-sm">Rev: a1b2c3d4e5f6</span>
+                        <div class="text-[10px] text-slate-400 font-sans">"create_initial_tables"</div>
+                        <div class="text-[10px] bg-slate-900 p-1 rounded text-slate-500">down_revision = None</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; upgrade &rarr;</div>
+
+                    <!-- Revision 2 -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5 text-center">
+                        <span class="text-purple-300 font-bold block text-sm">Rev: f6e5d4c3b2a1</span>
+                        <div class="text-[10px] text-purple-200 font-sans">"add_currency_to_accounts"</div>
+                        <div class="text-[10px] bg-slate-900 p-1 rounded text-slate-400">down_revision = "a1b2c3d4e5f6"</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; upgrade &rarr;</div>
+
+                    <!-- DB Version Table -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5 text-center">
+                        <span class="text-emerald-300 font-bold block text-sm">table "alembic_version"</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Physical DB Tracker Row</div>
+                        <div class="text-[10px] bg-slate-900 p-1 rounded text-emerald-400 font-bold">version_num: "f6e5d4c3b2a1"</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Migration Mechanism:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Alembic maintains a physical 1-row table inside your database named <code class="text-white font-mono">alembic_version</code>. When you execute <code class="text-white font-mono">alembic upgrade head</code>, Alembic reads the current <code class="text-white font-mono">version_num</code> from the database, inspects the migration files in <code class="text-white font-mono">alembic/versions/</code>, builds a dependency graph via <code class="text-white font-mono">down_revision</code> pointers, and executes the <code class="text-white font-mono">upgrade()</code> functions sequentially until the database reaches the target revision head.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside env.py: Autogenerate & Hardening Configurations -->
+        <section id="env-py-hardening" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Inside the Engine: Hardening <code>alembic/env.py</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you run <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">alembic init alembic</code>, the default configuration file (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">alembic/env.py</code>) is completely disconnected from your application’s models and environment settings.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To make Alembic production-ready, we must configure three critical architectural hooks inside <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">alembic/env.py</code>:
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <!-- Target Metadata -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-sky-600 uppercase tracking-widest block">1. Model Binding</span>
+                    <h3 class="text-base font-bold text-slate-900">target_metadata</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        By default, <code class="font-mono text-slate-800">target_metadata = None</code>. You must point this to <code class="font-mono text-purple-700 font-bold">Base.metadata</code> and import all your models (<code class="font-mono text-slate-800">Account, Transaction</code>). Without this, <code class="font-mono text-slate-800">--autogenerate</code> detects zero tables!
+                    </p>
+                </div>
+
+                <!-- Type Comparison -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-purple-600 uppercase tracking-widest block">2. Type Detection</span>
+                    <h3 class="text-base font-bold text-slate-900">compare_type=True</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        By default, Alembic <strong>ignores column type changes</strong>! If you change <code class="font-mono text-slate-800">String(50)</code> to <code class="font-mono text-slate-800">String(100)</code>, or alter numeric precision, Alembic does nothing unless <code class="font-mono text-purple-700 font-bold">compare_type=True</code> is explicitly enabled.
+                    </p>
+                </div>
+
+                <!-- Batch Mode -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-emerald-600 uppercase tracking-widest block">3. SQLite Safety</span>
+                    <h3 class="text-base font-bold text-slate-900">render_as_batch=True</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        SQLite does not support <code class="font-mono text-slate-800">ALTER COLUMN</code> or <code class="font-mono text-slate-800">DROP CONSTRAINT</code>. Enabling <code class="font-mono text-purple-700 font-bold">render_as_batch=True</code> instructs Alembic to create a shadow copy table, transfer rows, and swap tables seamlessly.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Autogenerate Comparison Table -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">The Autogenerate Radar: What Alembic Sees vs. Misses</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Schema Mutation</th>
+                                <th class="p-3">Autogenerate Support</th>
+                                <th class="p-3">Required Engineering Intervention</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold">Adding or Dropping Tables</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; Fully Supported</td>
+                                <td class="p-3 text-slate-500 font-sans">Automatic <code class="text-slate-800">op.create_table</code> / <code class="text-slate-800">op.drop_table</code></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold">Adding or Dropping Columns</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; Fully Supported</td>
+                                <td class="p-3 text-slate-500 font-sans">Automatic <code class="text-slate-800">op.add_column</code> / <code class="text-slate-800">op.drop_column</code></td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold">Renaming Tables or Columns</td>
+                                <td class="p-3 text-rose-600 font-bold">&cross; Dangerous Failure</td>
+                                <td class="p-3 text-rose-700 font-sans font-semibold">Alembic emits DROP old_column + ADD new_column, destroying data! Must manually edit to use <code class="text-purple-700 font-mono">op.alter_column(..., new_column_name=...)</code>.</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold">Changing Column Types</td>
+                                <td class="p-3 text-amber-600 font-bold">&bull; Conditional</td>
+                                <td class="p-3 text-slate-500 font-sans">Requires <code class="text-purple-700 font-mono">compare_type=True</code> in <code class="text-slate-800">env.py</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The 3-Step Zero-Downtime Data Migration Pattern -->
+        <section id="zero-downtime-pattern" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The 3-Step Zero-Downtime Non-Nullable Data Backfill</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Consider this real-world scenario: LedgerCore has <strong>500,000 existing accounts</strong> in production. The business mandates that every account must have a <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">currency: Mapped[str] = mapped_column(String(3), nullable=False)</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If you run <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">alembic revision --autogenerate</code> and apply it, PostgreSQL will immediately abort with:
+                <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">ERROR: column "currency" contains null values</code>! 
+                You cannot add a <code class="font-mono text-xs">NOT NULL</code> column to a table that already contains rows without providing a value for every existing row.
+            </p>
+
+            <!-- 3-Step Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The 3-Step Zero-Downtime Data Migration Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Step 1: Add Nullable</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            Add the new column with <code class="text-amber-300 font-mono">nullable=True</code>. Existing rows receive <code class="text-slate-300 font-mono">NULL</code> without error.
+                        </p>
+                        <div class="text-[10px] bg-sky-950 text-sky-400 p-1 rounded">batch_op.add_column(...)</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; backfill &rarr;</div>
+
+                    <!-- Step 2 -->
+                    <div class="p-4 bg-slate-950 border border-purple-800 rounded-2xl w-full md:w-60 space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Step 2: Data Backfill</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            Execute an inline SQL update to populate historical rows with the default currency code: <code class="text-purple-300 font-mono">'USD'</code>.
+                        </p>
+                        <div class="text-[10px] bg-purple-950 text-purple-300 p-1 rounded">op.execute("UPDATE accounts...")</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; enforce &rarr;</div>
+
+                    <!-- Step 3 -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800 rounded-2xl w-full md:w-56 space-y-2">
+                        <span class="text-emerald-300 font-bold block text-sm">Step 3: Alter to NOT NULL</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            Now that zero <code class="text-slate-300 font-mono">NULL</code> rows remain, safely lock the constraint to <code class="text-emerald-400 font-mono">nullable=False</code>!
+                        </p>
+                        <div class="text-[10px] bg-emerald-950 text-emerald-300 p-1 rounded">batch_op.alter_column(...)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Team Workflows: Branch Conflicts & Merge Resolution -->
+        <section id="branch-conflicts" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Team Engineering: Branch Divergence &amp; <code>alembic merge</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In engineering teams, multiple developers work on separate Git feature branches simultaneously:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                <li>Developer Alice branches from Revision <code class="font-mono text-xs">Rev A</code> and creates <code class="font-mono text-xs">Rev B</code> (adding user settings).</li>
+                <li>Developer Bob branches from Revision <code class="font-mono text-xs">Rev A</code> at the same time and creates <code class="font-mono text-xs">Rev C</code> (adding audit logs).</li>
+            </ul>
+            <p class="text-slate-700 leading-relaxed">
+                When both branches merge into the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">main</code> branch, Alembic fails on deployment with a fatal error:
+                <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">CommandError: Multiple head revisions are present for given argument 'head'</code>.
+            </p>
+
+            <!-- Branch Merge Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Resolving Multiple Head Revisions via alembic merge
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Base Rev A -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-48 text-center">
+                        <span class="text-slate-400 font-bold block">Base: Revision A</span>
+                    </div>
+
+                    <div class="flex justify-between w-full max-w-xs text-slate-500 font-bold">
+                        <span>&swarr; Alice</span>
+                        <span>Bob &searr;</span>
+                    </div>
+
+                    <!-- Split Heads -->
+                    <div class="grid grid-cols-2 gap-8 w-full max-w-md">
+                        <div class="p-3 bg-sky-950 border border-sky-500 rounded-xl text-center">
+                            <span class="text-sky-300 font-bold block">Revision B (Head 1)</span>
+                            <span class="text-[9px] text-slate-400">down_rev = A</span>
+                        </div>
+                        <div class="p-3 bg-purple-950 border border-purple-500 rounded-xl text-center">
+                            <span class="text-purple-300 font-bold block">Revision C (Head 2)</span>
+                            <span class="text-[9px] text-slate-400">down_rev = A</span>
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&darr; alembic merge -m "merge_heads" B C &darr;</div>
+
+                    <!-- Unified Merge Node -->
+                    <div class="p-3 bg-emerald-950 border border-emerald-500 rounded-xl w-64 text-center">
+                        <span class="text-emerald-300 font-bold block">Revision D (Merge Revision)</span>
+                        <span class="text-[10px] text-emerald-200">down_revision = ('B', 'C')</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <span class="text-emerald-400 font-bold font-mono">The Terminal Fix:</span>
+                    <p class="text-slate-400 leading-relaxed">
+                        Never manually edit revision IDs in the Python files! Simply run <code class="text-white font-mono">alembic merge heads -m "merge branch conflicts"</code>. Alembic automatically creates a new revision file with a tuple of both heads as its <code class="text-white font-mono">down_revision</code>, re-unifying the DAG into a single head.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: LedgerCore Milestone 08 -->
+        <section id="ledgercore-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 08: Full Alembic Integration</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 08:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+                <li>We initialize Alembic and configure <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">alembic/env.py</code> with our dynamic Pydantic settings, model metadata, and batch mode.</li>
+                <li>We remove <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">Base.metadata.create_all()</code> from <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/main.py</code>.</li>
+                <li>We update <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/models.py</code> to add the international <code class="font-mono text-xs text-purple-700 font-bold">currency: Mapped[str]</code> field to <code class="font-mono text-xs text-slate-800 font-semibold">Account</code>.</li>
+                <li>We write the custom 3-step zero-downtime migration revision with data backfill.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── <span class="text-sky-300 font-bold">alembic.ini</span>                  <span class="text-slate-500"># Alembic runtime configuration</span></div>
+                <div>├── <span class="text-sky-300 font-bold">alembic/</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">env.py</span>                   <span class="text-slate-500"># Hardened environment runner (metadata, batch mode)</span></div>
+                <div>│   ├── script.py.mako           <span class="text-slate-500"># Migration file template</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">versions/</span>                <span class="text-slate-500"># Historical migration scripts (.py)</span></div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">models.py</span>                  <span class="text-slate-500"># Account model updated with currency column</span></div>
+                <div>│   ├── schemas.py</div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># create_all() permanently removed</span></div>
+            </div>
+
+            <!-- File 1: alembic/env.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Hardened Migration Runner: <code class="text-purple-700">alembic/env.py</code></span>
+                    <span class="text-slate-400">Target Metadata &amp; Batch Mode</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># LedgerCore Backend - Hardened Alembic Environment Runner (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> logging.config <span class="text-purple-400">import</span> fileConfig
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> engine_from_config, pool
+<span class="text-purple-400">from</span> alembic <span class="text-purple-400">import</span> context
+
+<span class="text-slate-500"># 1. Import application configuration and declarative Base</span>
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> Base
+
+<span class="text-slate-500"># CRITICAL: Import all models so Base.metadata registers every table!</span>
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> Account, Transaction, TransferTransaction, FeeTransaction
+
+config = context.config
+
+<span class="text-slate-500"># Overwrite sqlalchemy.url dynamically from our validated Pydantic settings</span>
+config.set_main_option(<span class="text-amber-300">"sqlalchemy.url"</span>, settings.DATABASE_URL)
+
+<span class="text-purple-400">if</span> config.config_file_name <span class="text-purple-400">is not None</span>:
+    fileConfig(config.config_file_name)
+
+<span class="text-slate-500"># Bind target_metadata for autogenerate detection</span>
+target_metadata = Base.metadata
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">run_migrations_online</span>() -> <span class="text-rose-400">None</span>:
+    <span class="text-slate-500">"""Run migrations in 'online' mode against an active database connection."""</span>
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix=<span class="text-amber-300">"sqlalchemy."</span>,
+        poolclass=pool.NullPool,
+    )
+
+    <span class="text-purple-400">with</span> connectable.connect() <span class="text-purple-400">as</span> connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            <span class="text-slate-500"># HARDENING HOOK 1: Catch changes in column types and sizes</span>
+            <span class="text-emerald-400 font-bold">compare_type=True</span>,
+            <span class="text-slate-500"># HARDENING HOOK 2: Catch changes in server defaults</span>
+            <span class="text-emerald-400 font-bold">compare_server_default=True</span>,
+            <span class="text-slate-500"># HARDENING HOOK 3: Cross-database compatibility (enables SQLite table-swapping)</span>
+            <span class="text-emerald-400 font-bold">render_as_batch=True</span>,
+        )
+
+        <span class="text-purple-400">with</span> context.begin_transaction():
+            context.run_migrations()
+
+<span class="text-purple-400">if</span> context.is_offline_mode():
+    <span class="text-slate-500"># Emits raw SQL DDL scripts without connecting (for DBA review)</span>
+    context.configure(url=settings.DATABASE_URL, target_metadata=target_metadata, literal_binds=<span class="text-rose-400">True</span>)
+    <span class="text-purple-400">with</span> context.begin_transaction():
+        context.run_migrations()
+<span class="text-purple-400">else</span>:
+    run_migrations_online()</pre>
+            </div>
+
+            <!-- File 2: app/models.py update -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Adding Multi-Currency to Account: <code class="text-purple-700">app/models.py</code></span>
+                    <span class="text-slate-400">Schema Evolution</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/models.py: Add currency field to Account model</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Account</span>(Base, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    uuid: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    account_number: Mapped[str] = mapped_column(String(32), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    owner_name: Mapped[str] = mapped_column(String(100), nullable=<span class="text-rose-400">False</span>)
+    balance: Mapped[Decimal] = mapped_column(Numeric(14, 4), default=Decimal(<span class="text-amber-300">"0.0000"</span>), nullable=<span class="text-rose-400">False</span>)
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># NEW BUSINESS FIELD (Milestone 08): ISO-4217 Currency Code (USD, EUR, GBP)</span>
+    <span class="text-slate-500"># Non-nullable in Python and DB!</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-emerald-400 font-bold">currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)</span>
+
+    status: Mapped[AccountStatus] = mapped_column(SQLEnum(AccountStatus, native_enum=<span class="text-rose-400">False</span>), default=AccountStatus.ACTIVE, nullable=<span class="text-rose-400">False</span>)
+    version_id: Mapped[int] = mapped_column(default=1, nullable=<span class="text-rose-400">False</span>)
+
+    transactions: Mapped[list[<span class="text-amber-300">"Transaction"</span>]] = relationship(back_populates=<span class="text-amber-300">"account"</span>)
+
+    __mapper_args__ = {
+        <span class="text-amber-300">"version_id_col"</span>: version_id
+    }
+
+    __table_args__ = (
+        CheckConstraint(<span class="text-amber-300">"balance &gt;= 0"</span>, name=<span class="text-amber-300">"ck_account_balance_non_negative"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 3: Custom Migration Script with Backfill -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. The 3-Step Data Backfill Migration: <code class="text-purple-700">alembic/versions/0002_add_currency.py</code></span>
+                    <span class="text-slate-400">Zero-Downtime Data Migration Script</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500">"""add_currency_to_accounts
+
+Revision ID: 0002_add_currency
+Revises: 0001_initial_tables
+Create Date: 2026-11-01 10:00:00.000000
+"""</span>
+<span class="text-purple-400">from</span> alembic <span class="text-purple-400">import</span> op
+<span class="text-purple-400">import</span> sqlalchemy <span class="text-purple-400">as</span> sa
+
+revision = <span class="text-amber-300">"0002_add_currency"</span>
+down_revision = <span class="text-amber-300">"0001_initial_tables"</span>
+branch_labels = <span class="text-rose-400">None</span>
+depends_on = <span class="text-rose-400">None</span>
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">upgrade</span>() -> <span class="text-rose-400">None</span>:
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># STEP 1: Add the column as nullable=True to accept existing rows</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-purple-400">with</span> op.batch_alter_table(<span class="text-amber-300">"accounts"</span>, schema=<span class="text-rose-400">None</span>) <span class="text-purple-400">as</span> batch_op:
+        batch_op.add_column(sa.Column(<span class="text-amber-300">"currency"</span>, sa.String(length=3), nullable=<span class="text-rose-400">True</span>))
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># STEP 2: DATA BACKFILL</span>
+    <span class="text-slate-500"># Populate all existing historical accounts with default 'USD'</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    op.execute(<span class="text-amber-300">"UPDATE accounts SET currency = 'USD' WHERE currency IS NULL"</span>)
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># STEP 3: Enforce strict NOT NULL constraint now that 0 nulls remain!</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-purple-400">with</span> op.batch_alter_table(<span class="text-amber-300">"accounts"</span>, schema=<span class="text-rose-400">None</span>) <span class="text-purple-400">as</span> batch_op:
+        batch_op.alter_column(<span class="text-amber-300">"currency"</span>, existing_type=sa.String(length=3), nullable=<span class="text-rose-400">False</span>)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">downgrade</span>() -> <span class="text-rose-400">None</span>:
+    <span class="text-purple-400">with</span> op.batch_alter_table(<span class="text-amber-300">"accounts"</span>, schema=<span class="text-rose-400">None</span>) <span class="text-purple-400">as</span> batch_op:
+        batch_op.drop_column(<span class="text-amber-300">"currency"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blindly Trusting Autogenerate on Renames</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Renaming a column from <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">owner_name</code> to <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">full_name</code>, running autogenerate, and applying it immediately.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes catastrophic data loss:</strong> Relational databases do not communicate intent. Alembic sees that <code class="font-mono">owner_name</code> disappeared and <code class="font-mono">full_name</code> appeared. Autogenerate generates: <code class="font-mono text-rose-950 font-bold">op.drop_column('owner_name')</code> followed by <code class="font-mono text-rose-950 font-bold">op.add_column('full_name')</code>! All existing customer names are permanently deleted!
+                        <strong>Fix:</strong> Always inspect generated scripts. Manually replace the drop/add calls with <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">op.alter_column(..., new_column_name='full_name')</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Running Migrations Inside Application Worker Startup</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Placing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">alembic.command.upgrade(config, 'head')</code> inside your FastAPI <code class="font-mono text-rose-900">lifespan</code> startup hook.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this deadlocks production deployments:</strong> If your cluster starts 4 pods concurrently, all 4 processes execute <code class="font-mono">alembic upgrade</code> simultaneously at the exact same millisecond. They collide on database table locks, corrupting the <code class="font-mono">alembic_version</code> table.
+                        <strong>Rule:</strong> Migrations must run exactly <strong>once</strong> in an isolated CI/CD step or Kubernetes <code class="font-mono">Job</code> <em>before</em> application containers start.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Install Alembic, initialize the environment, apply the migration sequence, and verify the multi-currency schema evolution:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install & Init -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize Alembic (Run once in project root):</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        alembic init alembic
+                    </div>
+                </div>
+
+                <!-- Step 2: Generate Initial Revision -->
+                <div>
+                    <span class="text-slate-500"># 2. Generate baseline migration:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300 mt-1">
+                        alembic revision --autogenerate -m "create_initial_tables"
+                    </div>
+                </div>
+
+                <!-- Step 3: Apply Baseline -->
+                <div>
+                    <span class="text-slate-500"># 3. Apply baseline migration to the database:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        alembic upgrade head
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">Creates accounts, transactions, transfer_transactions, fee_transactions, and alembic_version.</span>
+                </div>
+
+                <!-- Step 4: Apply Data Backfill Revision -->
+                <div>
+                    <span class="text-slate-500"># 4. Apply our custom 3-step currency migration:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        alembic upgrade head
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice output: Running upgrade 0001_initial_tables -&gt; 0002_add_currency. Adds column, backfills 'USD', and locks NOT NULL without dropping data!
+                    </span>
+                </div>
+
+                <!-- Step 5: Verify via Curl -->
+                <div>
+                    <span class="text-slate-500"># 5. Boot API and query accounts:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/accounts/1/transactions
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        API operates seamlessly over the newly evolved multi-currency database schema!
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's evolved multi-currency API in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 9 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Asynchronous SQLAlchemy</h4>
+                <p class="text-xs text-slate-500 font-sans">Connecting the database to Python's event loop: Upgrading to <code class="font-mono">create_async_engine</code>, mastering <code class="font-mono">AsyncSession</code> with <code class="font-mono">asyncpg</code>, and navigating the dreaded <code class="font-mono">MissingGreenlet</code> error.</p>
+            </div>
+            <a href="Chapter 09 - Asynchronous SQLAlchemy.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 9 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

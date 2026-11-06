@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 10: Prefix Trees &amp; String Search - Tries, Radix Trees &amp; Fast Autocomplete</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 10 - Prefix Trees &amp; Autocomplete Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 10 &bull; Phase 4: Advanced Systems &amp; Text Retrieval
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 10: Prefix Trees &amp; String Search - Tries, Radix Trees &amp; Fast Autocomplete
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling string search complexity from database volume: Why binary comparisons scale poorly on text, exploring character transition edges in retrieval trees (Tries), compacting non-branching paths into Radix Trees (Patricia Tries), executing sub-millisecond prefix autocompletion in $O(L)$ time, handling wildcard patterns, and constructing a production search engine for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 4 Launch</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 10: Autocomplete Search Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Throughout Chapters 01 to 09, our indexes focused on exact scalar keys and numeric range queries. However, modern user-facing applications demand text search: instant prefix-matching, real-time query suggestions (typeaheads), and token autocomplete (e.g. matching <code class="font-mono text-slate-300">"mem" &rarr; ["memforge", "memory", "memcpy"]</code>). In Milestone 10, we engineer MemForge's <strong>Autocomplete Search Engine</strong> (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">AutocompleteSearchEngine</code>): a prefix tree indexing words, tracking query popularity weights, handling single-character wildcards, and pruning dead nodes upon deletion.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 10 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The O(L) Independent Search Invariant</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Trie Character-Edge Transition Nodes</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Radix Tree (Patricia Trie) Path Compression</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Frequency-Ranked Top-K Autocompletion</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Single-Character Wildcard DFS Search</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">AutocompleteSearchEngine</code> Implementation</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Retrieval Trees (Tries) -->
+        <section id="trie-computer-science" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The O(L) Retrieval Invariant &amp; Character Edges</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Comparing strings in a standard Binary Search Tree or B-Tree is computationally expensive. Evaluating string equality or ordering (<code class="font-mono text-slate-800">str_a &lt; str_b</code>) is not $O(1)$; it requires scanning characters up to length $L$. Thus, searching a binary tree of $N$ strings takes $O(L \log N)$ time.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Invented by René de la Briandais (1959) and Edward Fredkin (1960), the <strong>Trie</strong> (derived from re<strong>trie</strong>val, pronounced "try") restructures string storage completely. Instead of storing entire words inside nodes, words are formed by tracing paths along <strong>character edges</strong>.
+            </p>
+
+            <!-- Trie Anatomy Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Prefix Tree Topology: Storing ["cat", "car", "card", "dog"]</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Common prefixes share physical ancestor nodes; terminal flags designate complete words</p>
+                </div>
+
+                <!-- Trie Graph Layout -->
+                <div class="space-y-4">
+                    <!-- Root -->
+                    <div class="flex justify-center">
+                        <div class="p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center w-32 shadow-lg">
+                            <span class="text-purple-300 font-bold block text-sm">(Root)</span>
+                            <span class="text-[9px] text-slate-500 font-sans">is_terminal: False</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors Root -> Branches -->
+                    <div class="flex justify-around text-emerald-400 text-[11px] px-24">
+                        <span>&swarr; edge 'c'</span>
+                        <span>edge 'd' &searr;</span>
+                    </div>
+
+                    <!-- Level 1 -->
+                    <div class="flex justify-around px-8">
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-xl text-center w-28">
+                            <span class="text-sky-300 font-bold block">Node 'c'</span>
+                            <span class="text-[8px] text-slate-500 font-sans">prefix: "c"</span>
+                        </div>
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-xl text-center w-28">
+                            <span class="text-sky-300 font-bold block">Node 'd'</span>
+                            <span class="text-[8px] text-slate-500 font-sans">prefix: "d"</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors L1 -> L2 -->
+                    <div class="flex justify-around text-emerald-400 text-[10px] px-12">
+                        <span>&darr; edge 'a'</span>
+                        <span>&darr; edge 'o'</span>
+                    </div>
+
+                    <!-- Level 2 -->
+                    <div class="flex justify-around px-8">
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-xl text-center w-28">
+                            <span class="text-sky-300 font-bold block">Node 'a'</span>
+                            <span class="text-[8px] text-slate-500 font-sans">prefix: "ca"</span>
+                        </div>
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-xl text-center w-28">
+                            <span class="text-sky-300 font-bold block">Node 'o'</span>
+                            <span class="text-[8px] text-slate-500 font-sans">prefix: "do"</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors L2 -> L3 -->
+                    <div class="flex justify-between text-emerald-400 text-[10px] px-6">
+                        <div class="flex gap-16">
+                            <span>&swarr; 't'</span>
+                            <span>'r' &searr;</span>
+                        </div>
+                        <span class="pr-8">&darr; 'g'</span>
+                    </div>
+
+                    <!-- Level 3 -->
+                    <div class="flex justify-between items-center px-4">
+                        <!-- 'cat' -->
+                        <div class="p-2 bg-emerald-950 border border-emerald-500 rounded-xl text-center w-24">
+                            <span class="text-emerald-300 font-bold block">'t' [★]</span>
+                            <span class="text-[8px] text-emerald-400 font-sans">Word: "cat"</span>
+                        </div>
+
+                        <!-- 'car' -->
+                        <div class="p-2 bg-emerald-950 border border-emerald-500 rounded-xl text-center w-28">
+                            <span class="text-emerald-300 font-bold block">'r' [★]</span>
+                            <span class="text-[8px] text-emerald-400 font-sans">Word: "car"</span>
+                            <div class="text-[9px] text-emerald-400 pt-1">&darr; 'd'</div>
+                            <div class="p-1 bg-emerald-900 border border-emerald-400 rounded text-[9px] text-white font-bold mt-1">
+                                'd' [★] "card"
+                            </div>
+                        </div>
+
+                        <!-- 'dog' -->
+                        <div class="p-2 bg-emerald-950 border border-emerald-500 rounded-xl text-center w-24">
+                            <span class="text-emerald-300 font-bold block">'g' [★]</span>
+                            <span class="text-[8px] text-emerald-400 font-sans">Word: "dog"</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">The O(L) Independent Search Theorem:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Searching for a word of length $L$ in a Trie requires examining exactly $L$ character transitions down the tree. The search time is <strong>completely independent of the total number of words $N$ stored in the database</strong>! Whether the index holds 100 words or 50,000,000 words, looking up <code class="text-purple-300 font-mono">"cat"</code> takes exactly 3 pointer dereferences.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Trie Space Complexity vs. Radix Trees -->
+        <section id="radix-trees" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Standard Tries vs. Radix Trees (Patricia Tries)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                While standard Tries provide optimal time complexity, they exhibit a major architectural vulnerability: <strong>Memory Fragmentation</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If a collection contains words with long, non-branching sequences (such as URLs like <code class="font-mono text-slate-800">"https://api.memforge.io/v1/auth"</code>), a standard Trie allocates an independent node object for every single character. In Python, each node object plus its internal child dictionary consumes ~150 to 200 bytes of heap memory!
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Standard Trie Drawback -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 font-mono text-sm">Standard Trie (Uncompressed)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-mono font-bold">1 Node Per Char</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Storing <code class="font-mono text-slate-800">"internationalization"</code> creates <strong>20 sequential node allocations</strong> chained together in memory:
+                    </p>
+                    <div class="p-2.5 bg-slate-900 text-rose-300 rounded-xl font-mono text-[10px] overflow-x-auto">
+                        (i) &rarr; (n) &rarr; (t) &rarr; (e) &rarr; (r) &rarr; ... &rarr; (n) [★]
+                    </div>
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                        Wastes heap allocations on non-branching linear pathways where no other words diverge.
+                    </p>
+                </div>
+
+                <!-- Radix Tree Optimization -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 font-mono text-sm">Radix Tree (Patricia Trie)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">Path Compressed</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Invented by Donald R. Morrison (1968), a <strong>Radix Tree</strong> merges every node that has only one child with its parent, compressing the edge into a substring:
+                    </p>
+                    <div class="p-2.5 bg-slate-900 text-emerald-300 rounded-xl font-mono text-[10px] overflow-x-auto">
+                        (Root) &mdash;["internationalization"]&rarr; (Node) [★]
+                    </div>
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                        Reduces total tree node count from $O(\sum \text{length}(w_i))$ to at most $2N - 1$ nodes, slashing memory consumption by up to 70% in URL routing and IP routing tables!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Algorithms: Autocomplete & Wildcard Matching -->
+        <section id="trie-algorithms" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: Frequency Autocomplete &amp; Wildcards</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Tries unlock query capabilities that are virtually impossible to implement efficiently on top of standard B-Trees or hash tables:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Autocomplete Pipeline -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-purple-700 font-mono text-sm">1. Typeahead Autocomplete Pipeline</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Two-Phase Search</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When a user types <code class="font-mono text-purple-700">"mem"</code>:
+                    </p>
+                    <ol class="list-decimal pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>Phase 1 (Prefix Navigation):</strong> Traverse from root matching characters <code class="font-mono">'m' &rarr; 'e' &rarr; 'm'</code> in $O(L)$ time to find the prefix subtree root.</li>
+                        <li><strong>Phase 2 (Subtree Extraction):</strong> Execute a Depth-First Search (DFS) from that subtree node to collect all descending terminal words.</li>
+                        <li><strong>Ranking:</strong> Sort the collected matches by popularity weight or usage frequency to return the Top-$K$ suggestions.</li>
+                    </ol>
+                </div>
+
+                <!-- Wildcard Matching -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-sky-700 font-mono text-sm">2. Single-Character Wildcard Matching</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">Regex '.' Support</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When a search query contains a wildcard like <code class="font-mono text-sky-700">"c.t"</code> (where <code class="font-mono">'.'</code> matches any character):
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li>Standard character: follow the specific character edge matching the pattern.</li>
+                        <li>Wildcard character <code class="font-mono">'.'</code>: branch recursively across <strong>all child edges</strong> currently attached to the node!</li>
+                        <li>Matches <code class="font-mono">"cat"</code>, <code class="font-mono">"cot"</code>, <code class="font-mono">"cut"</code> in a single unified traversal.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 10 -->
+        <section id="memforge-milestone-10" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 10: Autocomplete Search Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 10 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/index/trie.py</code>: a production prefix search and autocomplete index.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The Autocomplete Engine features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Strict $O(L)$ exact point lookups and boolean <code class="font-mono text-purple-700 font-bold">starts_with()</code> prefix validation.</li>
+                <li><strong>Weighted Top-K Autocomplete:</strong> Returns query suggestions ranked by usage frequency or popularity weight.</li>
+                <li><strong>Wildcard Matching:</strong> Supports single-character wildcard search (<code class="font-mono text-purple-700">'.'</code>) through recursive DFS branching.</li>
+                <li><strong>Recursive Post-Order Pruning Deletion:</strong> Deleting a word unmarks its terminal status and cleans up empty child nodes upwards, eliminating memory leaks.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 10)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       ├── scheduler/</div>
+                <div>│       │   └── priority_queue.py         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler</span></div>
+                <div>│       ├── index/</div>
+                <div>│       │   ├── sorted_index.py           <span class="text-slate-500"># Milestone 06: Bisect Sorted Range Index</span></div>
+                <div>│       │   ├── avl_tree.py               <span class="text-slate-500"># Milestone 08: Self-Balancing AVL Secondary Tree</span></div>
+                <div>│       │   ├── btree.py                  <span class="text-slate-500"># Milestone 09: Multi-Way B-Tree Secondary Index</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">trie.py</span>                   <span class="text-slate-500"># Milestone 10: Prefix Tree &amp; Autocomplete Engine</span></div>
+                <div>│       └── txn/</div>
+                <div>│           └── undo_log.py               <span class="text-slate-500"># Milestone 07: Sentinel Doubly Linked Undo Chain</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_priority_queue.py    <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_sorted_index.py      <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_undo_log.py          <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        ├── test_avl_tree.py          <span class="text-slate-500"># Milestone 08 Tests</span></div>
+                <div>        ├── test_btree.py             <span class="text-slate-500"># Milestone 09 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_trie.py</span>              <span class="text-slate-500"># Milestone 10: Autocomplete, Wildcards &amp; Pruning Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/index/trie.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Search Engine: <code class="text-purple-700">src/memforge/index/trie.py</code></span>
+                    <span class="text-slate-400">Prefix Tree &amp; Typeahead Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Index Engine - Prefix Tree (Trie) &amp; Autocomplete Engine (Milestone 10)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List, Optional, Tuple
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TrieNode</span>:
+    <span class="text-slate-500">"""Discrete character edge transition node in the prefix tree."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Character transition mapping: char -> TrieNode</span>
+        self.children: Dict[str, <span class="text-amber-300">"TrieNode"</span>] = {}
+        <span class="text-slate-500"># Indicates if a complete word terminates at this node</span>
+        self.is_terminal: bool = <span class="text-rose-400">False</span>
+        <span class="text-slate-500"># Record IDs mapped to this word</span>
+        self.record_ids: List[int] = []
+        <span class="text-slate-500"># Popularity ranking weight (higher = ranks higher in autocomplete)</span>
+        self.weight: int = 0
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AutocompleteSearchEngine</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION TRIE SEARCH &amp; AUTOCOMPLETE ENGINE:
+    Delivers O(L) exact matches and prefix searches independent of total dataset size.
+    Supports frequency-ranked autocomplete and single-character wildcard search.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._root = TrieNode()
+        self._total_words = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total distinct words indexed in the Trie."""</span>
+        <span class="text-purple-400">return</span> self._total_words
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insert</span>(self, word: str, record_id: int, weight: int = 1) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Inserts a word into the tree in O(L) time where L = len(word).
+        Appends record_id and updates popularity ranking weight.
+        """</span>
+        <span class="text-purple-400">if not</span> word:
+            <span class="text-purple-400">return</span>
+
+        current = self._root
+        <span class="text-purple-400">for</span> char <span class="text-purple-400">in</span> word:
+            <span class="text-purple-400">if</span> char <span class="text-purple-400">not in</span> current.children:
+                current.children[char] = TrieNode()
+            current = current.children[char]
+
+        <span class="text-purple-400">if not</span> current.is_terminal:
+            current.is_terminal = <span class="text-rose-400">True</span>
+            self._total_words += 1
+
+        current.record_ids.append(record_id)
+        current.weight = max(current.weight, weight)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">search_exact</span>(self, word: str) -> List[int]:
+        <span class="text-slate-500">"""
+        Returns all record IDs mapped to the exact word in O(L) time.
+        Returns empty list if word is absent or not marked terminal.
+        """</span>
+        node = self._find_node(word)
+        <span class="text-purple-400">if</span> node <span class="text-purple-400">and</span> node.is_terminal:
+            <span class="text-purple-400">return</span> node.record_ids.copy()
+        <span class="text-purple-400">return</span> []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">starts_with</span>(self, prefix: str) -> bool:
+        <span class="text-slate-500">"""Returns True if any word in the index begins with the given prefix."""</span>
+        <span class="text-purple-400">return</span> self._find_node(prefix) <span class="text-purple-400">is not None</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_find_node</span>(self, prefix: str) -> Optional[TrieNode]:
+        <span class="text-slate-500">"""Traverses down character edges, returning the node representing the prefix."""</span>
+        current = self._root
+        <span class="text-purple-400">for</span> char <span class="text-purple-400">in</span> prefix:
+            <span class="text-purple-400">if</span> char <span class="text-purple-400">not in</span> current.children:
+                <span class="text-purple-400">return</span> <span class="text-rose-400">None</span>
+            current = current.children[char]
+        <span class="text-purple-400">return</span> current
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">autocomplete</span>(self, prefix: str, limit: int = 5) -> List[Tuple[str, int]]:
+        <span class="text-slate-500">"""
+        TYPEAHEAD SUGGESTION ENGINE:
+        1. Navigates to prefix node in O(L) time.
+        2. Gathers all descending terminal words via DFS.
+        3. Returns top-k suggestions sorted by popularity weight.
+        """</span>
+        prefix_node = self._find_node(prefix)
+        <span class="text-purple-400">if not</span> prefix_node:
+            <span class="text-purple-400">return</span> []
+
+        candidates: List[Tuple[str, int]] = []
+        self._dfs_collect(prefix_node, list(prefix), candidates)
+
+        <span class="text-slate-500"># Sort candidates descending by weight, then alphabetically by word</span>
+        candidates.sort(key=<span class="text-purple-400">lambda</span> item: (-item[1], item[0]))
+        <span class="text-purple-400">return</span> candidates[:limit]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_dfs_collect</span>(
+        self,
+        node: TrieNode,
+        current_chars: List[str],
+        results: List[Tuple[str, int]]
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Recursive DFS collecting all words descending from node."""</span>
+        <span class="text-purple-400">if</span> node.is_terminal:
+            results.append((<span class="text-amber-300">""</span>.join(current_chars), node.weight))
+
+        <span class="text-purple-400">for</span> char, child_node <span class="text-purple-400">in</span> node.children.items():
+            current_chars.append(char)
+            self._dfs_collect(child_node, current_chars, results)
+            current_chars.pop()  <span class="text-slate-500"># Backtrack</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">search_wildcard</span>(self, pattern: str) -> List[str]:
+        <span class="text-slate-500">"""
+        WILDCARD MATCHING:
+        Supports single-character wildcards using '.' (e.g. 'c.t' matches 'cat', 'cot').
+        """</span>
+        matches: List[str] = []
+        self._wildcard_recursive(self._root, pattern, 0, [], matches)
+        <span class="text-purple-400">return</span> matches
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_wildcard_recursive</span>(
+        self,
+        node: TrieNode,
+        pattern: str,
+        index: int,
+        current_chars: List[str],
+        matches: List[str]
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> index == len(pattern):
+            <span class="text-purple-400">if</span> node.is_terminal:
+                matches.append(<span class="text-amber-300">""</span>.join(current_chars))
+            <span class="text-purple-400">return</span>
+
+        char = pattern[index]
+        <span class="text-purple-400">if</span> char == <span class="text-amber-300">'.'</span>:
+            <span class="text-slate-500"># Wildcard branch: Explore every child edge</span>
+            <span class="text-purple-400">for</span> child_char, child_node <span class="text-purple-400">in</span> node.children.items():
+                current_chars.append(child_char)
+                self._wildcard_recursive(child_node, pattern, index + 1, current_chars, matches)
+                current_chars.pop()
+        <span class="text-purple-400">else</span>:
+            <span class="text-slate-500"># Standard edge navigation</span>
+            <span class="text-purple-400">if</span> char <span class="text-purple-400">in</span> node.children:
+                current_chars.append(char)
+                self._wildcard_recursive(node.children[char], pattern, index + 1, current_chars, matches)
+                current_chars.pop()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">delete</span>(self, word: str) -> bool:
+        <span class="text-slate-500">"""
+        PRUNED DELETION:
+        Unmarks terminal status and executes bottom-up recursive pruning
+        to deallocate unbranched dead nodes from memory.
+        """</span>
+        <span class="text-purple-400">if not</span> word:
+            <span class="text-purple-400">return False</span>
+
+        deleted_flag = [False]
+        self._delete_recursive(self._root, word, 0, deleted_flag)
+        <span class="text-purple-400">if</span> deleted_flag[0]:
+            self._total_words -= 1
+        <span class="text-purple-400">return</span> deleted_flag[0]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_delete_recursive</span>(
+        self,
+        node: TrieNode,
+        word: str,
+        index: int,
+        deleted_flag: List[bool]
+    ) -> bool:
+        <span class="text-slate-500">"""Returns True if the child node should be pruned by its parent."""</span>
+        <span class="text-purple-400">if</span> index == len(word):
+            <span class="text-purple-400">if not</span> node.is_terminal:
+                <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Word was not in the Trie</span>
+
+            node.is_terminal = <span class="text-rose-400">False</span>
+            node.record_ids.clear()
+            deleted_flag[0] = <span class="text-rose-400">True</span>
+            <span class="text-slate-500"># Prune this node only if it has zero child branches</span>
+            <span class="text-purple-400">return</span> len(node.children) == 0
+
+        char = word[index]
+        <span class="text-purple-400">if</span> char <span class="text-purple-400">not in</span> node.children:
+            <span class="text-purple-400">return False</span>
+
+        should_prune_child = self._delete_recursive(node.children[char], word, index + 1, deleted_flag)
+
+        <span class="text-purple-400">if</span> should_prune_child:
+            <span class="text-purple-400">del</span> node.children[char]
+            <span class="text-slate-500"># Prune this ancestor node if it is not terminal and has no remaining children</span>
+            <span class="text-purple-400">return not</span> node.is_terminal <span class="text-purple-400">and</span> len(node.children) == 0
+
+        <span class="text-purple-400">return False</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_trie.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_trie.py</code></span>
+                    <span class="text-slate-400">Autocomplete, Wildcard &amp; Pruning Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Trie Autocomplete Engine Verification (Milestone 10)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.index.trie <span class="text-purple-400">import</span> AutocompleteSearchEngine
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestAutocompleteSearchEngine</span>:
+    <span class="text-slate-500">"""Unit tests asserting prefix lookups, frequency ranking, wildcards, and node pruning."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_exact_search_and_prefix_existence</span>(self):
+        engine = AutocompleteSearchEngine()
+        engine.insert(<span class="text-amber-300">"memforge"</span>, record_id=101)
+        engine.insert(<span class="text-amber-300">"memory"</span>, record_id=102)
+        engine.insert(<span class="text-amber-300">"database"</span>, record_id=201)
+
+        assert len(engine) == 3
+        assert engine.search_exact(<span class="text-amber-300">"memforge"</span>) == [101]
+        assert engine.search_exact(<span class="text-amber-300">"mem"</span>) == []  <span class="text-slate-500"># Prefix exists, but not terminal!</span>
+        assert engine.starts_with(<span class="text-amber-300">"mem"</span>) is <span class="text-rose-400">True</span>
+        assert engine.starts_with(<span class="text-amber-300">"data"</span>) is <span class="text-rose-400">True</span>
+        assert engine.starts_with(<span class="text-amber-300">"redis"</span>) is <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_frequency_ranked_autocomplete</span>(self):
+        engine = AutocompleteSearchEngine()
+        <span class="text-slate-500"># Insert terms with distinct popularity weights</span>
+        engine.insert(<span class="text-amber-300">"apple"</span>, record_id=1, weight=50)
+        engine.insert(<span class="text-amber-300">"application"</span>, record_id=2, weight=100)  <span class="text-slate-500"># Highest weight</span>
+        engine.insert(<span class="text-amber-300">"app"</span>, record_id=3, weight=10)
+        engine.insert(<span class="text-amber-300">"banana"</span>, record_id=4, weight=90)
+
+        <span class="text-slate-500"># Autocomplete query "app"</span>
+        results = engine.autocomplete(<span class="text-amber-300">"app"</span>, limit=3)
+        assert len(results) == 3
+
+        <span class="text-slate-500"># Must be ranked descending by weight: application (100) &rarr; apple (50) &rarr; app (10)</span>
+        assert results[0] == (<span class="text-amber-300">"application"</span>, 100)
+        assert results[1] == (<span class="text-amber-300">"apple"</span>, 50)
+        assert results[2] == (<span class="text-amber-300">"app"</span>, 10)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_single_character_wildcard_matching</span>(self):
+        engine = AutocompleteSearchEngine()
+        engine.insert(<span class="text-amber-300">"cat"</span>, record_id=1)
+        engine.insert(<span class="text-amber-300">"cot"</span>, record_id=2)
+        engine.insert(<span class="text-amber-300">"cut"</span>, record_id=3)
+        engine.insert(<span class="text-amber-300">"cart"</span>, record_id=4)
+        engine.insert(<span class="text-amber-300">"dog"</span>, record_id=5)
+
+        <span class="text-slate-500"># Query "c.t" must match cat, cot, cut, but NOT cart or dog</span>
+        matches = sorted(engine.search_wildcard(<span class="text-amber-300">"c.t"</span>))
+        assert matches == [<span class="text-amber-300">"cat"</span>, <span class="text-amber-300">"cot"</span>, <span class="text-amber-300">"cut"</span>]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_pruned_deletion_cleans_memory</span>(self):
+        engine = AutocompleteSearchEngine()
+        engine.insert(<span class="text-amber-300">"car"</span>, record_id=1)
+        engine.insert(<span class="text-amber-300">"card"</span>, record_id=2)
+
+        assert len(engine) == 2
+        <span class="text-slate-500"># Node 'r' has child 'd'</span>
+        node_r = engine._find_node(<span class="text-amber-300">"car"</span>)
+        assert <span class="text-amber-300">'d'</span> <span class="text-purple-400">in</span> node_r.children
+
+        <span class="text-slate-500"># Delete "card" -> must prune 'd', leaving "car" untouched</span>
+        assert engine.delete(<span class="text-amber-300">"card"</span>) is <span class="text-rose-400">True</span>
+        assert len(engine) == 1
+        assert engine.search_exact(<span class="text-amber-300">"card"</span>) == []
+        assert engine.search_exact(<span class="text-amber-300">"car"</span>) == [1]
+        assert <span class="text-amber-300">'d'</span> <span class="text-purple-400">not in</span> node_r.children  <span class="text-slate-500"># Pruned!</span>
+
+        <span class="text-slate-500"># Delete "car" -> must prune 'c', 'a', 'r' entirely from root!</span>
+        assert engine.delete(<span class="text-amber-300">"car"</span>) is <span class="text-rose-400">True</span>
+        assert len(engine) == 0
+        assert <span class="text-amber-300">'c'</span> <span class="text-purple-400">not in</span> engine._root.children  <span class="text-slate-500"># Root completely empty!</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Array[26] Allocation per Node in Python</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Porting C/Java code by allocating <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">children = [None] * 26</code> in every Trie node.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this thrashes RAM:</strong> In C, 26 pointers take 208 bytes flat. In Python, a 26-slot list is an entire <code class="font-mono">PyListObject</code> with pointer tables, allocating ~270 bytes per node even if only 1 character is present. Furthermore, it restricts input strictly to ASCII lowercase!
+                        <strong>Fix:</strong> Use a dynamic Python dictionary <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">children: dict[str, TrieNode] = {}</code>, allocating memory strictly on demand and natively supporting UTF-8 unicode.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Failing to Prune Dead Nodes on Deletion</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing deletion simply as <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">node.is_terminal = False</code> without unlinking dead children.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes memory leaks:</strong> In high-churn databases where millions of ephemeral tokens or session IDs are inserted and removed, unmarking the terminal flag leaves dead unbranched node chains permanently rooted in memory.
+                        <strong>Fix:</strong> Execute recursive post-order pruning: if a child is non-terminal and has no remaining children, remove it from the parent dictionary.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Using SQL LIKE '%term%' for Autocomplete</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Executing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">SELECT * FROM items WHERE name LIKE 'prefix%'</code> on every user keystroke.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this saturates databases:</strong> Relational engines must either scan B-Tree indexes or execute full sequential table scans, locking database worker threads.
+                        <strong>Fix:</strong> Route typeaheads into an in-memory Trie index, returning autocompletions in sub-millisecond $O(L)$ time with zero relational database load.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Unbounded DFS Extraction in Autocomplete</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Gathering all 250,000 matches descending from a broad prefix like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">"a"</code> before slicing <code class="font-mono text-rose-900 font-bold">[:5]</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this spikes latency:</strong> Deep tree traversal over hundreds of thousands of words wastes milliseconds of CPU time just to display 5 suggestions in a UI dropdown.
+                        <strong>Fix:</strong> Maintain a bounded Priority Queue (Min-Heap of size $K$) or track top-ranked children directly on ancestor nodes to truncate search early.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 10</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Trie autocomplete test suite and empirically benchmark prefix extraction:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge Trie autocomplete unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_trie.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms prefix validation, frequency ranking, wildcard DFS, and memory pruning.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 10:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, range indices, undo chains, AVL trees, B-Trees, and prefix Tries.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration of typeahead autocompletion and wildcards:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from memforge.index.trie import AutocompleteSearchEngine; e = AutocompleteSearchEngine(); [e.insert(w, i, len(w)) for i, w in enumerate(['memforge', 'memory', 'memcpy', 'memset', 'member'])]; print('Autocomplete mem:', e.autocomplete('mem', limit=3)); print('Wildcard m.m.y:', e.search_wildcard('m.m..y'))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates sub-millisecond prefix navigation and regex-style wildcard matching in pure Python.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 11 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 11: Graph Data Structures &amp; Pathfinding - Adjacency Lists, BFS, DFS &amp; Dijkstra</h4>
+                <p class="text-xs text-slate-500 font-sans">Modeling complex network topologies: Adjacency Matrices vs. Adjacency Lists, cycle detection in Directed Acyclic Graphs (DAGs), shortest path exploration with Dijkstra, and engineering MemForge's relational entity dependency graph.</p>
+            </div>
+            <a href="Chapter 11 - Graph Data Structures and Pathfinding - Adjacency Lists, BFS, DFS and Dijkstra.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 11 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 7: Security Fundamentals (AuthN, AuthZ, Bcrypt, &amp; JWT)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 07 - Multi-Tenant Security, Rate Limiting &amp; JWT Guard)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Cryptographic Defense &amp; Identity
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Security Fundamentals: AuthN &amp; AuthZ
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Zero-trust application security: Why encryption is not hashing, password salting with adaptive work factors in Bcrypt, RFC 7519 JWT cryptographic signatures, rate limiting brute-force defense, and building a multi-tenant authorization guard for NoteVault.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 07: Multi-Tenancy &amp; User Isolation</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        In Chapter 6, our persistent notes were completely public: anyone could view, edit, or delete any note. In this milestone, we introduce <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">UserModel</code>, bind notes to an owning user with a foreign key constraint, implement secure password hashing, defend against brute-force CPU exhaustion using rate limiting, issue signed JWT access tokens, and lock all note operations behind an injected <code class="font-mono text-purple-300">get_current_user</code> dependency guard.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> AuthN vs. AuthZ boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Key derivation &amp; Bcrypt 72-byte limit</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> JWT Claims, Exp, &amp; HMAC-SHA256</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Rate limiting &amp; abuse defense</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-tenant <code class="text-purple-300">UserModel</code> FK link</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production reality: custom vs. turnkey</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Computer Science: AuthN vs AuthZ & Cryptographic Fundamentals -->
+        <section id="cs-security" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cryptography &amp; Identity: AuthN vs. AuthZ</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Many developers conflate <strong>Authentication</strong> and <strong>Authorization</strong>. Conflating them leads to severe architectural flaws, such as <strong>BOLA (Broken Object Level Authorization)</strong>, which routinely ranks as the #1 threat on the OWASP API Security Top 10 list.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- AuthN Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-mono font-bold text-xs">AuthN</span>
+                        <h3 class="font-bold text-slate-900 text-base">Authentication ("Who are you?")</h3>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The process of establishing and verifying identity. The client presents identity claims (e.g., an email address) alongside secret proof (e.g., a raw password, a biometric token, or an MFA one-time passcode). The server validates the proof and issues a session artifact (such as a signed JWT).
+                    </p>
+                    <div class="text-[11px] font-mono text-sky-800 bg-sky-50 p-2.5 rounded-lg border border-sky-200">
+                        Endpoint: POST /api/v1/auth/token &rarr; Returns Bearer JWT
+                    </div>
+                </div>
+
+                <!-- AuthZ Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-mono font-bold text-xs">AuthZ</span>
+                        <h3 class="font-bold text-slate-900 text-base">Authorization ("What can you do?")</h3>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The process of checking whether a verified identity has permission to read or modify a specific resource. Even if Bob proves he is Bob (AuthN), he must not be authorized to view or delete Alice's private notes (AuthZ).
+                    </p>
+                    <div class="text-[11px] font-mono text-purple-800 bg-purple-50 p-2.5 rounded-lg border border-purple-200">
+                        Check: note.owner_id == current_user.id (Row-Level Security)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Encryption vs Hashing Comparison -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6">
+                <div class="text-center font-mono font-bold text-emerald-400 uppercase tracking-widest text-xs">
+                    Cryptographic Primitives: Hashing vs. Encryption
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 text-xs font-mono">
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <span class="text-rose-400 font-bold block text-sm">Two-Way Encryption (AES-GCM / RSA)</span>
+                        <p class="font-sans text-[11px] text-slate-300 leading-relaxed">
+                            A reversible operation. Plain text is encrypted into ciphertext using a secret key, and can later be decrypted back into the original plain text using that same key (symmetric) or a private key (asymmetric).
+                        </p>
+                        <div class="text-rose-400 font-bold text-[10px]">
+                            &cross; NEVER use encryption for user passwords! If an attacker compromises the server's decryption key, all plain-text passwords across your database are exposed.
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <span class="text-emerald-400 font-bold block text-sm">One-Way Cryptographic Hashing (Bcrypt / Argon2)</span>
+                        <p class="font-sans text-[11px] text-slate-300 leading-relaxed">
+                            A mathematically irreversible function. Plain text is scrambled into a fixed-length digest. There is no decryption key; it cannot be reversed. To verify a password, the server hashes the incoming attempt with the stored salt and compares the two digests.
+                        </p>
+                        <div class="text-emerald-400 font-bold text-[10px]">
+                            &check; The Gold Standard. Even if an attacker dumps your database, they cannot reverse the hashes without massive, cost-prohibitive computing power.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside Bcrypt: Salting, Adaptive Work Factors, & The 72-Byte Limit -->
+        <section id="bcrypt-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Inside Bcrypt: Adaptive Work Factors &amp; The 72-Byte Boundary</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Why can't we use standard fast hash functions like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">MD5</code> or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">SHA-256</code> for passwords? Fast hash functions were engineered for verifying data integrity at high throughput. A modern GPU cluster can compute billions of SHA-256 hashes per second, allowing an attacker to brute-force a leaked database in minutes.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Bcrypt</strong> is a <strong>Key Derivation Function (KDF)</strong> based on the Blowfish cipher. It is slow by design, neutralizing brute-force and dictionary attacks.
+            </p>
+
+            <!-- Bcrypt Deconstruction Visual -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Anatomy of a Bcrypt Hash String</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    When you inspect a stored password hash in NoteVault's database, you will see a 60-character string formatted like this:
+                </p>
+
+                <div class="bg-slate-900 p-4 rounded-xl text-xs font-mono text-white overflow-x-auto">
+                    <span class="text-rose-400 font-bold">$2b$</span><span class="text-amber-400 font-bold">12$</span><span class="text-sky-300 font-bold">n9qXvcv4hkCuv1HsS/d.OO</span><span class="text-emerald-400 font-bold">e7cQn0vIsuj6cK6vL5hF6eN8/7C.2eS</span>
+                </div>
+
+                <div class="grid sm:grid-cols-4 gap-3 text-xs font-mono pt-2">
+                    <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                        <span class="text-rose-600 font-bold block">$2b$</span>
+                        <span class="text-[10px] text-slate-500">Algorithm Identifier (Bcrypt specification revision)</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                        <span class="text-amber-600 font-bold block">12$</span>
+                        <span class="text-[10px] text-slate-500">Cost/Work Factor (2^12 = 4,096 computation rounds)</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                        <span class="text-sky-700 font-bold block">n9qXv... (22 chars)</span>
+                        <span class="text-[10px] text-slate-500">Cryptographic Salt (Random 128-bit value defeats Rainbow Tables)</span>
+                    </div>
+                    <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                        <span class="text-emerald-700 font-bold block">e7cQn... (31 chars)</span>
+                        <span class="text-[10px] text-slate-500">Computed Hash Digest (The final cryptographic output)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The 72-Byte Boundary Warning -->
+            <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-rose-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    The 72-Byte Bcrypt Truncation Trap: A Critical Security Boundary
+                </h3>
+                <p class="text-xs text-rose-900 leading-relaxed">
+                    Under the hood, the original Blowfish cipher processes keys in chunks of up to 576 bits (exactly <strong>72 bytes</strong>). If a user enters a password with 100 characters, standard Bcrypt silently ignores everything after byte 72!
+                </p>
+                <div class="bg-rose-100/70 p-3 rounded-lg text-xs font-mono text-rose-950 space-y-1">
+                    <div>User Password A: "SuperSecretLongPasswordThatExceedsSeventyTwoBytesLengthByALot111111111"</div>
+                    <div>User Password B: "SuperSecretLongPasswordThatExceedsSeventyTwoBytesLengthByALot222222222"</div>
+                    <div class="text-rose-700 font-bold">&rarr; Both produce the EXACT SAME hash because bytes beyond index 71 are ignored!</div>
+                </div>
+                <p class="text-[11px] text-rose-800 leading-relaxed">
+                    <strong>Defensive Engineering Fix:</strong> Always use a Pydantic schema rule on registration: <code class="font-mono bg-rose-200/60 px-1 py-0.5 rounded text-rose-900 font-bold">Field(min_length=8, max_length=72)</code>, or pre-hash the password with SHA-256 before feeding it to Bcrypt if you require unlimited-length passphrases.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Anatomy of a JSON Web Token (RFC 7519) -->
+        <section id="jwt-anatomy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Anatomy of a JWT: Stateless Proof of Identity</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Traditional server-side sessions store random IDs in cookies and keep session data in a database (like Redis). On every single incoming API call, the server must query the session database to identify the user.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                A <strong>JSON Web Token (JWT)</strong> is <strong>stateless</strong>. The user's identity, permissions, and expiration timestamp are encoded directly inside the token. The server verifies the token's validity using a cryptographic signature, eliminating the need for a database lookup on every request.
+            </p>
+
+            <!-- JWT Breakdown Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs overflow-x-auto">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">RFC 7519 Token Structure</span>
+                    <p class="text-slate-400 text-xs mt-1">Three Base64URL-encoded JSON segments separated by dots</p>
+                </div>
+
+                <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-center text-sm font-bold tracking-wider">
+                    <span class="text-rose-400">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9</span>.<span class="text-purple-400">eyJzdWIiOiIxMjM0NTYiLCJ1c2VybmFtZSI6ImFsaWNlIiwiZXhwIjoxNzkzNDQ4MDAwfQ</span>.<span class="text-sky-400">4T8_x6dI_WwN1X9eZp_4_7A6B8C9D0E1F2G3H4I5J6K</span>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-xs">
+                    <div class="p-4 bg-rose-950/40 border border-rose-800 rounded-xl space-y-2">
+                        <span class="text-rose-400 font-bold block text-sm">1. Header</span>
+                        <pre class="text-[11px] text-slate-300 leading-relaxed">
+{
+  "alg": "HS256",
+  "ty": "JWT"
+}</pre>
+                        <p class="text-[10px] text-slate-400 font-sans">Specifies the cryptographic signing algorithm (e.g., HMAC with SHA-256).</p>
+                    </div>
+
+                    <div class="p-4 bg-purple-950/40 border border-purple-800 rounded-xl space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">2. Payload (Claims)</span>
+                        <pre class="text-[11px] text-slate-300 leading-relaxed">
+{
+  "sub": "1",
+  "email": "alice@notevault.io",
+  "exp": 1793448000
+}</pre>
+                        <p class="text-[10px] text-slate-400 font-sans">Contains registered claims: <code class="text-purple-300">sub</code> (subject/user ID) and <code class="text-purple-300">exp</code> (Unix expiration timestamp).</p>
+                    </div>
+
+                    <div class="p-4 bg-sky-950/40 border border-sky-800 rounded-xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">3. Signature</span>
+                        <pre class="text-[11px] text-sky-200 leading-relaxed">
+HMACSHA256(
+  base64(header) + "." +
+  base64(payload),
+  SECRET_KEY
+)</pre>
+                        <p class="text-[10px] text-slate-400 font-sans">Ensures data integrity. If a client tampers with the payload, the signature verification fails and the request is rejected.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Encryption Fallacy Callout -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 space-y-1">
+                <p class="font-bold">Security Note: JWTs are SIGNED, NOT ENCRYPTED!</p>
+                <p class="text-amber-800 text-[11px] leading-relaxed">
+                    Anyone can paste a JWT into a tool like <a href="https://jwt.io" target="_blank" class="underline font-bold text-amber-950">jwt.io</a> to read the decoded payload. <strong>Never store sensitive data (like plain passwords, API keys, or credit card numbers) in a JWT payload.</strong> The signature guarantees <em>integrity</em> (the data has not been altered), not <em>secrecy</em>.
+                </p>
+            </div>
+        </section>
+
+        <!-- 4. Production Reality: Custom Auth vs Turnkey Packages -->
+        <section id="auth-production-reality" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Production Architecture: Custom Auth vs. Turnkey Solutions</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Implementing the basic password-hashing and token-signing flow below is essential for understanding security mechanics. However, building an enterprise-grade auth system involves significantly more complexity:
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6 text-xs">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-slate-900 block text-sm">1. Token Revocation</span>
+                    <p class="text-slate-600 leading-relaxed">
+                        Because JWTs are stateless, you cannot "log out" a stolen token until it expires. True revocation requires keeping a distributed blocklist in Redis or using <strong>short-lived access tokens (15 mins) paired with rotating refresh tokens</strong>.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-slate-900 block text-sm">2. Account Recovery &amp; MFA</span>
+                    <p class="text-slate-600 leading-relaxed">
+                        Production applications require secure email verification, password reset tokens with single-use expirations, rate-limiting on login routes to prevent brute forcing, and TOTP (Time-based One-Time Password) MFA support.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-slate-900 block text-sm">3. The Production Choice</span>
+                    <p class="text-slate-600 leading-relaxed">
+                        For commercial SaaS backends, consider using battle-tested libraries like <strong>FastAPI-Users</strong>, or offloading authentication to dedicated Identity Providers (IdPs) like <strong>Supabase Auth, Auth0, or Clerk</strong> via OAuth2/OIDC.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Step-by-Step Code: NoteVault Milestone 07 Implementation -->
+        <section id="notevault-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 07: Security Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now secure NoteVault with a dedicated user model, password hashing utilities, an authentication router, and ownership guards:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py                 <span class="text-slate-500"># Adds JWT_SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES</span></div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">models.py</span>                 <span class="text-slate-500"># UserModel &amp; NoteModel with ForeignKey("users.id")</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">schemas.py</span>                <span class="text-slate-500"># UserCreate, UserResponse, Token, TokenData</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">security.py</span>               <span class="text-slate-500"># NEW: Bcrypt hashing &amp; PyJWT signing utilities</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">dependencies.py</span>           <span class="text-slate-500"># get_current_user guard using OAuth2PasswordBearer</span></div>
+                <div>│   ├── routers/</div>
+                <div>│   │   ├── <span class="text-emerald-300 font-bold">auth.py</span>               <span class="text-slate-500"># NEW: /register and /token endpoints (with rate limiting)</span></div>
+                <div>│   │   ├── notes.py              <span class="text-slate-500"># Protected: Only returns notes belonging to current_user</span></div>
+                <div>│   │   └── views.py</div>
+                <div>│   └── main.py</div>
+                <div>└── templates/</div>
+            </div>
+
+            <!-- File 1: app/security.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Cryptographic Utilities: <code class="text-purple-700">app/security.py</code></span>
+                    <span class="text-slate-400">Bcrypt &amp; PyJWT Logic</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Cryptographic Security Layer (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timedelta, timezone
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">from</span> passlib.context <span class="text-purple-400">import</span> CryptContext
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+
+<span class="text-slate-500"># 1. Password Hashing Context</span>
+<span class="text-slate-500"># Uses bcrypt with automatic salt generation and work-factor management</span>
+pwd_context = CryptContext(schemes=[<span class="text-amber-300">"bcrypt"</span>], deprecated=<span class="text-amber-300">"auto"</span>)
+
+<span class="text-slate-500"># 2. Token Configuration</span>
+JWT_SECRET_KEY = getattr(settings, <span class="text-amber-300">"JWT_SECRET_KEY"</span>, <span class="text-amber-300">"insecure_dev_secret_change_in_production_32bytes"</span>)
+ALGORITHM = getattr(settings, <span class="text-amber-300">"ALGORITHM"</span>, <span class="text-amber-300">"HS256"</span>)
+ACCESS_TOKEN_EXPIRE_MINUTES = getattr(settings, <span class="text-amber-300">"ACCESS_TOKEN_EXPIRE_MINUTES"</span>, 30)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">hash_password</span>(raw_password: str) -> str:
+    <span class="text-slate-500">"""Hashes a plain-text password using Bcrypt with a secure salt."""</span>
+    <span class="text-purple-400">return</span> pwd_context.hash(raw_password)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_password</span>(raw_password: str, hashed_password: str) -> bool:
+    <span class="text-slate-500">"""Verifies a plain-text attempt against a stored Bcrypt hash string."""</span>
+    <span class="text-purple-400">return</span> pwd_context.verify(raw_password, hashed_password)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_access_token</span>(data: dict, expires_delta: Optional[timedelta] = <span class="text-rose-400">None</span>) -> str:
+    <span class="text-slate-500">"""
+    Generates an RFC 7519 compliant JSON Web Token signed with HMAC-SHA256.
+    Ensures an explicit UTC expiration timestamp ('exp') is included.
+    """</span>
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta <span class="text-purple-400">or</span> timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({<span class="text-amber-300">"exp"</span>: expire})
+    
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
+    <span class="text-purple-400">return</span> encoded_jwt</pre>
+            </div>
+
+            <!-- File 2: Models Update (app/models.py) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Relational User Model &amp; Foreign Key: <code class="text-purple-700">app/models.py</code></span>
+                    <span class="text-slate-400">Multi-Tenant Relationship</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - User &amp; Note Relational Models (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Text, Integer, Boolean, DateTime, JSON, ForeignKey
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> Mapped, mapped_column, relationship
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> Base
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserModel</span>(Base):
+    <span class="text-slate-500">"""Physical database table representing users."""</span>
+    __tablename__ = <span class="text-amber-300">"users"</span>
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    email: Mapped[str] = mapped_column(String(255), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=<span class="text-rose-400">False</span>)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc),
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    <span class="text-slate-500"># Relationship: One user has many notes</span>
+    notes: Mapped[List[<span class="text-amber-300">"NoteModel"</span>]] = relationship(back_populates=<span class="text-amber-300">"owner"</span>, cascade=<span class="text-amber-300">"all, delete-orphan"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteModel</span>(Base):
+    <span class="text-slate-500">"""Updated Note model with Foreign Key binding to the owner user."""</span>
+    __tablename__ = <span class="text-amber-300">"notes"</span>
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    title: Mapped[str] = mapped_column(String(120), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    content: Mapped[str] = mapped_column(Text, nullable=<span class="text-rose-400">False</span>)
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list, nullable=<span class="text-rose-400">False</span>)
+    priority: Mapped[int] = mapped_column(Integer, default=1, nullable=<span class="text-rose-400">False</span>)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=<span class="text-rose-400">False</span>, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc),
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    <span class="text-slate-500"># FOREIGN KEY LINK: Binds every note row to an authentic user</span>
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey(<span class="text-amber-300">"users.id"</span>, ondelete=<span class="text-amber-300">"CASCADE"</span>), index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Relationship traversal</span>
+    owner: Mapped[UserModel] = relationship(back_populates=<span class="text-amber-300">"notes"</span>)</pre>
+            </div>
+
+            <!-- File 3: Schemas (app/schemas.py) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Auth Schemas: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">User Contracts &amp; Token Shapes</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append these auth schemas to app/schemas.py</span>
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> EmailStr
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserCreate</span>(BaseModel):
+    email: EmailStr
+    <span class="text-slate-500"># Defensive bounds: Enforces the 72-byte max length to avoid Bcrypt silent truncation!</span>
+    password: str = Field(..., min_length=8, max_length=72, description=<span class="text-amber-300">"Min 8 chars, Max 72 chars"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserResponse</span>(BaseModel):
+    id: int
+    email: EmailStr
+    is_active: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=<span class="text-rose-400">True</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Token</span>(BaseModel):
+    access_token: str
+    token_type: str = <span class="text-amber-300">"bearer"</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenData</span>(BaseModel):
+    user_id: Optional[int] = <span class="text-rose-400">None</span></pre>
+            </div>
+
+            <!-- Deep Dive: Rate Limiting & Abuse Defense -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-xs font-mono font-bold">Abuse Defense</span>
+                    Rate Limiting: Defending Login Endpoints Against Brute-Force &amp; CPU Exhaustion
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    Because Bcrypt is intentionally slow and computationally expensive (taking 50ms–200ms of CPU time per hash check), the <code class="font-mono text-purple-700 font-bold">/api/v1/auth/token</code> login route is the #1 target for <strong>Denial-of-Service (DoS)</strong> and credential stuffing. An attacker sending 50 concurrent requests per second can easily pin all CPU cores to 100%, taking down the entire backend.
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    FastAPI backends defend against this using <strong>Rate Limiting</strong> (via libraries like <code class="font-mono text-slate-800">slowapi</code> or Redis-backed token buckets), throttling requests by client IP address:
+                </p>
+
+                <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> slowapi <span class="text-purple-400">import</span> Limiter, _rate_limit_exceeded_handler
+<span class="text-purple-400">from</span> slowapi.util <span class="text-purple-400">import</span> get_remote_address
+<span class="text-purple-400">from</span> slowapi.errors <span class="text-purple-400">import</span> RateLimitExceeded
+
+<span class="text-slate-500"># 1. Instantiate Limiter keyed by client IP address (stored in memory or Redis)</span>
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+<span class="text-slate-500"># 2. Apply strict rate limit to the CPU-heavy login route</span>
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/token"</span>)
+<span class="text-purple-400">@limiter.limit</span>(<span class="text-amber-300">"5/minute"</span>)  <span class="text-slate-500"># Allows max 5 login attempts per minute per IP!</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">login_for_access_token</span>(request: Request, ...):
+    ...</pre>
+
+                <p class="text-[11px] text-slate-500 italic font-sans">
+                    If an attacker exceeds 5 attempts in a minute, FastAPI immediately short-circuits the call and returns an <strong>HTTP 429 Too Many Requests</strong> response without calculating any expensive Bcrypt hashes.
+                </p>
+            </div>
+
+            <!-- File 4: Authentication Router (app/routers/auth.py) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Auth Router with Rate Limiting: <code class="text-purple-700">app/routers/auth.py</code></span>
+                    <span class="text-slate-400">Registration &amp; Token Issuance</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Authentication Router (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, HTTPException, status, Depends, Request
+<span class="text-purple-400">from</span> fastapi.security <span class="text-purple-400">import</span> OAuth2PasswordRequestForm
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> slowapi <span class="text-purple-400">import</span> Limiter
+<span class="text-purple-400">from</span> slowapi.util <span class="text-purple-400">import</span> get_remote_address
+
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> SessionLocal
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> UserModel
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> UserCreate, UserResponse, Token
+<span class="text-purple-400">from</span> app.security <span class="text-purple-400">import</span> hash_password, verify_password, create_access_token
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> DbSession
+
+limiter = Limiter(key_func=get_remote_address)
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/auth"</span>, tags=[<span class="text-amber-300">"Authentication"</span>])
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/register"</span>, response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_user</span>(payload: UserCreate, db: DbSession):
+    <span class="text-slate-500"># Check if email is already registered</span>
+    existing_user = db.scalar(select(UserModel).where(UserModel.email == payload.email))
+    <span class="text-purple-400">if</span> existing_user:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=<span class="text-amber-300">"An account with this email address already exists."</span>
+        )
+
+    <span class="text-slate-500"># Create and persist the user with their salted Bcrypt hash</span>
+    new_user = UserModel(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        is_active=<span class="text-rose-400">True</span>
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    <span class="text-purple-400">return</span> new_user
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/token"</span>, response_model=Token)
+<span class="text-purple-400">@limiter.limit</span>(<span class="text-amber-300">"5/minute"</span>)  <span class="text-slate-500"># RATE LIMIT: Blocks brute-force password guessing &amp; CPU starvation</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">login_for_access_token</span>(
+    request: Request,
+    db: DbSession,
+    form_data: OAuth2PasswordRequestForm = Depends()
+):
+    <span class="text-slate-500">"""
+    Standard OAuth2 specification login endpoint.
+    form_data.username contains the user's submitted email address.
+    """</span>
+    user = db.scalar(select(UserModel).where(UserModel.email == form_data.username))
+    
+    <span class="text-slate-500"># Constant-time mitigation against timing attacks: Always run password verification</span>
+    <span class="text-purple-400">if not</span> user <span class="text-purple-400">or not</span> verify_password(form_data.password, user.hashed_password):
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=<span class="text-amber-300">"Incorrect email or password."</span>,
+            headers={<span class="text-amber-300">"WWW-Authenticate"</span>: <span class="text-amber-300">"Bearer"</span>},
+        )
+    
+    <span class="text-purple-400">if not</span> user.is_active:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Inactive user account."</span>)
+
+    <span class="text-slate-500"># Issue the signed JWT with user ID as the subject ('sub')</span>
+    access_token = create_access_token(data={<span class="text-amber-300">"sub"</span>: str(user.id)})
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"access_token"</span>: access_token, <span class="text-amber-300">"token_type"</span>: <span class="text-amber-300">"bearer"</span>}</pre>
+            </div>
+
+            <!-- File 5: get_current_user Guard (app/dependencies.py) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Guard Dependency: <code class="text-purple-700">app/dependencies.py</code></span>
+                    <span class="text-slate-400">Authenticating Route Invocations</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/dependencies.py:</span>
+<span class="text-purple-400">from</span> fastapi.security <span class="text-purple-400">import</span> OAuth2PasswordBearer
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">from</span> app.security <span class="text-purple-400">import</span> JWT_SECRET_KEY, ALGORITHM
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> UserModel
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-slate-500"># Informs Swagger UI (/docs) that the token is acquired from /api/v1/auth/token</span>
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=<span class="text-amber-300">"/api/v1/auth/token"</span>)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_current_user</span>(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: DbSession
+) -> UserModel:
+    <span class="text-slate-500">"""
+    Validates the JWT signature and extracts the user.
+    If the token is invalid or expired, raises an HTTP 401 error immediately.
+    """</span>
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=<span class="text-amber-300">"Could not validate credentials."</span>,
+        headers={<span class="text-amber-300">"WWW-Authenticate"</span>: <span class="text-amber-300">"Bearer"</span>},
+    )
+    <span class="text-purple-400">try</span>:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        user_id_str: str = payload.get(<span class="text-amber-300">"sub"</span>)
+        <span class="text-purple-400">if</span> user_id_str <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">raise</span> credentials_exception
+        user_id = int(user_id_str)
+    <span class="text-purple-400">except</span> (jwt.PyJWTError, ValueError):
+        <span class="text-purple-400">raise</span> credentials_exception
+
+    user = db.scalar(select(UserModel).where(UserModel.id == user_id))
+    <span class="text-purple-400">if</span> user <span class="text-purple-400">is None</span> <span class="text-purple-400">or not</span> user.is_active:
+        <span class="text-purple-400">raise</span> credentials_exception
+    <span class="text-purple-400">return</span> user
+
+<span class="text-slate-500"># Type alias for clean route parameter declarations</span>
+CurrentUser = Annotated[UserModel, Depends(get_current_user)]</pre>
+            </div>
+
+            <!-- File 6: Protecting Notes Router (app/routers/notes.py) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">6. Multi-Tenant Notes Router: <code class="text-purple-700">app/routers/notes.py</code></span>
+                    <span class="text-slate-400">Securing Ownership &amp; Query Isolation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/routers/notes.py:</span>
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> DbSession, CurrentUser
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">""</span>, response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_note</span>(
+    payload: NoteCreate,
+    db: DbSession,
+    current_user: CurrentUser  <span class="text-slate-500"># GUARD: Requires valid JWT; injects authenticated user</span>
+):
+    <span class="text-slate-500"># BIND TO AUTHENTICATED USER: Automatically links owner_id to current_user.id</span>
+    new_note = NoteModel(
+        title=payload.title,
+        content=payload.content,
+        tags=payload.tags,
+        priority=payload.priority,
+        owner_id=current_user.id
+    )
+    db.add(new_note)
+    db.commit()
+    db.refresh(new_note)
+    <span class="text-purple-400">return</span> new_note
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">""</span>, response_model=List[NoteResponse])
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    db: DbSession,
+    current_user: CurrentUser,
+    limit: int = 10,
+    skip: int = 0
+):
+    <span class="text-slate-500"># MULTI-TENANT ISOLATION: A user can ONLY query notes they own!</span>
+    stmt = (
+        select(NoteModel)
+        .where(NoteModel.owner_id == current_user.id)
+        .where(NoteModel.is_archived == <span class="text-rose-400">False</span>)
+        .offset(skip)
+        .limit(limit)
+    )
+    <span class="text-purple-400">return</span> db.scalars(stmt).all()
+
+
+<span class="text-purple-400">@router.delete</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, status_code=status.HTTP_204_NO_CONTENT)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">delete_note</span>(
+    note_id: int,
+    db: DbSession,
+    current_user: CurrentUser
+):
+    <span class="text-slate-500"># AUTHORIZATION CHECK: Must match both note_id AND owner_id</span>
+    stmt = select(NoteModel).where(NoteModel.id == note_id, NoteModel.owner_id == current_user.id)
+    note = db.scalar(stmt)
+    <span class="text-purple-400">if not</span> note:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=<span class="text-amber-300">"Note not found or unauthorized to delete."</span>
+        )
+    
+    note.is_archived = <span class="text-rose-400">True</span>
+    db.commit()
+    <span class="text-purple-400">return</span> <span class="text-rose-400">None</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Broken Object Level Authorization (BOLA)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">select(NoteModel).where(NoteModel.id == note_id)</code> without verifying that <code class="font-mono text-rose-900">note.owner_id == current_user.id</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is catastrophic:</strong> Any authenticated user can access, modify, or delete any other user's private data simply by changing the ID in the URL. Always scope every query by the authenticated user's ID.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Hardcoding Secrets in Version Control</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Committing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">JWT_SECRET_KEY = "my_super_secret_key"</code> directly into your Git repository.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this happens:</strong> Automated scrapers scan public commits on GitHub for hardcoded strings. If an attacker discovers your secret key, they can forge valid admin tokens without ever knowing user passwords. Always load keys from environment variables or a secrets manager.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Ensure <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">pyjwt</code>, <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">passlib[bcrypt]</code>, and <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">slowapi</code> are installed. Run the migration to add the <code class="font-mono text-xs text-emerald-300">users</code> table and <code class="font-mono text-xs text-emerald-300">owner_id</code> foreign key, boot the server, and test the flow:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Register User -->
+                <div>
+                    <span class="text-slate-500"># 1. Register a new user (generates a salted Bcrypt hash):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/auth/register \
+                        -H "Content-Type: application/json" \
+                        -d '{"email": "alice@notevault.io", "password": "supersecurepassword123"}'
+                    </div>
+                </div>
+
+                <!-- Step 2: Login for JWT -->
+                <div>
+                    <span class="text-slate-500"># 2. Login via OAuth2 form-urlencoded payload to acquire a signed JWT:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/auth/token \
+                        -d "username=alice@notevault.io&amp;password=supersecurepassword123"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Copy the returned access_token string from the JSON response.</span>
+                </div>
+
+                <!-- Step 3: Test Rate Limiter -->
+                <div>
+                    <span class="text-slate-500"># 3. Test rate limiting by sending 6 rapid requests to /token (6th should return 429):</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-amber-300 mt-1 overflow-x-auto">
+                        for i in {1..6}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8000/api/v1/auth/token -d "username=a@b.com&amp;password=p"; done
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected output: 401 for attempts 1-5, followed by HTTP 429 (Too Many Requests) on attempt 6.</span>
+                </div>
+
+                <!-- Step 4: Access Protected Route -->
+                <div>
+                    <span class="text-slate-500"># 4. Create a note using the Bearer Authorization header:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/notes \
+                        -H "Authorization: Bearer PASTE_YOUR_TOKEN_HERE" \
+                        -H "Content-Type: application/json" \
+                        -d '{"title": "Alice Private Note", "content": "Protected by JWT guard", "tags": ["security"]}'
+                    </div>
+                </div>
+
+                <!-- Step 5: Verify 401 Rejection -->
+                <div>
+                    <span class="text-slate-500"># 5. Attempt to access notes without a token (Verifies 401 Unauthorized rejection):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-rose-300 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/notes
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected output: HTTP 401 Unauthorized with header WWW-Authenticate: Bearer.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 8 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Asynchronous Programming &amp; High-Throughput Performance</h4>
+                <p class="text-xs text-slate-500">Demystifying asyncio: The event loop, cooperative multitasking, avoiding blocking sync traps, and background workers.</p>
+            </div>
+            <a href="chapter8_async_performance.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 8 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: Representation &amp; String Protocols - __str__, __repr__, __format__ &amp; Developer Diagnostics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 04 - Diagnostic Renderers &amp; String Protocols)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Phase 2: Dunder Protocols &amp; Developer UX
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 04: Representation &amp; String Protocols - __str__, __repr__, __format__ &amp; Developer Diagnostics
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Elevating domain object observability: Why generic object pointers degrade production debugging, navigating the fundamental contract between <code class="font-mono text-emerald-400">__repr__</code> (unambiguous diagnostics) and <code class="font-mono text-emerald-400">__str__</code> (user-facing presentation), mastering the Format Specification Mini-Language with <code class="font-mono text-emerald-400">__format__</code>, binary serialization with <code class="font-mono text-emerald-400">__bytes__</code>, and building automated diagnostic renderers for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 2 Kickoff</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 04: Diagnostic Rendering &amp; String Formatting</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Phase 1 (Chapters 01–03), we engineered raw entity identity, Flyweight memory pooling, and slotted state encapsulation. In Milestone 04, we establish EntityForge's <strong>Developer Observability Architecture</strong>. Production incident triage grinds to a halt when exceptions dump uninformative strings like <code class="font-mono text-slate-300">&lt;Transaction object at 0x7f81a&gt;</code>. We construct an introspective <strong>DiagnosticRendererMixin</strong> and <strong>FormatSpecParser</strong> that automatically formats entities for CLI inspectors, rich loggers, and f-string domain templates while maintaining safe evaluation invariants.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Invariant Contract: <code class="text-purple-300">__repr__</code> vs. <code class="text-purple-300">__str__</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The CPython Fallback Cascades (<code class="text-purple-300">tp_repr</code> / <code class="text-purple-300">tp_str</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Custom Domain Format Spec Mini-Languages</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Binary Wire Protocols via <code class="text-purple-300">__bytes__</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Truncation &amp; Masking Guards for Sensitive Data</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">DiagnosticRendererMixin</code> Core</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of String Representations -->
+        <section id="repr-vs-str-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Duality of Object Representation</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In object-oriented design, text representation serves two distinct, mutually conflicting audiences: <strong>end-users</strong> (who demand clean, internationalized, visually palatable text) and <strong>software engineers/debuggers</strong> (who require raw, unambiguous, mathematically precise state diagnostics).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                CPython formally separates these two concerns through two dedicated slots in the C-level <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">PyTypeObject</code>: <code class="font-mono text-purple-700 font-bold">tp_str</code> and <code class="font-mono text-purple-700 font-bold">tp_repr</code>.
+            </p>
+
+            <!-- Dual Representation Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Representation Duality Matrix: __repr__ vs. __str__
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- __repr__ Box -->
+                    <div class="p-5 bg-slate-950 border border-purple-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">1. __repr__(self) &rarr; str</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-bold border border-purple-800">For Developers</span>
+                        </div>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong class="text-purple-300 font-mono">Primary Goal:</strong> Unambiguity above all else. Must explicitly reveal the type, state, and critical identifiers of the instance.</li>
+                            <li><strong class="text-purple-300 font-mono">The Eval Invariant:</strong> Whenever feasible, the output should mirror valid Python code that recreates the instance: <code class="font-mono text-slate-200">eval(repr(obj)) == obj</code>.</li>
+                            <li><strong class="text-purple-300 font-mono">Invocation Triggers:</strong> Interactive REPL, log aggregators, exception tracebacks, and nested inside containers (e.g., printing a <code class="font-mono text-slate-200">list[obj]</code>).</li>
+                        </ul>
+                        <div class="p-2.5 bg-slate-900 rounded-lg text-purple-300 font-mono text-[10px]">
+                            UserEntity(id=UUID('...'), name='Alice', balance=150.0)
+                        </div>
+                    </div>
+
+                    <!-- __str__ Box -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. __str__(self) &rarr; str</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">For End Users</span>
+                        </div>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong class="text-emerald-400 font-mono">Primary Goal:</strong> Readability. Designed for display in terminal banners, reports, notifications, or graphical user interfaces.</li>
+                            <li><strong class="text-emerald-400 font-mono">Formatting Focus:</strong> Can omit technical metadata (like memory addresses or internal IDs) in favor of localized, clean business representations.</li>
+                            <li><strong class="text-emerald-400 font-mono">Invocation Triggers:</strong> <code class="font-mono text-slate-200">print(obj)</code>, <code class="font-mono text-slate-200">str(obj)</code>, and bare f-strings: <code class="font-mono text-slate-200">f"{obj}"</code>.</li>
+                        </ul>
+                        <div class="p-2.5 bg-slate-900 rounded-lg text-emerald-300 font-mono text-[10px]">
+                            Alice (Balance: $150.00)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fallback Cascade Explanation -->
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs block">// CPython Runtime Fallback Cascade:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If a class defines <code class="font-mono text-purple-300">__repr__</code> but omits <code class="font-mono text-purple-300">__str__</code>, CPython <strong>automatically falls back to __repr__</strong> when <code class="font-mono text-slate-300">str(obj)</code> is called. However, the reverse is <strong>NOT</strong> true: if you only implement <code class="font-mono text-purple-300">__str__</code>, inspecting the object in debuggers or lists still displays the useless default: <code class="font-mono text-rose-400">&lt;MyClass object at 0x...&gt;</code>!
+                    </p>
+                    <div class="p-2 bg-slate-900 border border-slate-800 rounded-lg text-amber-300 font-mono text-[10px]">
+                        The Production Invariant: Always implement __repr__ first. Implement __str__ only when end-user formatting diverges from diagnostic representation.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Format Specification Mini-Language (__format__) -->
+        <section id="format-protocol" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Format Protocol &amp; Mini-Languages</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Modern Python relies heavily on formatted string literals (f-strings). When you write <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">f"{value:spec}"</code>, CPython delegates execution directly to <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">value.__format__(spec)</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                By default, user-defined classes inherit <code class="font-mono text-slate-800">object.__format__</code>, which simply calls <code class="font-mono text-slate-800">str(self)</code> if the format specification is empty, but raises a fatal <code class="font-mono text-rose-700 font-bold">TypeError</code> if <em>any</em> formatting specification string is passed!
+            </p>
+
+            <!-- Format Spec Mechanics Grid -->
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Standard Spec vs Custom Spec -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Format Mechanics</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">The Spec String Handshake</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The string following the colon in an f-string is passed unparsed into <code class="font-mono text-purple-700 font-bold">__format__(self, format_spec)</code>. Python places zero constraints on what <code class="font-mono text-slate-800">format_spec</code> contains; it is an entirely custom mini-language defined by the domain model:
+                    </p>
+                    <div class="p-3 bg-slate-900 text-sky-300 rounded-xl font-mono text-[10px] space-y-1">
+                        <div># Caller specifies domain-specific formatting flags:</div>
+                        <div class="text-emerald-300">f"{account:currency,compact}"  # &rarr; "$1.5M"</div>
+                        <div class="text-emerald-300">f"{account:audit,masked}"      # &rarr; "ACCT-***-991"</div>
+                        <div class="text-emerald-300">f"{account:json}"              # &rarr; '{"id": "..."}'</div>
+                    </div>
+                </div>
+
+                <!-- Binary Wire Protocols -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Low-Level Wire Encoding</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Binary Wire Encoding with __bytes__</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When domain entities must be transmitted across raw TCP sockets, packed into binary database WAL buffers (such as MemForge's <code class="font-mono text-slate-800">ContiguousBuffer</code>), or cryptographically hashed, Python provides <code class="font-mono text-emerald-700 font-bold">__bytes__(self)</code>:
+                    </p>
+                    <div class="p-3 bg-slate-900 text-emerald-300 rounded-xl font-mono text-[10px] space-y-1">
+                        <div># Invoked via bytes(entity):</div>
+                        <div class="text-slate-400">def __bytes__(self) -&gt; bytes:</div>
+                        <div class="pl-4 text-emerald-400"># Pack struct or serialize binary wire payload</div>
+                        <div class="pl-4 text-emerald-400">return struct.pack("!QI", self.id, self.code)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Dunder Method Matrix: When to Override vs When NOT to Override -->
+        <section id="dunder-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Dunder Method Matrix: Representation &amp; Diagnostic Protocols</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Implementing string protocols carelessly leaks sensitive secrets into production logs or incurs severe performance penalties:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Dunder Method</th>
+                                <th class="py-2 px-2 font-bold font-sans">Return Type</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Override (&check;)</th>
+                                <th class="py-2 px-2 font-bold font-sans">When NOT to Override (&cross;)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__repr__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">str (mandatory)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    <strong>Mandatory on every domain class.</strong> Return unambiguous diagnostics containing class name, primary key, and core state. Mask secrets (passwords, tokens, API keys).
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Never write an interactive multi-line graphical presentation here. Never allow raw unmasked credentials into the returned string.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__str__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">str (mandatory)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    When end-user, localized, or UI-facing presentation diverges from raw debugging diagnostics.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    When the output of <code class="font-mono text-slate-800">__repr__</code> is already clean and user-friendly (avoid redundant duplicate implementations).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__format__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">str (mandatory)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Financial, datetime, scientific, or domain value types requiring customized mini-languages (e.g., currency rounding, date masking, compact SI units).
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Standard service or controller classes where f-string interpolation is never used with format specifications.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__bytes__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">bytes (mandatory)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Low-level network packets, cryptographic primitives, hardware interfaces, or high-throughput storage engines (e.g. WAL serialization).
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Standard business models where JSON or Protobuf string serialization is handled by dedicated service layers.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: EntityForge Milestone 04 -->
+        <section id="entityforge-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 04: Diagnostic Renderer &amp; Format Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 04 of <strong>EntityForge</strong>: implementing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/diagnostics.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">DiagnosticRendererMixin</code>: A reusable class mixin that introspects instance state to dynamically generate unambiguous, eval-friendly <code class="font-mono text-purple-700 font-bold">__repr__</code> strings, automatically masking attributes designated in <code class="font-mono text-slate-800 font-bold">__sensitive_fields__</code>.</li>
+                <li><strong>Custom Format Spec Mini-Language:</strong> Implementing <code class="font-mono text-purple-700 font-bold">__format__</code> with custom domain specifiers:
+                    <ul class="list-disc pl-5 text-xs text-slate-600 mt-1 space-y-0.5">
+                        <li><code class="font-mono text-slate-800">:json</code>: Emits a structured JSON string representation.</li>
+                        <li><code class="font-mono text-slate-800">:short</code> / <code class="font-mono text-slate-800">:compact</code>: Renders a compact identifier tag for log lines.</li>
+                        <li><code class="font-mono text-slate-800">:masked</code>: Emits state with all PII and sensitive fields redacted.</li>
+                    </ul>
+                </li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">BinaryWireSerializable</code>: Implementing <code class="font-mono text-purple-700 font-bold">__bytes__</code> for fast wire encoding and binary buffer streaming.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 04)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">diagnostics.py</span>            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_diagnostics.py</span>       <span class="text-slate-500"># Milestone 04: Formatting, Masking &amp; Repr Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/diagnostics.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Diagnostics Core: <code class="text-purple-700">src/entityforge/core/diagnostics.py</code></span>
+                    <span class="text-slate-400">Representation Protocols &amp; Format Specs</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Diagnostic Representations &amp; String Protocols (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, ClassVar, Dict, Set
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DiagnosticRendererMixin</span>:
+    <span class="text-slate-500">"""
+    REUSABLE DIAGNOSTIC REPRESENTATION MIXIN:
+    Provides unambiguous __repr__, human-readable __str__, and custom
+    __format__ mini-languages. Automatically masks fields listed in __sensitive_fields__.
+    """</span>
+    <span class="text-slate-500"># Class-level declaration of attributes requiring redaction in logs/diagnostics</span>
+    __sensitive_fields__: ClassVar[Set[str]] = {<span class="text-amber-300">"password"</span>, <span class="text-amber-300">"api_key"</span>, <span class="text-amber-300">"secret"</span>, <span class="text-amber-300">"token"</span>}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_extract_renderable_attributes</span>(self, mask_sensitive: bool = <span class="text-rose-400">True</span>) -> Dict[str, Any]:
+        <span class="text-slate-500">"""Extracts state attributes across both slotted and dynamic instances."""</span>
+        data: Dict[str, Any] = {}
+        
+        <span class="text-slate-500"># Inspect slots or __dict__</span>
+        <span class="text-purple-400">if</span> hasattr(self, <span class="text-amber-300">"__slots__"</span>):
+            <span class="text-purple-400">for</span> slot <span class="text-purple-400">in</span> self.__slots__:
+                clean_name = slot.lstrip(<span class="text-amber-300">"_"</span>)
+                <span class="text-purple-400">if</span> hasattr(self, slot):
+                    val = getattr(self, slot)
+                    <span class="text-purple-400">if</span> mask_sensitive <span class="text-purple-400">and</span> clean_name.lower() <span class="text-purple-400">in</span> self.__sensitive_fields__:
+                        data[clean_name] = <span class="text-amber-300">"********"</span>
+                    <span class="text-purple-400">else</span>:
+                        data[clean_name] = val
+        <span class="text-purple-400">elif</span> hasattr(self, <span class="text-amber-300">"__dict__"</span>):
+            <span class="text-purple-400">for</span> key, val <span class="text-purple-400">in</span> self.__dict__.items():
+                clean_name = key.lstrip(<span class="text-amber-300">"_"</span>)
+                <span class="text-purple-400">if</span> mask_sensitive <span class="text-purple-400">and</span> clean_name.lower() <span class="text-purple-400">in</span> self.__sensitive_fields__:
+                    data[clean_name] = <span class="text-amber-300">"********"</span>
+                <span class="text-purple-400">else</span>:
+                    data[clean_name] = val
+
+        <span class="text-purple-400">return</span> data
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-slate-500">"""
+        UNAMBIGUOUS DEVELOPER DIAGNOSTIC:
+        Emits valid constructor-like syntax while redacting sensitive credentials.
+        """</span>
+        attrs = self._extract_renderable_attributes(mask_sensitive=<span class="text-rose-400">True</span>)
+        rendered_params = <span class="text-amber-300">", "</span>.join(f<span class="text-amber-300">"{k}={repr(v)}"</span> <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> attrs.items())
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"{self.__class__.__name__}({rendered_params})"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__str__</span>(self) -> str:
+        <span class="text-slate-500">"""
+        HUMAN-READABLE PRESENTATION:
+        Emits clean business identifier and main descriptor.
+        """</span>
+        ident = getattr(self, <span class="text-amber-300">"id"</span>, <span class="text-amber-300">"unknown"</span>)
+        name = getattr(self, <span class="text-amber-300">"name"</span>, getattr(self, <span class="text-amber-300">"_name"</span>, self.__class__.__name__))
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"[{self.__class__.__name__}:{ident}] {name}"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__format__</span>(self, format_spec: str) -> str:
+        <span class="text-slate-500">"""
+        CUSTOM DOMAIN FORMAT SPECIFICATION MINI-LANGUAGE:
+        - '' or 's': Default to __str__()
+        - 'r': Call __repr__()
+        - 'json': Emit compact JSON string
+        - 'compact' or 'short': Emit brief [Class:ID] tag
+        - 'masked': Force full redaction
+        """</span>
+        <span class="text-purple-400">if not</span> format_spec <span class="text-purple-400">or</span> format_spec == <span class="text-amber-300">"s"</span>:
+            <span class="text-purple-400">return</span> str(self)
+        <span class="text-purple-400">elif</span> format_spec == <span class="text-amber-300">"r"</span>:
+            <span class="text-purple-400">return</span> repr(self)
+        <span class="text-purple-400">elif</span> format_spec == <span class="text-amber-300">"compact"</span> <span class="text-purple-400">or</span> format_spec == <span class="text-amber-300">"short"</span>:
+            ident = getattr(self, <span class="text-amber-300">"id"</span>, <span class="text-amber-300">"N/A"</span>)
+            <span class="text-purple-400">return</span> f<span class="text-amber-300">"&lt;{self.__class__.__name__}:{str(ident)[:8]}&gt;"</span>
+        <span class="text-purple-400">elif</span> format_spec == <span class="text-amber-300">"json"</span>:
+            raw_data = self._extract_renderable_attributes(mask_sensitive=<span class="text-rose-400">True</span>)
+            <span class="text-slate-500"># Convert non-serializable objects (UUIDs) to string</span>
+            clean_json_data = {k: str(v) <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> raw_data.items()}
+            <span class="text-purple-400">return</span> json.dumps(clean_json_data, sort_keys=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">elif</span> format_spec == <span class="text-amber-300">"masked"</span>:
+            attrs = self._extract_renderable_attributes(mask_sensitive=<span class="text-rose-400">True</span>)
+            <span class="text-purple-400">return</span> f<span class="text-amber-300">"{self.__class__.__name__}(MASKED: {len(attrs)} fields)"</span>
+        <span class="text-purple-400">else</span>:
+            <span class="text-purple-400">raise</span> ValueError(
+                f<span class="text-amber-300">"Unsupported format specification '{format_spec}' for {self.__class__.__name__}"</span>
+            )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SecureAccountRecord</span>(DiagnosticRendererMixin):
+    <span class="text-slate-500">"""Domain entity combining slotted state with diagnostic rendering protocols."""</span>
+    __slots__ = (<span class="text-amber-300">"_id"</span>, <span class="text-amber-300">"_name"</span>, <span class="text-amber-300">"_balance"</span>, <span class="text-amber-300">"_api_key"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, account_id: str, name: str, balance: float, api_key: str) -> <span class="text-rose-400">None</span>:
+        self._id = account_id
+        self._name = name
+        self._balance = balance
+        self._api_key = api_key
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">id</span>(self) -> str:
+        <span class="text-purple-400">return</span> self._id
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">name</span>(self) -> str:
+        <span class="text-purple-400">return</span> self._name
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">balance</span>(self) -> float:
+        <span class="text-purple-400">return</span> self._balance
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__bytes__</span>(self) -> bytes:
+        <span class="text-slate-500">"""Serializes state to UTF-8 encoded wire format for binary WAL ingestion."""</span>
+        payload = f<span class="text-amber-300">"{self._id}|{self._name}|{self._balance}"</span>
+        <span class="text-purple-400">return</span> payload.encode(<span class="text-amber-300">"utf-8"</span>)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_diagnostics.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_diagnostics.py</code></span>
+                    <span class="text-slate-400">Format Spec, Redaction &amp; Repr Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Diagnostics &amp; Format Protocol Verification (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.diagnostics <span class="text-purple-400">import</span> SecureAccountRecord
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDiagnosticProtocols</span>:
+    <span class="text-slate-500">"""Unit tests asserting __repr__, __str__, __format__ mini-languages, and __bytes__."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_repr_masks_sensitive_credentials_automatically</span>(self):
+        account = SecureAccountRecord(
+            account_id=<span class="text-amber-300">"ACC-99182"</span>,
+            name=<span class="text-amber-300">"Enterprise Liquidity Pool"</span>,
+            balance=1500000.50,
+            api_key=<span class="text-amber-300">"secret_live_tok_99182a8bf2"</span>
+        )
+
+        repr_str = repr(account)
+
+        # 1. Assert class name and business fields are fully present
+        assert <span class="text-amber-300">"SecureAccountRecord"</span> <span class="text-purple-400">in</span> repr_str
+        assert <span class="text-amber-300">"ACC-99182"</span> <span class="text-purple-400">in</span> repr_str
+        assert <span class="text-amber-300">"Enterprise Liquidity Pool"</span> <span class="text-purple-400">in</span> repr_str
+
+        # 2. CRITICAL SECURITY INVARIANT: Secret API key MUST be redacted!
+        assert <span class="text-amber-300">"secret_live_tok_99182a8bf2"</span> <span class="text-purple-400">not in</span> repr_str
+        assert <span class="text-amber-300">"api_key='********'"</span> <span class="text-purple-400">in</span> repr_str
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_str_provides_human_readable_presentation</span>(self):
+        account = SecureAccountRecord(
+            account_id=<span class="text-amber-300">"ACC-101"</span>,
+            name=<span class="text-amber-300">"Alice Operator"</span>,
+            balance=50.0,
+            api_key=<span class="text-amber-300">"key_123"</span>
+        )
+
+        # __str__ output formatted for UI display
+        assert str(account) == <span class="text-amber-300">"[SecureAccountRecord:ACC-101] Alice Operator"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_custom_format_spec_mini_language</span>(self):
+        account = SecureAccountRecord(
+            account_id=<span class="text-amber-300">"ACC-88291039"</span>,
+            name=<span class="text-amber-300">"Settlement Reserve"</span>,
+            balance=25000.0,
+            api_key=<span class="text-amber-300">"super_secret"</span>
+        )
+
+        # 1. Empty or 's' spec delegates to __str__
+        assert f<span class="text-amber-300">"{account}"</span> == str(account)
+        assert f<span class="text-amber-300">"{account:s}"</span> == str(account)
+
+        # 2. 'r' spec delegates to __repr__
+        assert f<span class="text-amber-300">"{account:r}"</span> == repr(account)
+
+        # 3. 'compact' spec renders short tag
+        assert f<span class="text-amber-300">"{account:compact}"</span> == <span class="text-amber-300">"&lt;SecureAccountRecord:ACC-8829&gt;"</span>
+
+        # 4. 'json' spec emits valid serialized JSON with masked fields
+        json_output = f<span class="text-amber-300">"{account:json}"</span>
+        parsed = json.loads(json_output)
+        assert parsed[<span class="text-amber-300">"id"</span>] == <span class="text-amber-300">"ACC-88291039"</span>
+        assert parsed[<span class="text-amber-300">"api_key"</span>] == <span class="text-amber-300">"********"</span>
+
+        # 5. Invalid spec raises ValueError
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"Unsupported format specification"</span>):
+            _ = f<span class="text-amber-300">"{account:unsupported_flag}"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_bytes_serialization_protocol</span>(self):
+        account = SecureAccountRecord(
+            account_id=<span class="text-amber-300">"ACC-001"</span>,
+            name=<span class="text-amber-300">"BufferNode"</span>,
+            balance=100.0,
+            api_key=<span class="text-amber-300">"key"</span>
+        )
+
+        wire_bytes = bytes(account)
+        assert isinstance(wire_bytes, bytes)
+        assert wire_bytes == b<span class="text-amber-300">"ACC-001|BufferNode|100.0"</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Implementing __str__ While Omitting __repr__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __str__(self): return self.name</code> without implementing <code class="font-mono text-rose-900 font-bold">__repr__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys debugging UX:</strong> When your objects are stored inside a collection (such as <code class="font-mono">list</code>, <code class="font-mono">dict</code>, or <code class="font-mono">tuple</code>), Python prints elements using their <code class="font-mono">__repr__</code>, <em>completely ignoring</em> <code class="font-mono">__str__</code>! Inspecting <code class="font-mono">print([user1, user2])</code> outputs useless pointers: <code class="font-mono text-rose-950 font-bold">[&lt;User object at 0x...&gt;, ...]</code>. Always implement <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__repr__</code> first!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Leaking Plaintext Credentials in Tracebacks</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __repr__(self): return f"User(token='{self.api_key}')"</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes compliance &amp; security breaches:</strong> Any unhandled exception or log line dumps <code class="font-mono">repr(obj)</code> directly into logging pipelines (Datadog, CloudWatch, Sentry), permanently exposing raw authentication secrets in plaintext. Always mask or redact sensitive credentials inside representation dunders!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Throwing Exceptions Inside __repr__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Accessing uninitialized or remote attributes inside <code class="font-mono text-rose-900 font-bold">__repr__</code> that can raise an error.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks debuggers:</strong> When an active exception is being formatted by the runtime, Python calls <code class="font-mono">__repr__</code> on local variables to print the traceback. If <code class="font-mono">__repr__</code> raises an exception, the original exception is masked by a secondary crash, completely blinding developers during production triage!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Returning Non-String Types from String Dunders</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __str__(self): return self.raw_id</code> where <code class="font-mono">raw_id</code> is an integer or UUID.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this raises an immediate TypeError:</strong> CPython's <code class="font-mono">tp_str</code> and <code class="font-mono">tp_repr</code> slots strictly require returning a Python <code class="font-mono text-rose-900 font-bold">str</code> object. Returning an <code class="font-mono">int</code>, <code class="font-mono">UUID</code>, or <code class="font-mono">None</code> raises <code class="font-mono text-rose-950 font-bold">TypeError: __str__ returned non-string (type int)</code>. Always wrap non-strings in <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">str(...)</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the diagnostics unit test battery and inspect string protocol fallback mechanics:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge diagnostics and representation tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_diagnostics.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.06s. Confirms credential masking, custom __format__ mini-languages, and __bytes__ serialization.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 04:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweight pooling, slotted state proxies, and diagnostic string renderers with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify __repr__ collection fallback behavior in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "class OnlyStr:
+    def __str__(self): return 'User_Alice'
+class FullRepr:
+    def __repr__(self): return 'User(name=\"Bob\")'
+print('Collection of OnlyStr (useless):', [OnlyStr()])
+print('Collection of FullRepr (clear):', [FullRepr()])"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how collections ignore __str__ and exclusively display __repr__!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Equality, Hashing &amp; Ordering Contracts - __eq__, __hash__, Value Objects &amp; Rich Comparisons</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering value object algebra: The strict mathematical contract between __eq__ and __hash__, total ordering with rich comparisons (__lt__, __gt__), and immutable domain value types.</p>
+            </div>
+            <a href="Chapter 05 - Equality, Hashing and Ordering Contracts - __eq__, __hash__, Value Objects and Rich Comparisons.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Relational Persistence: Testcontainers, Savepoints &amp; Pool Auditing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 06 - Testcontainers &amp; Zero-Leak Database Sandboxing)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Production Persistence &amp; Database Isolation
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Relational Persistence: Testcontainers, Savepoints &amp; Pool Auditing
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Bridging memory and durable disk: Deconstructing the SQLite parity fallacy, provisioning ephemeral production PostgreSQL clusters via <code class="font-mono text-emerald-400">testcontainers-python</code>, implementing sub-millisecond test isolation using the Transactional Savepoint Rollback Pattern, auditing connection pools against descriptor leaks, and testing the database repository tier of <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">VaultFlow Milestone 06: Relational Persistence Layer</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 05, VaultFlow operated exclusively against memory buffers and mocked protocols. In Milestone 06, we build the durable relational tier: mapping our <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Money</code> value objects and double-entry <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Ledger</code> into PostgreSQL using SQLAlchemy 2.0 with asynchronous drivers (<code class="font-mono text-purple-300">asyncpg</code>). We construct a battle-tested integration harness that provisions ephemeral Dockerized database containers on demand and runs isolated tests inside nested database savepoints without writing custom data wipers or truncating tables.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The SQLite Parity Fallacy in Financial Systems</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Ephemeral Postgres with <code class="text-purple-300">testcontainers</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> 1ms Resets: The Savepoint Rollback Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Asynchronous SQLAlchemy 2.0 Repository Tests</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Row Lock Validation: <code class="text-purple-300">with_for_update()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Connection Pool Socket Leak Sentinel</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Computer Science: The SQLite Parity Fallacy -->
+        <section id="cs-sqlite-fallacy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The SQLite Parity Fallacy in Financial Ledgers</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A pervasive shortcut in Python test engineering is swapping PostgreSQL for an in-memory SQLite database (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">sqlite:///:memory:</code>) during unit and integration runs. While in-memory SQLite is fast, it introduces severe architectural blind spots that pass in testing but cause fatal crashes when deployed to production clouds.
+            </p>
+
+            <!-- Discrepancy Breakdown Table -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 font-mono">SQLite vs. Production PostgreSQL: The Dialect Gap</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Feature</th>
+                                <th class="p-3">In-Memory SQLite</th>
+                                <th class="p-3">Production PostgreSQL 16</th>
+                                <th class="p-3">Financial Failure Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold text-purple-700">Row-Level Locking</td>
+                                <td class="p-3 text-rose-600 font-bold">&cross; Coarse File Lock</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; SELECT ... FOR UPDATE</td>
+                                <td class="p-3 text-slate-500 font-sans">SQLite locks the entire database on writes, masking concurrency deadlocks and race conditions.</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold text-purple-700">Data Type Affinity</td>
+                                <td class="p-3 text-rose-600 font-bold">&cross; Dynamic Affinity</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; Strict Typing (NUMERIC)</td>
+                                <td class="p-3 text-slate-500 font-sans">SQLite permits inserting arbitrary strings into decimal fields; Postgres crashes on invalid precision.</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold text-purple-700">Foreign Key Integrity</td>
+                                <td class="p-3 text-amber-600 font-bold">&bull; Disabled by Default</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; Enforced Atomically</td>
+                                <td class="p-3 text-slate-500 font-sans">Requires manual <code class="text-purple-700">PRAGMA foreign_keys = ON</code>; orphaned child rows pass silently in SQLite.</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 font-semibold text-purple-700">Check Constraints</td>
+                                <td class="p-3 text-amber-600 font-bold">&bull; Basic Emulation</td>
+                                <td class="p-3 text-emerald-600 font-bold">&check; Complex SQL Expressions</td>
+                                <td class="p-3 text-slate-500 font-sans">Complex balance constraints (<code class="text-slate-800">balance &gt;= 0</code>) execute differently under edge-case nullability.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                <strong>The Senior Rule:</strong> Test pure business logic in-memory with pure Python objects (Milestones 01–03). When verifying persistence, SQL expressions, and relational constraints, test against the exact database engine deployed in production using <strong>Testcontainers</strong>.
+            </p>
+        </section>
+
+        <!-- 2. Testcontainers Architecture: Ephemeral Postgres on Demand -->
+        <section id="testcontainers-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Production Parity: Ephemeral Engines with <code>testcontainers-python</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Rather than relying on developers to manually run Docker Compose files before invoking PyTest (which leads to "works on my machine" failures and port collisions in CI), <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">testcontainers-python</code> programmatically controls the local Docker daemon:
+            </p>
+
+            <!-- Testcontainer Architecture Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Testcontainers Lifecycle Schedule
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Session Init -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. Session Boot</span>
+                        <div class="text-[10px] text-slate-400 font-sans">PyTest begins collection</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            Pull postgres:16-alpine
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; binds port &rarr;</div>
+
+                    <!-- Step 2: Dynamic Port Mapping -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">2. Port Randomization</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Zero port 5432 collisions</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            localhost:32768 &rarr; 5432
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; runs migrations &rarr;</div>
+
+                    <!-- Step 3: Migration Execution -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">3. DDL Initialization</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Runs Alembic/SQL DDL ONCE</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-300">
+                            Schema Ready in 1.2s
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Session-Scoped Rule:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Spawning a Docker container takes ~1–2 seconds. Running this per test function would make a 200-test suite take 10 minutes. We define the container as a <strong>session-scoped fixture</strong>: it boots once when PyTest starts, runs schema migrations once, serves all integration tests in milliseconds via savepoints, and terminates automatically when the test process exits.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The 1ms Reset: The Transactional Savepoint Pattern -->
+        <section id="savepoint-pattern" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The 1ms Reset: The Transactional Savepoint Rollback Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If multiple integration tests run against a single shared PostgreSQL container, Test 1 will insert rows that contaminate Test 2. Naive solutions wipe the database between tests by running <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">TRUNCATE accounts CASCADE;</code> or dropping all tables. Table truncations invalidate Postgres engine caches, flush disk buffers, and take 30–100ms per test.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The senior standard is the **Transactional Savepoint Pattern**: every test executes inside a subtransaction (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">SAVEPOINT</code>). Application code issues real SQL queries and tests verify persisted rows. During fixture teardown, PyTest issues a <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-700 font-bold">ROLLBACK TO SAVEPOINT</code>:
+            </p>
+
+            <!-- Savepoint Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    The Nested Transactional Sandbox Lifecycle
+                </div>
+
+                <div class="max-w-2xl mx-auto space-y-3 font-mono text-xs">
+                    <!-- Outer Connection -->
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl space-y-2">
+                        <span class="text-purple-300 font-bold block">1. Outer Master Connection (Session-Scoped Engine)</span>
+                        <div class="p-2 bg-slate-950 rounded text-slate-400 text-[10px]">
+                            BEGIN TRANSACTION; &larr; Physical database connection held open
+                        </div>
+
+                        <!-- Nested Savepoint -->
+                        <div class="p-3 bg-sky-950/80 border border-sky-500 rounded-lg space-y-2">
+                            <span class="text-sky-300 font-bold block">2. Function Fixture Check: SAVEPOINT test_sandbox_1;</span>
+                            
+                            <!-- Test Execution -->
+                            <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded space-y-1">
+                                <span class="text-emerald-300 font-bold block text-[11px]">3. Test Execution Body</span>
+                                <div class="text-[10px] text-slate-300 font-sans">
+                                    &bull; repository.create_account(acc_number="ACC-99", balance=5000)<br>
+                                    &bull; SQL emitted over TCP: <code class="text-emerald-400 font-mono">INSERT INTO accounts ...</code><br>
+                                    &bull; In-test assertion: <code class="text-emerald-400 font-mono">assert loaded.balance == 5000</code> (&check; Validated!)
+                                </div>
+                            </div>
+
+                            <span class="text-rose-400 font-bold block text-[11px]">4. Fixture Teardown: ROLLBACK TO SAVEPOINT test_sandbox_1;</span>
+                        </div>
+
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            Master transaction stays uncommitted &bull; Sockets remain warm &bull; Zero tables wiped!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Performance Metrology:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Rolling back to a memory savepoint takes approximately <strong>0.8 milliseconds</strong> in PostgreSQL. Your integration tests run at nearly the same speed as pure in-memory unit tests while executing real SQL over real network sockets against the exact production Postgres query planner.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Sentinel Testing: Connection Pool Leak Auditing -->
+        <section id="pool-leak-auditing" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Sentinel Auditing: Detecting Connection Pool Socket Leaks</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In high-throughput services like VaultFlow, a subtle bug where an exception handler forgets to close or release a database connection (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">session.close()</code>) will cause connection pool exhaustion (<code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">QueuePool limit reached</code>) in production.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                We can write a PyTest sentinel fixture using an <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">autouse=True</code> hook that inspects SQLAlchemy's internal connection pool telemetry before and after every integration test:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// The Connection Pool Leak Sentinel Fixture:</div>
+                <pre>
+<span class="text-purple-400">@pytest_asyncio.fixture</span>(autouse=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">assert_zero_connection_leaks</span>(async_engine):
+    <span class="text-slate-500"># 1. Record checked-out connections before test runs</span>
+    pool = async_engine.pool
+    initial_checked_out = pool.checkedout()
+
+    <span class="text-purple-400">yield</span>  <span class="text-slate-500"># Execute test body</span>
+
+    <span class="text-slate-500"># 2. Audit checked-out connections after test teardown</span>
+    leaked_connections = pool.checkedout() - initial_checked_out
+    <span class="text-purple-400">if</span> leaked_connections &gt; 0:
+        pytest.fail(
+            f<span class="text-rose-400">"CRITICAL CONNECTION LEAK: Test leaked &#123;leaked_connections&#125; physical database socket(s)! "</span>
+            f<span class="text-rose-400">"Check missing 'await session.close()' in repository or service exception handlers."</span>
+        )</pre>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: VaultFlow Milestone 06 -->
+        <section id="vaultflow-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 06: Relational Repository Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 06 for <strong>VaultFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/vaultflow/storage/models.py</code> using SQLAlchemy 2.0 declarative mappings for accounts and double-entry postings.</li>
+                <li>We build <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/vaultflow/storage/repositories.py</code> with pessimistic row-locking (<code class="font-mono text-purple-700 font-bold">with_for_update()</code>) preventing double-spending.</li>
+                <li>We configure <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/conftest.py</code> with the Testcontainers engine and Savepoint rollback fixtures.</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_repositories.py</code> verifying transactional persistence and deadlock-free locking.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 06)</div>
+                <div>vaultflow/</div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── services/</div>
+                <div>│       └── storage/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">models.py</span>              <span class="text-slate-500"># Milestone 06: Declarative SQLAlchemy 2.0 Models</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">repositories.py</span>        <span class="text-slate-500"># Milestone 06: Async Repository with Row-Locking</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── integration/</div>
+                <div>        ├── <span class="text-emerald-300 font-bold">conftest.py</span>            <span class="text-slate-500"># Milestone 06: Testcontainers &amp; Savepoint Rollback Fixture</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_repositories.py</span>   <span class="text-slate-500"># Milestone 06: Real PostgreSQL Persistence &amp; Lock Tests</span></div>
+            </div>
+
+            <!-- File 1: src/vaultflow/storage/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Declarative SQLAlchemy 2.0 Models: <code class="text-purple-700">src/vaultflow/storage/models.py</code></span>
+                    <span class="text-slate-400">PostgreSQL Schema Mappings</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Storage - SQLAlchemy 2.0 Declarative Models (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> (
+    String, Numeric, DateTime, Boolean, ForeignKey, 
+    CheckConstraint, Index, func
+)
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column, relationship
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountRecord</span>(Base):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    account_number: Mapped[str] = mapped_column(String(32), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    account_type: Mapped[str] = mapped_column(String(16), nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Precise financial numeric: 14 total digits, 4 decimal places</span>
+    balance: Mapped[Decimal] = mapped_column(Numeric(14, 4), default=Decimal(<span class="text-amber-300">"0.0000"</span>), nullable=<span class="text-rose-400">False</span>)
+    currency: Mapped[str] = mapped_column(String(3), nullable=<span class="text-rose-400">False</span>)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>), 
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc), 
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    __table_args__ = (
+        CheckConstraint(<span class="text-amber-300">"balance &gt;= 0"</span>, name=<span class="text-amber-300">"ck_account_balance_non_negative"</span>),
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">JournalRecord</span>(Base):
+    __tablename__ = <span class="text-amber-300">"journal_entries"</span>
+
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    reference_id: Mapped[str] = mapped_column(String(64), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=<span class="text-rose-400">False</span>)
+    currency: Mapped[str] = mapped_column(String(3), nullable=<span class="text-rose-400">False</span>)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>), 
+        server_default=func.now(), 
+        nullable=<span class="text-rose-400">False</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/vaultflow/storage/repositories.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Async Repository &amp; Row-Locking: <code class="text-purple-700">src/vaultflow/storage/repositories.py</code></span>
+                    <span class="text-slate-400">Pessimistic Concurrency Service</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Storage - Async Repository with Row-Level Locking (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> FinancialDomainError
+<span class="text-purple-400">from</span> vaultflow.storage.models <span class="text-purple-400">import</span> AccountRecord, JournalRecord
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountRepository</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, session: AsyncSession):
+        self.session = session
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_account</span>(
+        self, account_number: str, account_type: str, currency: str, initial_balance: Decimal
+    ) -> AccountRecord:
+        record = AccountRecord(
+            account_number=account_number,
+            account_type=account_type,
+            currency=currency,
+            balance=initial_balance
+        )
+        self.session.add(record)
+        <span class="text-purple-400">await</span> self.session.flush()
+        <span class="text-purple-400">return</span> record
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_by_number_with_lock</span>(self, account_number: str) -> Optional[AccountRecord]:
+        <span class="text-slate-500">"""
+        SELECT ... FOR UPDATE:
+        Acquires an exclusive PostgreSQL row lock over TCP.
+        Prevents concurrent double-spending at the database hardware layer.
+        """</span>
+        stmt = (
+            select(AccountRecord)
+            .where(AccountRecord.account_number == account_number)
+            .<span class="text-emerald-400 font-bold">with_for_update</span>()
+        )
+        result = <span class="text-purple-400">await</span> self.session.scalar(stmt)
+        <span class="text-purple-400">return</span> result
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute_transfer</span>(
+        self, source_number: str, dest_number: str, amount: Decimal, reference: str
+    ) -> JournalRecord:
+        <span class="text-slate-500"># 1. Deterministic lock ordering (asc order) prevents circular deadlocks</span>
+        numbers = sorted([source_number, dest_number])
+        for num in numbers:
+            await self.get_by_number_with_lock(num)
+
+        source = await self.session.scalar(select(AccountRecord).where(AccountRecord.account_number == source_number))
+        dest = await self.session.scalar(select(AccountRecord).where(AccountRecord.account_number == dest_number))
+
+        if not source or not dest:
+            raise FinancialDomainError("One or more accounts not found.")
+        if source.balance < amount:
+            raise FinancialDomainError("Insufficient funds for transfer.")
+
+        source.balance -= amount
+        dest.balance += amount
+
+        journal = JournalRecord(
+            reference_id=reference,
+            amount=amount,
+            currency=source.currency
+        )
+        self.session.add(journal)
+        await self.session.flush()
+        return journal</pre>
+            </div>
+
+            <!-- File 3: tests/integration/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Testcontainers &amp; Savepoint Engine: <code class="text-purple-700">tests/integration/conftest.py</code></span>
+                    <span class="text-slate-400">Zero-Leak Postgres Fixture Harness</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Integration Harness - Testcontainers &amp; Savepoints (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> testcontainers.postgres <span class="text-purple-400">import</span> PostgresContainer
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> vaultflow.storage.models <span class="text-purple-400">import</span> Base
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 1. SESSION-SCOPED CONTAINER: Boots ONCE per entire test session (~1.2s cost)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">postgres_container</span>():
+    <span class="text-slate-500">"""Spawns an ephemeral PostgreSQL 16 container on a randomized port."""</span>
+    <span class="text-purple-400">with</span> PostgresContainer(<span class="text-amber-300">"postgres:16-alpine"</span>) <span class="text-purple-400">as</span> postgres:
+        <span class="text-purple-400">yield</span> postgres
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 2. SESSION-SCOPED ENGINE: Runs DDL migrations ONCE</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest_asyncio.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">async_engine</span>(postgres_container):
+    sync_url = postgres_container.get_connection_url()
+    async_url = sync_url.replace(<span class="text-amber-300">"psycopg2"</span>, <span class="text-amber-300">"asyncpg"</span>).replace(<span class="text-amber-300">"postgresql://"</span>, <span class="text-amber-300">"postgresql+asyncpg://"</span>)
+    
+    engine = create_async_engine(async_url, pool_size=5, max_overflow=5)
+
+    <span class="text-slate-500"># Run DDL schema migration ONCE over session</span>
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    <span class="text-purple-400">yield</span> engine
+    <span class="text-purple-400">await</span> engine.dispose()
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 3. FUNCTION-SCOPED SAVEPOINT FIXTURE: 1ms Reset Sandbox per Test!</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest_asyncio.fixture</span>(scope=<span class="text-amber-300">"function"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">db_session</span>(async_engine) -> AsyncSession:
+    <span class="text-slate-500">"""
+    Yields an AsyncSession wrapped inside a SAVEPOINT subtransaction.
+    Rolls back automatically at teardown: leaves database pristine in 0.8ms!
+    """</span>
+    connection = <span class="text-purple-400">await</span> async_engine.connect()
+    trans = <span class="text-purple-400">await</span> connection.begin()  <span class="text-slate-500"># Outer Master Transaction</span>
+
+    session_maker = async_sessionmaker(bind=connection, expire_on_commit=<span class="text-rose-400">False</span>)
+    session = session_maker()
+
+    <span class="text-purple-400">await</span> connection.begin_nested()  <span class="text-slate-500"># SAVEPOINT test_sandbox</span>
+
+    <span class="text-purple-400">yield</span> session
+
+    <span class="text-slate-500"># Teardown: Unconditional rollback resets DB instantaneously!</span>
+    <span class="text-purple-400">await</span> session.close()
+    <span class="text-purple-400">await</span> trans.rollback()
+    <span class="text-purple-400">await</span> connection.close()</pre>
+            </div>
+
+            <!-- File 4: tests/integration/test_repositories.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. PostgreSQL Integration Battery: <code class="text-purple-700">tests/integration/test_repositories.py</code></span>
+                    <span class="text-slate-400">Real SQL &amp; Locking Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - PostgreSQL Repository Integration (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> sqlalchemy.exc <span class="text-purple-400">import</span> IntegrityError
+<span class="text-purple-400">from</span> vaultflow.storage.repositories <span class="text-purple-400">import</span> AccountRepository
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestPostgresAccountRepository</span>:
+    <span class="text-slate-500">"""Verifies real PostgreSQL constraints, transactions, and savepoint rollbacks."""</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_create_and_load_account_persists_in_savepoint</span>(self, db_session):
+        repo = AccountRepository(db_session)
+        acc = <span class="text-purple-400">await</span> repo.create_account(
+            account_number=<span class="text-amber-300">"ACC-CORP-900"</span>,
+            account_type=<span class="text-amber-300">"ASSET"</span>,
+            currency=<span class="text-amber-300">"USD"</span>,
+            initial_balance=Decimal(<span class="text-amber-300">"1500000.5000"</span>)
+        )
+
+        loaded = <span class="text-purple-400">await</span> repo.get_by_number_with_lock(<span class="text-amber-300">"ACC-CORP-900"</span>)
+        assert loaded <span class="text-purple-400">is not None</span>
+        assert loaded.balance == Decimal(<span class="text-amber-300">"1500000.5000"</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_database_level_negative_balance_check_constraint_enforced</span>(self, db_session):
+        repo = AccountRepository(db_session)
+        
+        <span class="text-slate-500"># Proves real PostgreSQL check constraints fire, which SQLite frequently mishandles!</span>
+        <span class="text-purple-400">with</span> pytest.raises(IntegrityError, match=<span class="text-amber-300">r"ck_account_balance_non_negative"</span>):
+            <span class="text-purple-400">await</span> repo.create_account(
+                account_number=<span class="text-amber-300">"ACC-ILLEGAL-NEG"</span>,
+                account_type=<span class="text-amber-300">"ASSET"</span>,
+                currency=<span class="text-amber-300">"USD"</span>,
+                initial_balance=Decimal(<span class="text-amber-300">"-50.0000"</span>)
+            )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_subtransaction_isolation_leaves_database_blank</span>(self, db_session):
+        repo = AccountRepository(db_session)
+        
+        <span class="text-slate-500"># Assert that accounts created in previous tests do NOT leak into this test!</span>
+        previous_acc = <span class="text-purple-400">await</span> repo.get_by_number_with_lock(<span class="text-amber-300">"ACC-CORP-900"</span>)
+        assert previous_acc <span class="text-purple-400">is None</span>  <span class="text-slate-500"># Proof that Savepoint Rollback returned DB to 0 rows!</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Committing Real Transactions Inside Tests</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">await session.commit()</code> inside an integration test function.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys test suites:</strong> Calling <code class="font-mono">commit()</code> flushes the outer transaction to disk, breaking out of the outer savepoint! Your test data is now permanently committed to the database, contaminating all subsequent tests.
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">await session.flush()</code> inside tests to validate constraints while letting the fixture handle the rollback!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Rebuilding Schema Per Test</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">Base.metadata.drop_all()</code> and <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">create_all()</code> before every test function.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes slow CI:</strong> Rebuilding tables, indexes, and constraints takes ~100ms per test. In a 500-test suite, schema recreation wastes 50 full seconds of CI build time. Use the <strong>Savepoint Rollback Pattern</strong> (0.8ms reset) instead.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to launch the ephemeral PostgreSQL container, execute database integration tests, and verify sub-millisecond savepoint resets:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install Testcontainers, SQLAlchemy 2.0 and asyncpg driver:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install testcontainers[postgres] sqlalchemy asyncpg psycopg2-binary
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Postgres Integration Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Run integration tests (spawns container, runs DDL, and rolls back savepoints):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_repositories.py -v -m integration --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe output: Container boots once; each individual repository test executes in under 5ms!
+                    </span>
+                </div>
+
+                <!-- Step 3: Run Full Unified Suite -->
+                <div>
+                    <span class="text-slate-500"># 3. Execute all unit and integration tests across Milestones 01 to 06:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest --durations=5
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Full battery (domain math, ledger, FX matrix, oracles, async worker, and Postgres) passes cleanly.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Testing Modern Web APIs &amp; CLI Systems: In-Memory Transports</h4>
+                <p class="text-xs text-slate-500 font-sans">Testing external interfaces: High-speed ASGI HTTP testing using <code class="font-mono">httpx.AsyncClient</code>, FastAPI dependency overrides, testing Click/Typer terminal commands, and audit log capture with <code class="font-mono">caplog</code>.</p>
+            </div>
+            <a href="Chapter 07 - Testing Modern Web APIs and CLI Systems - In-Memory Transports.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

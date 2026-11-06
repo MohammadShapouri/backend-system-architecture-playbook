@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 13: Distributed Coordination, Locks &amp; Consensus: Raft, Paxos &amp; Redlock</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 13 - Distributed Consensus &amp; Fencing Locks)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 13 &bull; Distributed Consensus &amp; Coordination
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Distributed Coordination, Locks &amp; Consensus: Raft, Paxos &amp; Redlock
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Reaching agreement across imperfect networks: Replicated state machines, leader elections in <strong>Raft vs. Paxos</strong>, quorum mathematics, why asynchronous clocks and GC pauses break naive distributed locks, <strong>Martin Kleppmann's Redlock critique</strong>, and engineering <strong>Fencing Tokens</strong> to eliminate split-brain write corruption in <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 13: Distributed Lock &amp; Fencing Token Coordinator</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 12, we implemented distributed caching and probabilistic XFetch stampede prevention. In Milestone 13, we confront the hardest problem in distributed systems: <strong>Coordinating Mutual Exclusion and Consensus Across Network Partitions</strong>. When a high-value VIP ride dispatch offer is broadcast, two drivers in separate availability zones must never be permitted to claim the exact same trip. Naive distributed locks fail when network hiccups or garbage collection (GC) pauses freeze worker processes. We build OmniRoute's <strong>Distributed Lease &amp; Fencing Token Manager</strong> in FastAPI, asyncio, and async SQLAlchemy 2.0, verifying monotonic fencing tokens at the database storage layer to mathematically prevent split-brain write collisions.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 13 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Replicated State Machines &amp; Quorum Math</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Raft vs. Multi-Paxos: Leader Election &amp; Safety</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Flaw of System Clocks &amp; NTP Time Sinks</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Martin Kleppmann's Redlock Critique</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fencing Tokens: Monotonic Storage Validation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Case Study: etcd Raft Engine in Kubernetes</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete PyTest Distributed Lock &amp; Fencing Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Distributed Consensus Theory -->
+        <section id="consensus-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Distributed Systems Foundations</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Consensus Problem: Replicated State Machines &amp; Quorum Math</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In a single-server architecture, deciding the order of events is trivial: the CPU's memory bus and instruction clock order operations sequentially.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In a distributed system, servers communicate over asynchronous packet-switched networks where <strong>messages can be arbitrarily delayed, reordered, duplicated, or dropped</strong>. Furthermore, nodes can crash, reboot, or experience stop-the-world garbage collection pauses at any moment. 
+                The <strong>Consensus Problem</strong> requires multiple independent nodes to agree on a sequence of values or actions, even when a subset of nodes fail.
+            </p>
+
+            <!-- Replicated State Machine Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Replicated State Machine (RSM) Architecture
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Node 1 (Leader) -->
+                    <div class="p-4 bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl space-y-2 shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">Node A (Leader)</span>
+                        <div class="bg-slate-950 p-2 rounded text-[10px] text-slate-300">
+                            Log: [Set X=1, Set Y=2]
+                        </div>
+                        <span class="text-[10px] text-emerald-400 font-sans">Receives client writes &amp; replicates</span>
+                    </div>
+
+                    <!-- Node 2 (Follower) -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Node B (Follower)</span>
+                        <div class="bg-slate-900 p-2 rounded text-[10px] text-slate-300">
+                            Log: [Set X=1, Set Y=2]
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-sans">Appends committed entries</span>
+                    </div>
+
+                    <!-- Node 3 (Follower) -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Node C (Follower)</span>
+                        <div class="bg-slate-900 p-2 rounded text-[10px] text-slate-300">
+                            Log: [Set X=1, Set Y=2]
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-sans">Appends committed entries</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Deterministic State Machine Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        If two identical deterministic state machines start in the exact same initial state and apply the exact same sequence of log inputs in the exact same order, <strong>they will arrive at the exact same final state</strong>. Consensus algorithms (Raft, Paxos) exist solely to ensure that all healthy nodes agree on the identical sequence of log entries.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Quorum Math Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-4 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-emerald-400 font-bold text-sm">Quorum Mathematics: Why Clusters Must Always Have an Odd Number of Nodes</span>
+                    <span class="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/30">Crash Fault Tolerance (CFT)</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    To prevent split-brain conditions during a network partition, any decision (electing a leader or committing a log entry) requires an absolute majority vote called a <strong>Quorum ($Q$)</strong>:
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-center text-xs">
+                    Q = \left\lfloor \frac{N}{2} \right\rfloor + 1 \quad \text{and} \quad F = \left\lfloor \frac{N - 1}{2} \right\rfloor
+                </div>
+                <div class="grid md:grid-cols-2 gap-4 text-[11px] font-sans">
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <strong class="text-sky-300 font-mono block">Node Sizing Realities:</strong>
+                        <ul class="text-slate-400 space-y-1 list-disc pl-4 text-[10px]">
+                            <li><strong>3 Nodes:</strong> Quorum is 2. Can tolerate <strong>1 failure</strong>.</li>
+                            <li><strong>5 Nodes:</strong> Quorum is 3. Can tolerate <strong>2 failures</strong> (Industry Standard).</li>
+                            <li><strong>7 Nodes:</strong> Quorum is 4. Can tolerate <strong>3 failures</strong>.</li>
+                        </ul>
+                    </div>
+                    <div class="p-3 bg-slate-950 rounded-xl border border-rose-900 space-y-1">
+                        <strong class="text-rose-400 font-mono block">Why Even Numbers ($N=4$) are an Anti-Pattern:</strong>
+                        <p class="text-slate-400 text-[10px]">
+                            A 4-node cluster requires a quorum of $Q = \lfloor 4/2 \rfloor + 1 = 3$. If 2 nodes fail, the remaining 2 nodes cannot form a quorum ($2 &lt; 3$), halting the cluster! It tolerates only <strong>1 failure</strong>—the exact same resilience as a 3-node cluster, but with more hardware and higher network overhead!
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine a 5-member corporate board of directors voting on a multi-million-dollar acquisition.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    For the vote to pass, at least **3 directors must vote YES** (a Quorum: $\lfloor 5/2 \rfloor + 1 = 3$). If 2 directors are stuck in traffic or their phones lose reception, the remaining 3 directors can still legally conduct business.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Now imagine a 4-member board. The quorum requirement is still 3. If a snowstorm cuts the phone lines and splits the board into two groups of 2, neither group can form a quorum of 3. Both groups are paralyzed, unable to make decisions! Having an odd number guarantees that a tie or split-brain is mathematically impossible.
+                </p>
+            </div>
+        </section>
+
+        <!-- RAFT VS. MULTI-PAXOS -->
+        <section id="raft-vs-paxos" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Consensus Algorithms
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Raft vs. Multi-Paxos: Leader Elections, Terms &amp; Safety
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Leslie Lamport (1998) vs. Diego Ongaro &amp; John Ousterhout (Stanford 2014)
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                For over fifteen years, <strong>Paxos</strong> (formulated by Turing Award winner Leslie Lamport) was the undisputed academic standard for distributed consensus. However, Paxos is notoriously difficult to understand and implement in real-world software.
+            </p>
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In 2014, Stanford researchers Diego Ongaro and John Ousterhout published <strong>Raft</strong>, designed specifically for understandability and operational debuggability. Today, Raft powers etcd (Kubernetes), HashiCorp Consul, CockroachDB, and TiKV.
+            </p>
+
+            <!-- Raft vs Paxos Comparison Table -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Architectural Dimension</th>
+                            <th class="p-3.5 text-sky-700">Raft</th>
+                            <th class="p-3.5 text-purple-700">Multi-Paxos</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Leader Role</td>
+                            <td class="p-3.5 text-slate-600 font-sans"><strong>Strong Leader:</strong> Log entries only flow strictly from Leader &rarr; Followers. Simplifies log consistency checks.</td>
+                            <td class="p-3.5 text-slate-600 font-sans"><strong>Weak / Symmetric Leader:</strong> Multiple proposers can propose values concurrently, leading to duel-proposer livelocks.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Time / Epoch Model</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Explicit <strong>Terms</strong> (monotonically increasing logical counters). Stale leaders detect higher terms and immediately step down.</td>
+                            <td class="p-3.5 text-slate-600 font-sans"><strong>Proposal Numbers</strong> attached per value/slot rather than global continuous terms.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Leader Election</td>
+                            <td class="p-3.5 text-slate-600 font-sans"><strong>Randomized Election Timers (150ms–300ms):</strong> Nodes timeout independently, preventing split-vote deadlocks.</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Phase 1 (Prepare / Promise) rounds must run repeatedly when leaders contest proposal numbers.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Production Implementations</td>
+                            <td class="p-3.5 font-bold text-emerald-700">etcd (Kubernetes), Consul, CockroachDB, TiKV, Kafka KRaft</td>
+                            <td class="p-3.5 font-bold text-purple-700">Google Spanner, Apache ZooKeeper (ZAB is Paxos-variant)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- The 3 Raft Node States Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Raft Finite State Machine Lifecycle
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Follower -->
+                    <div class="p-4 bg-slate-950 border border-slate-700 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. Follower</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Passive state. Responds to heartbeats.</div>
+                        <div class="text-[9px] text-amber-300">Heartbeat timeout expires &rarr; Candidate</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; election timeout &rarr;</div>
+
+                    <!-- Candidate -->
+                    <div class="p-4 bg-amber-950/80 border-2 border-amber-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-amber-300 font-bold block text-sm">2. Candidate</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Increments term. Votes for self.</div>
+                        <div class="text-[9px] text-emerald-400">Wins Quorum &rarr; Becomes Leader</div>
+                        <div class="text-[9px] text-rose-400">Discovers higher term &rarr; Steps down</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; quorum won &rarr;</div>
+
+                    <!-- Leader -->
+                    <div class="p-4 bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Leader</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Handles all client reads &amp; writes.</div>
+                        <div class="text-[9px] text-sky-300">Sends periodic AppendEntries heartbeats</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DISTRIBUTED LOCKS, REDLOCK & FENCING TOKENS -->
+        <section id="distributed-locks-fencing" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Mutual Exclusion &amp; Fencing
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Distributed Locks, Redlock &amp; The Fencing Token Solution
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Martin Kleppmann vs. Salvatore Sanfilippo &bull; Asynchronous Network Delays &bull; GC Pauses
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In 2016, a fierce debate erupted across the distributed systems community when Cambridge researcher <strong>Martin Kleppmann</strong> published an analysis titled <em>"How to do distributed locking"</em>, critiquing Redis's <strong>Redlock</strong> algorithm.
+            </p>
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Kleppmann proved a fundamental truth: **A distributed lock without fencing tokens cannot guarantee mutual exclusion in an asynchronous network.**
+            </p>
+
+            <!-- Visual Flowchart: The Zombie Client Race Condition -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Zombie Client Split-Brain Disaster (Why Standard Locks Fail)
+                </div>
+
+                <div class="space-y-4 text-[11px] font-sans">
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="text-sky-300 font-mono font-bold">1. Client 1 acquires distributed lock:</span>
+                        <p class="text-slate-300">
+                            Client 1 calls Redis: <code class="text-emerald-400 font-mono">SET lock_key client_1 NX PX 10000</code>. Lock granted with a 10-second lease.
+                        </p>
+                    </div>
+
+                    <div class="p-3 bg-rose-950/80 rounded-xl border border-rose-500 space-y-1">
+                        <span class="text-rose-300 font-mono font-bold">2. Client 1 experiences a Stop-the-World GC Pause / Network Stutter:</span>
+                        <p class="text-slate-200">
+                            Client 1 hits a full JVM/Python garbage collection cycle or a packet buffer stall. <strong>Client 1 freezes completely for 12 seconds!</strong>
+                        </p>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="text-sky-300 font-mono font-bold">3. Lock lease expires &amp; Client 2 acquires the lock:</span>
+                        <p class="text-slate-300">
+                            After 10 seconds, Redis expires the lease. Client 2 requests the lock, receives it, updates the database, and commits changes safely.
+                        </p>
+                    </div>
+
+                    <div class="p-3 bg-rose-950/80 rounded-xl border border-rose-500 space-y-1">
+                        <span class="text-rose-400 font-mono font-bold">4. Client 1 wakes up (The Zombie Client) and commits:</span>
+                        <p class="text-rose-200 font-bold">
+                            Client 1's GC pause ends. Believing it still holds the lock, Client 1 sends its write to the database, overwriting and corrupting Client 2's newer data!
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The Fencing Token Solution Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Solution: Monotonic Fencing Tokens (Kleppmann Pattern)
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-center">
+                    <div class="p-4 bg-slate-950 border border-emerald-500 rounded-xl space-y-2">
+                        <span class="text-emerald-300 font-bold block text-sm">Lock Manager (Assigns Monotonic Token)</span>
+                        <div class="text-[10px] text-slate-300 font-mono">
+                            Client 1 gets Lock + <strong>Token #33</strong><br>
+                            Client 2 gets Lock + <strong>Token #34</strong>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-slate-950 border border-sky-500 rounded-xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Storage Layer (Enforces Fencing Token)</span>
+                        <div class="text-[10px] text-slate-300 font-mono">
+                            Tracks: <code class="text-amber-300">last_fencing_token = 34</code><br>
+                            Client 1 tries to write with <strong>Token #33</strong> &rarr; <span class="text-rose-400 font-bold">REJECTED!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Storage Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The lock coordinator provides a strictly increasing number ($33, 34, 35$) every time a lock is acquired. The storage layer checks: <em>"Is this write's token greater than the highest token I have ever committed?"</em> When Zombie Client 1 arrives with stale token #33, the database rejects the write instantly!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 13 -->
+        <section id="omniroute-milestone-13" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 13: Distributed Fencing Lock Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 13 for <strong>OmniRoute</strong>: a production-grade Distributed Lock Coordinator featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Distributed Lease Manager:</strong> Issues locks with TTL leases and generates strictly monotonically increasing <strong>Fencing Tokens</strong>.</li>
+                <li><strong>Safe Lock Release:</strong> Prevents releasing another client's expired lock.</li>
+                <li><strong>Fencing Token Storage Guard:</strong> An asynchronous SQLAlchemy 2.0 dispatch entity that validates fencing tokens before committing, rejecting stale zombie client writes.</li>
+                <li><strong>Automated PyTest Battery:</strong> Testing mutual exclusion, lease expirations, and zombie client rejection.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 13)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── coordination/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>          <span class="text-slate-500"># Milestone 13: Fencing Token Storage Schema (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">lease_manager.py</span>   <span class="text-slate-500"># Milestone 13: Monotonic Fencing Token Coordinator</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>          <span class="text-slate-500"># Milestone 13: FastAPI Lock &amp; Fenced Dispatch Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_distributed_locks.py</span>  <span class="text-slate-500"># Milestone 13 Fencing &amp; Zombie Mitigation Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/coordination/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Fencing Guarded Storage Entity: <code class="text-purple-700">src/omniroute/coordination/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Coordination - Fencing Guarded Dispatch Storage Model</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Integer, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FencedRideDispatchModel</span>(Base):
+    <span class="text-slate-500">"""
+    FENCING-PROTECTED STORAGE:
+    Stores the assigned driver for a ride.
+    Enforces that 'last_fencing_token' must strictly increase on every update.
+    Rejects stale writes from zombie clients delayed by GC pauses!
+    """</span>
+    __tablename__ = <span class="text-amber-300">"fenced_ride_dispatches"</span>
+
+    ride_id: Mapped[str] = mapped_column(String(50), primary_key=<span class="text-rose-400">True</span>)
+    assigned_driver_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    last_fencing_token: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/coordination/lease_manager.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Monotonic Fencing Token Coordinator: <code class="text-purple-700">src/omniroute/coordination/lease_manager.py</code></span>
+                    <span class="text-slate-400">Kleppmann Fencing Protocol</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Coordination - Distributed Lease Coordinator with Fencing Tokens</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Optional, Tuple
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LockGrant</span>:
+    resource_name: str
+    owner_id: str
+    fencing_token: int
+    lease_expires_at: float
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">StaleFencingTokenError</span>(Exception):
+    <span class="text-slate-500">"""Raised when storage detects a write carrying a superseded fencing token."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DistributedFencingLockManager</span>:
+    <span class="text-slate-500">"""
+    DISTRIBUTED LEASE COORDINATOR:
+    1. Grants mutual exclusion leases with finite TTLs.
+    2. Issues strictly monotonically increasing integer Fencing Tokens.
+    3. Safe release: Prevents releasing an expired lock held by another client.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._active_leases: Dict[str, LockGrant] = {}
+        self._monotonic_token_counter: int = 1000
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_lock</span>(
+        self, resource_name: str, owner_id: str, lease_ttl_sec: float = 5.0
+    ) -> Optional[LockGrant]:
+        now = time.time()
+        <span class="text-purple-400">async with</span> self._lock:
+            current = self._active_leases.get(resource_name)
+
+            <span class="text-slate-500"># Check if active lease exists and has NOT expired</span>
+            <span class="text-purple-400">if</span> current <span class="text-purple-400">and</span> now &lt; current.lease_expires_at:
+                <span class="text-purple-400">if</span> current.owner_id == owner_id:
+                    <span class="text-slate-500"># Re-entrant renewal</span>
+                    self._monotonic_token_counter += 1
+                    grant = LockGrant(resource_name, owner_id, self._monotonic_token_counter, now + lease_ttl_sec)
+                    self._active_leases[resource_name] = grant
+                    <span class="text-purple-400">return</span> grant
+                <span class="text-purple-400">return None</span>  <span class="text-slate-500"># Lock held by another client</span>
+
+            <span class="text-slate-500"># Lock free OR expired: Grant new lease with incremented fencing token</span>
+            self._monotonic_token_counter += 1
+            grant = LockGrant(
+                resource_name=resource_name,
+                owner_id=owner_id,
+                fencing_token=self._monotonic_token_counter,
+                lease_expires_at=now + lease_ttl_sec
+            )
+            self._active_leases[resource_name] = grant
+            <span class="text-purple-400">return</span> grant
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">release_lock</span>(self, resource_name: str, owner_id: str) -> bool:
+        <span class="text-slate-500">"""Safe release: only releases if owner still matches."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            current = self._active_leases.get(resource_name)
+            <span class="text-purple-400">if</span> current <span class="text-purple-400">and</span> current.owner_id == owner_id:
+                del self._active_leases[resource_name]
+                <span class="text-purple-400">return True</span>
+            <span class="text-purple-400">return False</span></pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Fenced Dispatch FastAPI Controller: <code class="text-purple-700">src/omniroute/coordination/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Fenced Commit Routing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.coordination.lease_manager <span class="text-purple-400">import</span> (
+    DistributedFencingLockManager, LockGrant, StaleFencingTokenError
+)
+<span class="text-purple-400">from</span> omniroute.coordination.models <span class="text-purple-400">import</span> FencedRideDispatchModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/coordination"</span>, tags=[<span class="text-amber-300">"Distributed Locking"</span>])
+lock_manager = DistributedFencingLockManager()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LockAcquireRequestDTO</span>(BaseModel):
+    resource_name: str = Field(..., description=<span class="text-amber-300">"Target ride_id to lock"</span>)
+    driver_id: str
+    ttl_sec: float = Field(default=5.0, gt=0.1, le=60.0)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FencedCommitRequestDTO</span>(BaseModel):
+    ride_id: str
+    driver_id: str
+    fencing_token: int
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/locks/acquire"</span>, status_code=status.HTTP_200_OK)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_ride_lock</span>(dto: LockAcquireRequestDTO):
+    grant = <span class="text-purple-400">await</span> lock_manager.acquire_lock(dto.resource_name, dto.driver_id, dto.ttl_sec)
+    <span class="text-purple-400">if not</span> grant:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=409, detail=<span class="text-amber-300">"Lock already acquired by another candidate."</span>)
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"ACQUIRED"</span>,
+        <span class="text-amber-300">"resource"</span>: grant.resource_name,
+        <span class="text-amber-300">"owner"</span>: grant.owner_id,
+        <span class="text-amber-300">"fencing_token"</span>: grant.fencing_token,
+        <span class="text-amber-300">"expires_at"</span>: grant.lease_expires_at
+    }
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/dispatch/commit"</span>, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">commit_fenced_dispatch</span>(
+    dto: FencedCommitRequestDTO,
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-slate-500">"""
+    STORAGE FENCING VALIDATION:
+    Enforces that 'fencing_token' strictly exceeds the existing record's token.
+    Rejects stale writes from zombie clients!
+    """</span>
+    stmt = select(FencedRideDispatchModel).where(FencedRideDispatchModel.ride_id == dto.ride_id)
+    res = <span class="text-purple-400">await</span> db.execute(stmt)
+    record = res.scalar_one_or_none()
+
+    <span class="text-purple-400">if</span> record:
+        <span class="text-purple-400">if</span> dto.fencing_token &lt;= record.last_fencing_token:
+            <span class="text-purple-400">raise</span> HTTPException(
+                status_code=412,
+                detail=f<span class="text-amber-300">"Precondition Failed: Stale fencing token {dto.fencing_token} &lt;= current {record.last_fencing_token}"</span>
+            )
+        record.assigned_driver_id = dto.driver_id
+        record.last_fencing_token = dto.fencing_token
+    <span class="text-purple-400">else</span>:
+        record = FencedRideDispatchModel(
+            ride_id=dto.ride_id,
+            assigned_driver_id=dto.driver_id,
+            last_fencing_token=dto.fencing_token
+        )
+        db.add(record)
+
+    <span class="text-purple-400">await</span> db.commit()
+    <span class="text-purple-400">await</span> lock_manager.release_lock(dto.ride_id, dto.driver_id)
+
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"COMMITTED_FENCED"</span>,
+        <span class="text-amber-300">"ride_id"</span>: dto.ride_id,
+        <span class="text-amber-300">"committed_driver"</span>: dto.driver_id,
+        <span class="text-amber-300">"fencing_token"</span>: dto.fencing_token
+    }</pre>
+            </div>
+
+            <!-- File 4: tests/test_distributed_locks.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Distributed Lock Test Suite: <code class="text-purple-700">tests/test_distributed_locks.py</code></span>
+                    <span class="text-slate-400">PyTest Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> fastapi import FastAPI
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> AsyncClient, ASGITransport
+
+<span class="text-purple-400">from</span> omniroute.coordination.models <span class="text-purple-400">import</span> Base
+<span class="text-purple-400">from</span> omniroute.coordination.lease_manager <span class="text-purple-400">import</span> DistributedFencingLockManager
+<span class="text-purple-400">from</span> omniroute.coordination.router <span class="text-purple-400">import</span> router, get_session
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDistributedLockSuite</span>:
+    <span class="text-slate-500">"""Verifies mutual exclusion, monotonic token generation, and zombie client rejection."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_mutual_exclusion_and_lease_expiry</span>(self):
+        mgr = DistributedFencingLockManager()
+
+        <span class="text-slate-500"># Driver 1 acquires lock for 0.05s</span>
+        grant1 = <span class="text-purple-400">await</span> mgr.acquire_lock(<span class="text-amber-300">"ride_101"</span>, <span class="text-amber-300">"driver_1"</span>, lease_ttl_sec=0.05)
+        assert grant1 <span class="text-purple-400">is not None</span>
+        token1 = grant1.fencing_token
+
+        <span class="text-slate-500"># Driver 2 attempts to acquire &rarr; Rejected!</span>
+        grant2 = <span class="text-purple-400">await</span> mgr.acquire_lock(<span class="text-amber-300">"ride_101"</span>, <span class="text-amber-300">"driver_2"</span>)
+        assert grant2 <span class="text-purple-400">is None</span>
+
+        <span class="text-slate-500"># Wait for lease to expire (0.07s)</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.07)
+
+        <span class="text-slate-500"># Driver 2 can now acquire lock &rarr; Receives strictly HIGHER token!</span>
+        grant3 = <span class="text-purple-400">await</span> mgr.acquire_lock(<span class="text-amber-300">"ride_101"</span>, <span class="text-amber-300">"driver_2"</span>)
+        assert grant3 <span class="text-purple-400">is not None</span>
+        assert grant3.fencing_token &gt; token1
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_fencing_token_rejects_zombie_client_write</span>(self, in_memory_db):
+        app = FastAPI()
+        app.include_router(router)
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">override_session</span>():
+            <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+                <span class="text-purple-400">yield</span> session
+
+        app.dependency_overrides[get_session] = override_session
+
+        transport = ASGITransport(app=app)
+        <span class="text-purple-400">async with</span> AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://test"</span>) <span class="text-purple-400">as</span> client:
+            <span class="text-slate-500"># 1. Driver 2 commits with fresh Token #1002</span>
+            res1 = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/coordination/dispatch/commit"</span>, json={
+                <span class="text-amber-300">"ride_id"</span>: <span class="text-amber-300">"ride_449"</span>,
+                <span class="text-amber-300">"driver_id"</span>: <span class="text-amber-300">"driver_2"</span>,
+                <span class="text-amber-300">"fencing_token"</span>: 1002
+            })
+            assert res1.status_code == 201
+
+            <span class="text-slate-500"># 2. Zombie Driver 1 wakes up from GC pause and attempts write with old Token #1001</span>
+            res_zombie = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/coordination/dispatch/commit"</span>, json={
+                <span class="text-amber-300">"ride_id"</span>: <span class="text-amber-300">"ride_449"</span>,
+                <span class="text-amber-300">"driver_id"</span>: <span class="text-amber-300">"driver_1"</span>,
+                <span class="text-amber-300">"fencing_token"</span>: 1001  <span class="text-slate-500"># Stale!</span>
+            })
+
+            <span class="text-slate-500"># MUST be rejected with HTTP 412 Precondition Failed!</span>
+            assert res_zombie.status_code == 412
+            assert <span class="text-amber-300">"Stale fencing token"</span> <span class="text-purple-400">in</span> res_zombie.json()[<span class="text-amber-300">"detail"</span>]</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Consensus Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Distributed Lock Without Fencing Tokens</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Relying purely on a Redis/ZooKeeper distributed lock without requiring the storage layer to validate a monotonic token upon commit.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent data corruption:</strong> As Martin Kleppmann proved, an application process can freeze for seconds at any moment due to Java/Python garbage collection pauses, OS memory paging, or hypervisor virtualization stalls. While frozen, its lock lease expires and another client acquires it. When the frozen client awakens, it proceeds to execute its write blindly, corrupting database state. <strong>Always pair distributed locks with monotonic fencing tokens checked by storage!</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Relying on Synchronized Wall-Clock Time (NTP Jumps)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using system wall-clock timestamps (<code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">datetime.datetime.now()</code>) across servers to determine which transaction occurred first.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks ordering:</strong> Hardware crystal oscillators drift constantly. Network Time Protocol (NTP) daemons can step clocks backwards or freeze time unexpectedly. Two servers in the same datacenter can easily drift by 50ms to 200ms. If you use wall-clock time for transaction ordering, a newer transaction will appear older and be dropped! <strong>Use monotonic logical counters, Lamport Timestamps, or Raft terms.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 13</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the distributed locking test suite and verify fencing token validation:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Distributed Coordination test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_distributed_locks.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.12s. Confirms mutual exclusion, lease timeout recovery, and HTTP 412 rejection of stale zombie writes!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate Monotonic Fencing Token generation in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from omniroute.coordination.lease_manager import DistributedFencingLockManager; m = DistributedFencingLockManager(); async def run(): l1 = await m.acquire_lock('ride_1', 'd1'); print('Driver 1 Fencing Token:', l1.fencing_token); await m.release_lock('ride_1', 'd1'); l2 = await m.acquire_lock('ride_1', 'd2'); print('Driver 2 Fencing Token:', l2.fencing_token); asyncio.run(run())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block fo

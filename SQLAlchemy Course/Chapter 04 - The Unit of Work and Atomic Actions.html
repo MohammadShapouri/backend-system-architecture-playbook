@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: The Unit of Work &amp; Atomic Actions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 04 - Unit of Work &amp; Atomic Transfers)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Transaction Semantics &amp; Data Integrity
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                The Unit of Work &amp; Atomic Actions
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing transaction mechanics: Martin Fowler's Unit of Work, the Identity Map, the four entity lifecycle states, mastering <code class="font-mono text-emerald-400">flush()</code> vs. <code class="font-mono text-emerald-400">commit()</code>, savepoints (<code class="font-mono text-emerald-400">begin_nested()</code>), and building LedgerCore's atomic fund transfer engine.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 04: The Transfer Service</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        A financial ledger's most critical invariant is <strong>Atomic Balance Conservation</strong>: money must never leave Account A without arriving in Account B. In Milestone 04, we build the core transfer engine. We wire our session transaction boundary, manage the state transitions of accounts and polymorphic transfer records, and use database savepoints to handle auxiliary platform fee deductions without jeopardizing the parent transfer.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Unit of Work &amp; Identity Map mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 4 Entity States (Transient &rarr; Detached)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">flush()</code> vs. <code class="text-purple-300">commit()</code> execution boundary</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Savepoints via <code class="text-purple-300">session.begin_nested()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Atomic Double-Entry Transfer API</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Unit of Work & Identity Map -->
+        <section id="cs-unit-of-work" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Unit of Work &amp; The Identity Map</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In simplistic database libraries (like raw SQL scripts or basic Active Record patterns), modifying an object issues an immediate SQL <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">UPDATE</code> statement directly over the network. If your business logic updates a user's address, recalculates their tax, and adjusts their balance, it executes three separate SQL statements over three round-trips.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                SQLAlchemy implements Martin Fowler’s <strong>Unit of Work</strong> and <strong>Identity Map</strong> patterns inside the <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">Session</code>. The Session acts as an in-memory staging area and transaction coordinator:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Identity Map -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center font-mono font-bold text-sm">IM</div>
+                    <h3 class="font-bold text-slate-900 text-base">The Identity Map (Single Source of Truth)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        The Session maintains a dictionary mapping <code class="font-mono text-slate-800">(ModelClass, primary_key) &rarr; instance</code>. If you query Account #42 five times during a single API request, SQLAlchemy queries the database <strong>once</strong>. Subsequent queries return the exact same Python object reference in RAM:
+                    </p>
+                    <div class="bg-slate-100 p-3 rounded-lg font-mono text-[11px] text-slate-800 space-y-0.5">
+                        acc_a = session.get(Account, 42)<br>
+                        acc_b = session.get(Account, 42)<br>
+                        <span class="text-emerald-700 font-bold">assert acc_a is acc_b  # True! Same memory pointer</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans italic">
+                        Prevents conflicting updates: You cannot accidentally load two separate copies of Account #42 with conflicting balances in the same request.
+                    </p>
+                </div>
+
+                <!-- Unit of Work -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-mono font-bold text-sm">UoW</div>
+                    <h3 class="font-bold text-slate-900 text-base">Unit of Work (Dirty Tracking &amp; Batching)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        When you mutate attributes (<code class="font-mono text-slate-800">account.balance += 50</code>), SQLAlchemy emits <strong>no SQL</strong> immediately. The Session tracks the object as "dirty".
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        When you reach the transaction boundary, the Unit of Work calculates the minimal SQL changeset, reorders inserts/updates to respect foreign key hierarchies (preventing constraint violations), and flushes all changes to the database in an optimized batch.
+                    </p>
+                    <div class="bg-slate-100 p-3 rounded-lg font-mono text-[11px] text-slate-800">
+                        account.balance += 50 &rarr; <span class="text-purple-700">No SQL emitted</span><br>
+                        session.commit() &rarr; <span class="text-emerald-700">Calculates diff &amp; emits UPDATE</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Under the Hood: The Four Entity States -->
+        <section id="entity-lifecycle" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Four Entity States</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                At any given microsecond, an ORM model instance exists in one of four distinct lifecycle states inside Python's memory space. Understanding these states is essential to mastering when data is safe to read and avoiding the dreaded <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">DetachedInstanceError</code>.
+            </p>
+
+            <!-- 4 States Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The SQLAlchemy Entity State Lifecycle
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <!-- State 1: Transient -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold">1. Transient</span>
+                            <span class="text-[9px] bg-sky-950 text-sky-400 px-1.5 py-0.5 rounded">Memory Only</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Created via Python constructor: <code class="text-white">acc = Account(...)</code>.
+                        </p>
+                        <ul class="text-[10px] text-slate-500 font-sans list-disc pl-3.5 space-y-1">
+                            <li>Not in any Session</li>
+                            <li>No database identity (id is None)</li>
+                            <li>Not tracked by Unit of Work</li>
+                        </ul>
+                    </div>
+
+                    <!-- State 2: Pending -->
+                    <div class="p-4 bg-slate-950 border border-purple-800/60 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-purple-800/60 pb-2">
+                            <span class="text-purple-300 font-bold">2. Pending</span>
+                            <span class="text-[9px] bg-purple-950 text-purple-300 px-1.5 py-0.5 rounded">Staged</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Registered via: <code class="text-white">session.add(acc)</code>.
+                        </p>
+                        <ul class="text-[10px] text-slate-500 font-sans list-disc pl-3.5 space-y-1">
+                            <li>Bound to active Session</li>
+                            <li>No SQL emitted yet</li>
+                            <li>Will be saved on next flush</li>
+                        </ul>
+                    </div>
+
+                    <!-- State 3: Persistent -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800/60 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-300 font-bold">3. Persistent</span>
+                            <span class="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded">Synchronized</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Loaded from DB query or after <code class="text-white">flush()</code>.
+                        </p>
+                        <ul class="text-[10px] text-slate-500 font-sans list-disc pl-3.5 space-y-1">
+                            <li>Has database primary key</li>
+                            <li>Tracked in Identity Map</li>
+                            <li>Attribute changes marked "dirty"</li>
+                        </ul>
+                    </div>
+
+                    <!-- State 4: Detached -->
+                    <div class="p-4 bg-slate-950 border border-rose-800/60 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-300 font-bold">4. Detached</span>
+                            <span class="text-[9px] bg-rose-950 text-rose-300 px-1.5 py-0.5 rounded">Disconnected</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Session closed via <code class="text-white">session.close()</code>.
+                        </p>
+                        <ul class="text-[10px] text-slate-500 font-sans list-disc pl-3.5 space-y-1">
+                            <li>Has database ID</li>
+                            <li>Session connection severed</li>
+                            <li>Accessing unloaded fields crashes!</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Transition Trigger:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        <code class="text-white font-mono">Account()</code> (Transient) &rarr; <code class="text-white font-mono">session.add()</code> &rarr; (Pending) &rarr; <code class="text-white font-mono">session.flush()</code> &rarr; (Persistent) &rarr; <code class="text-white font-mono">session.close()</code> &rarr; (Detached).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Transaction Boundaries: Flush vs. Commit vs. Savepoints -->
+        <section id="flush-vs-commit" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Transaction Boundaries: <code>flush()</code> vs. <code>commit()</code> &amp; Savepoints</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many developers treat <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">session.flush()</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">session.commit()</code> as synonymous. They operate at completely different layers of the database pipeline:
+            </p>
+
+            <!-- Flush vs Commit Comparison Pipeline (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Flush vs. Commit Execution Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Memory -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl w-full md:w-52">
+                        <span class="text-slate-900 font-bold block">1. Python Memory</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Objects added, modified, dirty-tracked in RAM</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; session.flush() &rarr;</div>
+
+                    <!-- Step 2: Database Staging -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-56">
+                        <span class="text-purple-900 font-bold block">2. DB Transaction Buffer</span>
+                        <span class="text-[10px] text-purple-700 font-sans">SQL emitted over TCP. PKs generated, constraints checked. NOT permanent!</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; session.commit() &rarr;</div>
+
+                    <!-- Step 3: Disk / WAL -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-52">
+                        <span class="text-emerald-900 font-bold block">3. Durable Storage (WAL)</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">COMMIT sent. Written to WAL disk. Locks released. Permanent!</span>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4 pt-2">
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-700 font-sans text-xs">
+                        <span class="font-bold text-purple-800 font-mono block">Why call session.flush()?</span>
+                        <p class="leading-relaxed">
+                            When you need the database to assign an autoincrement primary key ID or fire triggers, but you are not yet ready to finalize the transaction. For example: creating an Account, flushing it to obtain its <code class="font-mono">id</code>, and using that ID to insert child transaction records before committing.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-700 font-sans text-xs">
+                        <span class="font-bold text-emerald-800 font-mono block">Why call session.commit()?</span>
+                        <p class="leading-relaxed">
+                            Finalizes the entire Unit of Work. Writes all buffered SQL to the database Write-Ahead Log (WAL), releases all row-level and table-level locks, and returns the underlying connection back to the connection pool.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Savepoints & Nested Transactions -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Savepoints &amp; Sub-Transactions via session.begin_nested()</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Handling Partial Failures Without Aborting the Entire Transaction</p>
+                </div>
+
+                <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 font-sans text-xs leading-relaxed text-slate-300">
+                    <p>
+                        In financial applications, you often encounter optional sub-actions: for instance, attempting to deduct an optional service fee or send a webhook notification record. If the fee fails (e.g., negative balance check constraint), you do <strong>not</strong> want to cancel the entire core transfer.
+                    </p>
+                    <p>
+                        Standard relational databases do not allow "nested" physical transactions. Instead, SQLAlchemy uses <strong>Savepoints</strong>:
+                    </p>
+                    <pre class="bg-slate-900 p-4 rounded-xl font-mono text-xs text-slate-100 overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># Outer transaction starts</span>
+<span class="text-purple-400">with</span> Session(engine) <span class="text-purple-400">as</span> session:
+    <span class="text-slate-500"># 1. Primary Action: Deduct and Credit Core Transfer</span>
+    sender.balance -= Decimal(<span class="text-amber-300">"100.0000"</span>)
+    recipient.balance += Decimal(<span class="text-amber-300">"100.0000"</span>)
+    session.flush()
+
+    <span class="text-slate-500"># 2. Sub-Action: Attempt Platform Fee inside a Savepoint</span>
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">with</span> session.begin_nested():  <span class="text-slate-500"># Emits: SAVEPOINT sa_savepoint_1</span>
+            fee = FeeTransaction(account_id=sender.id, amount=Decimal(<span class="text-amber-300">"5.0000"</span>), fee_code=<span class="text-amber-300">"WIRE"</span>)
+            sender.balance -= fee.amount
+            session.add(fee)
+            session.flush()  <span class="text-slate-500"># If this violates a check constraint, only the savepoint rolls back!</span>
+    <span class="text-purple-400">except</span> Exception:
+        <span class="text-slate-500"># Emits: ROLLBACK TO SAVEPOINT sa_savepoint_1</span>
+        print(<span class="text-amber-300">"Optional fee failed. Outer transfer continues unaffected!"</span>)
+
+    <span class="text-slate-500"># 3. Commit the entire outer transaction</span>
+    session.commit()  <span class="text-slate-500"># Core transfer is permanently committed!</span></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: LedgerCore Milestone 04 -->
+        <section id="ledgercore-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 04: The Atomic Transfer Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 04. We build an atomic double-entry fund transfer endpoint in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code>. We configure session transactions cleanly, demonstrate <code class="font-mono text-purple-700 font-bold">flush()</code> to obtain primary keys, record polymorphic <code class="font-mono text-purple-700 font-bold">TransferTransaction</code> entries, and execute savepoints.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py              <span class="text-slate-500"># Configured with expire_on_commit=False</span></div>
+                <div>│   ├── models.py                <span class="text-slate-500"># Account, Transaction, TransferTransaction, FeeTransaction</span></div>
+                <div>│   ├── schemas.py               <span class="text-slate-500"># TransferRequest, TransferResponse</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                  <span class="text-slate-500"># Atomic Transfer API with Savepoint Handling</span></div>
+            </div>
+
+            <!-- File 1: app/database.py with SessionLocal & expire_on_commit=False -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Sessionmaker Configuration: <code class="text-purple-700">app/database.py</code></span>
+                    <span class="text-slate-400">Tuning Session Factory</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/database.py: Session factory</span>
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> sessionmaker, Session
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CRITICAL WEB CONFIGURATION: expire_on_commit=False</span>
+<span class="text-slate-500"># In FastAPI, response serialization happens AFTER the session commits.</span>
+<span class="text-slate-500"># If expire_on_commit=True (default), accessing attributes outside the session</span>
+<span class="text-slate-500"># triggers a reload query against a closed connection, crashing with DetachedInstanceError!</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=<span class="text-rose-400">False</span>,
+    autoflush=<span class="text-rose-400">False</span>,
+    expire_on_commit=<span class="text-rose-400">False</span>
+)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_db_session</span>():
+    <span class="text-slate-500">"""Dependency yielding a dedicated session with guaranteed cleanup."""</span>
+    session: Session = SessionLocal()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">yield</span> session
+    <span class="text-purple-400">finally</span>:
+        session.close()</pre>
+            </div>
+
+            <!-- File 2: app/schemas.py (Transfer schemas) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Transfer Contracts: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">Pydantic v2 Ingestion Contracts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/schemas.py: Transfer schemas</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransferRequest</span>(BaseModel):
+    sender_account_number: str = Field(..., examples=[<span class="text-amber-300">"ACC-CORP-001"</span>])
+    recipient_account_number: str = Field(..., examples=[<span class="text-amber-300">"ACC-US-98214"</span>])
+    amount: Decimal = Field(..., gt=0, examples=[<span class="text-amber-300">"250.0000"</span>])
+    routing_reference: str = Field(default=<span class="text-amber-300">"WIRE-FED-INTERNAL"</span>)
+    apply_fee: bool = Field(default=<span class="text-rose-400">False</span>, description=<span class="text-amber-300">"Attempt optional $10.00 wire fee via Savepoint"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransferResponse</span>(BaseModel):
+    status: str
+    transfer_uuid: UUID
+    sender_account_number: str
+    recipient_account_number: str
+    transferred_amount: Decimal
+    fee_applied: bool
+    sender_new_balance: Decimal</pre>
+            </div>
+
+            <!-- File 3: app/main.py Atomic Transfer Action -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. The Atomic Transfer Endpoint: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Transaction &amp; Savepoint Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: Atomic transfer endpoint</span>
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> Depends, HTTPException, status
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> Session
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> get_db_session
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> Account, AccountStatus, TransferTransaction, FeeTransaction
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> TransferRequest, TransferResponse
+
+<span class="text-purple-400">@app.post</span>(
+    <span class="text-amber-300">"/api/v1/transfers"</span>,
+    response_model=TransferResponse,
+    status_code=status.HTTP_200_OK,
+    tags=[<span class="text-amber-300">"Transactions"</span>],
+    summary=<span class="text-amber-300">"Execute Atomic Double-Entry Fund Transfer"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">transfer_funds</span>(
+    payload: TransferRequest,
+    session: Session = Depends(get_db_session)
+):
+    <span class="text-slate-500">"""
+    ATOMIC TRANSACTION PIPELINE:
+    1. Loads sender and recipient accounts.
+    2. Validates operational account statuses and balance sufficiency.
+    3. Flushes core double-entry balance mutations &amp; records TransferTransaction.
+    4. Executes optional service fee deduction within a SAVEPOINT.
+    5. Commits atomically. If any error occurs, rolls back cleanly.
+    """</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># STEP 1: Query Sender and Recipient</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    sender = session.scalar(
+        select(Account).where(Account.account_number == payload.sender_account_number)
+    )
+    <span class="text-purple-400">if not</span> sender:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Sender account not found."</span>)
+
+    recipient = session.scalar(
+        select(Account).where(Account.account_number == payload.recipient_account_number)
+    )
+    <span class="text-purple-400">if not</span> recipient:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Recipient account not found."</span>)
+
+    <span class="text-purple-400">if</span> sender.id == recipient.id:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Cannot transfer to the same account."</span>)
+
+    <span class="text-purple-400">if</span> sender.status != AccountStatus.ACTIVE <span class="text-purple-400">or</span> recipient.status != AccountStatus.ACTIVE:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Both accounts must be ACTIVE to transfer."</span>)
+
+    <span class="text-slate-500"># Application-level check (backed up by database CheckConstraint!)</span>
+    <span class="text-purple-400">if</span> sender.balance &lt; payload.amount:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Insufficient funds for transfer."</span>)
+
+    <span class="text-purple-400">try</span>:
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STEP 2: Atomic Balance Mutations (Core Action)</span>
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        sender.balance -= payload.amount
+        recipient.balance += payload.amount
+
+        <span class="text-slate-500"># Record polymorphic TransferTransaction bound to sender</span>
+        transfer_record = TransferTransaction(
+            account_id=sender.id,
+            amount=payload.amount,
+            destination_account_number=recipient.account_number,
+            routing_reference=payload.routing_reference
+        )
+        session.add(transfer_record)
+
+        <span class="text-slate-500"># FLUSH: Emits SQL to the DB buffer. Generates transfer_record.uuid &amp; validates constraints</span>
+        session.flush()
+
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STEP 3: Optional Fee Sub-Action inside a SAVEPOINT</span>
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        fee_applied = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">if</span> payload.apply_fee:
+            fee_amount = Decimal(<span class="text-amber-300">"10.0000"</span>)
+            <span class="text-purple-400">try</span>:
+                <span class="text-slate-500"># Emits: SAVEPOINT fee_subaction</span>
+                <span class="text-purple-400">with</span> session.begin_nested():
+                    <span class="text-purple-400">if</span> sender.balance &lt; fee_amount:
+                        <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Sender cannot afford wire fee."</span>)
+                    
+                    sender.balance -= fee_amount
+                    fee_record = FeeTransaction(
+                        account_id=sender.id,
+                        amount=fee_amount,
+                        fee_code=<span class="text-amber-300">"WIRE_SERVICE_FEE"</span>,
+                        waivable=<span class="text-rose-400">True</span>
+                    )
+                    session.add(fee_record)
+                    session.flush()  <span class="text-slate-500"># Triggers DB check constraints for the fee</span>
+                    fee_applied = <span class="text-rose-400">True</span>
+            <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> fee_err:
+                <span class="text-slate-500"># Savepoint automatically rolled back! Outer transfer is preserved</span>
+                print(f<span class="text-amber-300">"[NOTICE] Optional fee aborted: &#123;fee_err&#125;. Outer transfer continues."</span>)
+
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STEP 4: Commit the Transaction</span>
+        <span class="text-slate-500"># ----------------------------------------------------------------------</span>
+        session.commit()
+
+        <span class="text-purple-400">return</span> TransferResponse(
+            status=<span class="text-amber-300">"success"</span>,
+            transfer_uuid=transfer_record.uuid,
+            sender_account_number=sender.account_number,
+            recipient_account_number=recipient.account_number,
+            transferred_amount=payload.amount,
+            fee_applied=fee_applied,
+            sender_new_balance=sender.balance
+        )
+
+    <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+        <span class="text-slate-500"># GUARANTEED ROLLBACK: Discards all pending mutations if an unhandled error occurs</span>
+        session.rollback()
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=500,
+            detail=f<span class="text-amber-300">"Atomic transfer failed: &#123;str(exc)&#125;"</span>
+        )</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The PendingRollbackError Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Catching a database exception (like a unique constraint violation) and immediately trying to run another query on the same session without calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">session.rollback()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes:</strong> When PostgreSQL encounters a SQL error inside a transaction block, it enters an aborted state (<code class="font-mono">ERROR: current transaction is aborted, commands ignored until end of transaction block</code>). SQLAlchemy mirrors this with a <code class="font-mono text-rose-950 font-bold">PendingRollbackError</code>. You must call <code class="font-mono font-bold">session.rollback()</code> to reset the connection before issuing any new queries!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Committing Inside Helper / Service Functions</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">def deduct_balance(): ... session.commit()</code> inside lower-level utility functions.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks Atomicity:</strong> Committing inside child functions destroys the Unit of Work. If step 1 (deduct) commits, and step 2 (credit) crashes due to a network glitch, step 1 is permanently committed on disk! The user lost money with no recipient credit.
+                        <strong>Rule:</strong> Only the top-level request orchestrator (the controller/handler) should call <code class="font-mono font-bold">commit()</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your application, seed two accounts, and verify atomic fund transfers and savepoint execution:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start LedgerCore API:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Seed Accounts -->
+                <div>
+                    <span class="text-slate-500"># 2. Seed Alice ($1,000.0000) and Bob ($50.0000):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-ALICE", "owner_name": "Alice", "initial_balance": "1000.0000"}'<br>
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-BOB", "owner_name": "Bob", "initial_balance": "50.0000"}'
+                    </div>
+                </div>
+
+                <!-- Step 3: Execute Atomic Transfer -->
+                <div>
+                    <span class="text-slate-500"># 3. Transfer $250.0000 from Alice to Bob with Savepoint Wire Fee ($10.0000):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/transfers \
+                        -H "Content-Type: application/json" \
+                        -d '{"sender_account_number": "ACC-ALICE", "recipient_account_number": "ACC-BOB", "amount": "250.0000", "apply_fee": true}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Alice's balance updates to $740.0000 ($1000 - $250 - $10 fee), Bob's balance updates to $300.0000. Total money is conserved!
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Inspect the transfer endpoint in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 5 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Concurrency Control, Row Locking &amp; Race Conditions</h4>
+                <p class="text-xs text-slate-500 font-sans">What happens when 50 requests attempt to withdraw from Alice's account simultaneously? Demystifying race conditions, Pessimistic Locking with <code class="font-mono">with_for_update()</code>, and Optimistic Locking with version counters.</p>
+            </div>
+            <a href="Chapter 05 - Concurrency Control, Row Locking and Race Conditions.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 5 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

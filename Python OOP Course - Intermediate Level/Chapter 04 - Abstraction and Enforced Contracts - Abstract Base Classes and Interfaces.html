@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: Abstraction &amp; Enforced Contracts - Abstract Base Classes &amp; Interfaces</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP &amp; Intermediate Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OrderForge (Milestone 04 - Abstract Contracts &amp; Interfaces)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Locking Down Architecture
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 04: Abstraction &amp; Enforced Contracts - Abstract Base Classes &amp; Interfaces
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Separating "what" from "how": Understanding the architectural power of Interfaces, replacing the fragile <code class="font-mono text-emerald-400">NotImplementedError</code> anti-pattern with strict <code class="font-mono text-emerald-400">abc.ABC</code> contracts, demystifying CPython's <code class="font-mono text-emerald-400">__isabstractmethod__</code> instantiation blocks, and engineering a pluggable Payment Gateway contract for <strong>OrderForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Module 4 Abstraction</span>
+                    <h2 class="text-2xl font-extrabold">OrderForge Milestone 04: The Payment Gateway Contract</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 03, we built the <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Order</code> aggregate. Eventually, these orders must be paid for. However, hardcoding Stripe or PayPal directly into our domain logic creates massive coupling. In Milestone 04, we introduce <strong>Abstraction</strong>. We create a <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">PaymentGateway</code> interface using Python's <code class="font-mono text-slate-300 bg-slate-950 px-1 py-0.5 rounded">abc</code> module. This interface dictates <em>what</em> a payment processor must do (authenticate and charge), without caring <em>how</em> it does it. Crucially, Python will mathematically guarantee that any future plugin strictly obeys this contract before it even boots up.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Abstraction: Interfaces vs. Implementations</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">abc.ABC</code> (Abstract Base Class)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">@abstractmethod</code> Decorator</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython Instantiation Blocking Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> OrderForge <code class="text-purple-300">PaymentGateway</code> Interface</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Abstraction -->
+        <section id="abstraction-concepts" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Interfaces and Enforced Contracts</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Abstraction</strong> is the process of hiding complex background details and exposing only a clean, simple interface. In software architecture, an <strong>Interface</strong> (or Abstract Base Class) acts as a strict legal contract between your core application and external plugins.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If you tell your team, "Make a payment processor," someone might write a class with a method called <code class="font-mono bg-slate-100 px-1 rounded text-slate-800">pay()</code>, another might write <code class="font-mono bg-slate-100 px-1 rounded text-slate-800">charge_card()</code>, and a third might write <code class="font-mono bg-slate-100 px-1 rounded text-slate-800">execute_transaction()</code>. Your checkout system would crash trying to guess the method names. An Abstract Base Class forces everyone to use the exact same method signature: <code class="font-mono bg-slate-100 px-1 rounded text-purple-700 font-bold">process_payment(amount)</code>.
+            </p>
+
+            <!-- Interfaces vs Implementations Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Architectural Boundary: The Interface vs. The Implementation
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-6 items-stretch pt-4">
+                    <!-- The Contract (Interface) -->
+                    <div class="p-5 bg-purple-950/40 border border-purple-800 rounded-2xl space-y-3 col-span-1">
+                        <div class="flex items-center justify-between border-b border-purple-800/60 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">The Contract</span>
+                            <span class="text-[10px] bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded font-bold">Abstract</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Defines <strong>WHAT</strong> must be done. Contains zero actual logic.
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-xl border border-purple-900 space-y-2">
+                            <div class="text-purple-300 font-bold text-center border-b border-slate-800 pb-1">PaymentGateway</div>
+                            <div class="text-slate-400 text-center">- process_payment()</div>
+                            <div class="text-slate-400 text-center">- authenticate()</div>
+                        </div>
+                    </div>
+
+                    <!-- The Implementations (Concrete) -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3 col-span-2">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">The Implementations</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Concrete</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Defines <strong>HOW</strong> it is done. Contains the actual network API calls. Must strictly obey the Contract.
+                        </p>
+                        <div class="flex gap-4">
+                            <div class="bg-slate-950 p-3 rounded-xl border border-emerald-900 flex-1 space-y-2">
+                                <div class="text-emerald-300 font-bold text-center border-b border-slate-800 pb-1">StripeGateway</div>
+                                <div class="text-slate-200 text-center text-[10px]">+ process_payment() {<br><span class="text-slate-500">requests.post('stripe.com')</span><br>}</div>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-xl border border-emerald-900 flex-1 space-y-2">
+                                <div class="text-emerald-300 font-bold text-center border-b border-slate-800 pb-1">PayPalGateway</div>
+                                <div class="text-slate-200 text-center text-[10px]">+ process_payment() {<br><span class="text-slate-500">paypal_sdk.charge()</span><br>}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Under the Hood: abc.ABC and Instantiation Blocking -->
+        <section id="abc-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: How CPython Blocks Instantiation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If an interface has empty methods, what happens if a developer accidentally tries to instantiate it directly? (<code class="font-mono bg-slate-100 px-1 rounded">gateway = PaymentGateway()</code>). It would create a useless object that does nothing!
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Python prevents this using the <code class="font-mono text-slate-800 font-bold">abc</code> (Abstract Base Classes) module. When you decorate a method with <code class="font-mono text-purple-700 font-bold">@abstractmethod</code>, CPython flags that method internally.
+            </p>
+
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <span class="text-emerald-400 font-bold block text-sm uppercase tracking-wider">// CPython's Abstract Guard Pipeline</span>
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] leading-relaxed font-sans">
+                    <p class="text-slate-300">
+                        <strong>1. The Flag:</strong> <code class="font-mono text-sky-300">@abstractmethod</code> sets an internal flag on the function: <code class="font-mono text-slate-400">func.__isabstractmethod__ = True</code>.
+                    </p>
+                    <p class="text-slate-300">
+                        <strong>2. Class Creation:</strong> When Python builds the class (using <code class="font-mono text-slate-400">abc.ABCMeta</code>), it collects all methods with this flag into a hidden set called <code class="font-mono text-purple-300">cls.__abstractmethods__</code>.
+                    </p>
+                    <p class="text-slate-300">
+                        <strong>3. The Block:</strong> The moment someone writes <code class="font-mono text-amber-300">obj = MyClass()</code>, Python checks that set. If the set is not empty, Python immediately raises a <code class="font-mono text-rose-400 font-bold">TypeError: Can't instantiate abstract class</code> and refuses to allocate memory!
+                    </p>
+                    <p class="text-slate-300 border-t border-slate-800 pt-2 mt-2">
+                        <strong>The Fix:</strong> A subclass must override <em>every single abstract method</em>. When it does, the child method no longer has the flag, the <code class="font-mono text-purple-300">__abstractmethods__</code> set becomes empty, and Python finally permits instantiation.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Project Implementation: OrderForge Milestone 04 -->
+        <section id="orderforge-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OrderForge Milestone 04: The Payment Gateway Contract</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 04 of <strong>OrderForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/orderforge/domain/gateway.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">PaymentGateway</code>: An Abstract Base Class inheriting from <code class="font-mono text-purple-700 font-bold">ABC</code>.</li>
+                <li><strong>Enforced Contracts:</strong> We declare <code class="font-mono text-slate-800">authenticate()</code> and <code class="font-mono text-slate-800">process_payment()</code> as abstract methods.</li>
+                <li>We write tests to prove that attempting to instantiate this interface directly fails, and attempting to instantiate a broken subclass (missing a method) also fails.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OrderForge Project Hierarchy (Milestone 04)</div>
+                <div>orderforge/</div>
+                <div>├── src/</div>
+                <div>│   └── orderforge/</div>
+                <div>│       └── domain/</div>
+                <div>│           ├── item.py                 <span class="text-slate-500"># Milestone 01: Class Anatomy</span></div>
+                <div>│           ├── order_item.py           <span class="text-slate-500"># Milestone 02: Encapsulation &amp; Properties</span></div>
+                <div>│           ├── order.py                <span class="text-slate-500"># Milestone 03: Object Composition &amp; Hierarchies</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">gateway.py</span>              <span class="text-slate-500"># Milestone 04: Abstraction &amp; Interfaces</span></div>
+                <div>└── tests/</div>
+                <div>    ├── test_item.py                </div>
+                <div>    ├── test_order_item.py          </div>
+                <div>    ├── test_order.py               </div>
+                <div>    └── <span class="text-purple-300 font-bold">test_gateway.py</span>             <span class="text-slate-500"># Milestone 04: Contract Enforcement Tests</span></div>
+            </div>
+
+            <!-- File 1: src/orderforge/domain/gateway.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Abstract Contract: <code class="text-purple-700">src/orderforge/domain/gateway.py</code></span>
+                    <span class="text-slate-400">Abstract Base Classes</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Domain - Abstraction &amp; Enforced Contracts (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PaymentGateway</span>(ABC):
+    <span class="text-slate-500">"""
+    INTERFACE / CONTRACT:
+    By inheriting from ABC, this class cannot be instantiated on its own.
+    It dictates the exact method signatures that any concrete payment processor 
+    (like Stripe or PayPal) MUST implement to be accepted by the checkout engine.
+    """</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">authenticate</span>(self) -> bool:
+        <span class="text-slate-500">"""
+        Verifies API keys, tokens, or network credentials.
+        Returns True if successful, False otherwise.
+        """</span>
+        <span class="text-purple-400">pass</span>  <span class="text-slate-500"># No logic required in the interface!</span>
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process_payment</span>(self, amount: float) -> str:
+        <span class="text-slate-500">"""
+        Executes the financial transaction.
+        Must return a unique transaction receipt/ID string.
+        """</span>
+        <span class="text-purple-400">pass</span></pre>
+            </div>
+
+            <!-- File 2: tests/test_gateway.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/test_gateway.py</code></span>
+                    <span class="text-slate-400">Testing Instantiation Blocks</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Test Suite - Abstract Contract Verification (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> orderforge.domain.gateway <span class="text-purple-400">import</span> PaymentGateway
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestPaymentGatewayContract</span>:
+    <span class="text-slate-500">"""Unit tests asserting that Python blocks invalid interface usage."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cannot_instantiate_abstract_base_class</span>(self):
+        <span class="text-slate-500"># Attempting to create the interface directly MUST crash!</span>
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"Can't instantiate abstract class PaymentGateway"</span>):
+            gateway = PaymentGateway()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_subclass_must_implement_all_abstract_methods</span>(self):
+        <span class="text-slate-500"># Define a broken subclass that misses 'process_payment'</span>
+        <span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">BrokenGateway</span>(PaymentGateway):
+            <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">authenticate</span>(self) -> bool:
+                <span class="text-purple-400">return True</span>
+
+        <span class="text-slate-500"># Python catches the missing method exactly at instantiation time!</span>
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"abstract method.*process_payment"</span>):
+            gateway = BrokenGateway()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_valid_subclass_instantiates_cleanly</span>(self):
+        <span class="text-slate-500"># Define a correct subclass</span>
+        <span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockGateway</span>(PaymentGateway):
+            <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">authenticate</span>(self) -> bool:
+                <span class="text-purple-400">return True</span>
+            <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process_payment</span>(self, amount: float) -> str:
+                <span class="text-purple-400">return</span> <span class="text-amber-300">"TXN_SUCCESS"</span>
+
+        <span class="text-slate-500"># Instantiation succeeds seamlessly</span>
+        gateway = MockGateway()
+        assert gateway.authenticate() <span class="text-purple-400">is True</span>
+        assert gateway.process_payment(100.0) == <span class="text-amber-300">"TXN_SUCCESS"</span></pre>
+            </div>
+        </section>
+
+        <!-- 4. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The NotImplementedError Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Skipping <code class="font-mono text-rose-900 font-bold">abc</code> entirely and writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def process_payment(self): raise NotImplementedError()</code> in a standard parent class.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this causes production crashes:</strong> If you use <code class="font-mono">NotImplementedError</code> without <code class="font-mono">ABC</code>, Python allows the developer to instantiate the broken subclass perfectly fine. The app will boot up, run for days, and only crash with an error <em>at the exact moment a customer tries to pay</em>! <code class="font-mono">ABC</code> moves the crash to **startup time**, protecting your production environment.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting to inherit from ABC</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Using the <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">@abstractmethod</code> decorator, but forgetting to write <code class="font-mono text-rose-900 font-bold">class PaymentGateway(ABC):</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this fails silently:</strong> The <code class="font-mono">@abstractmethod</code> decorator simply puts a sticky note on the method saying "I am abstract". However, only the `ABCMeta` metaclass (which you get by inheriting from `ABC`) actually reads those sticky notes! If you forget `(ABC)`, Python ignores the decorators and lets you instantiate the empty class.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OrderForge Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify the <code class="font-mono text-slate-400">PaymentGateway</code> interface contracts:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute PaymentGateway abstract contract tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_gateway.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.02s. Confirms instantiation blocking for abstract classes and broken subclasses.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Entire Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute all tests across Milestones 01 through 04:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/ -v
+                    </div>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration of CPython's abstract methods set:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from orderforge.domain.gateway import PaymentGateway; print('Abstract methods preventing instantiation:', PaymentGateway.__abstractmethods__)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how Python explicitly tracks the missing methods in a frozenset: {'process_payment', 'authenticate'}!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Polymorphism &amp; Dynamic Dispatch - Duck Typing &amp; Strategy Swapping</h4>
+                <p class="text-xs text-slate-500 font-sans">Now that our PaymentGateway contract is locked down, we will implement concrete Stripe and PayPal processors. We'll explore why Polymorphism and Dynamic Dispatch are the ultimate antidotes to messy if/else logic.</p>
+            </div>
+            <a href="Chapter 05 - Polymorphism and Dynamic Dispatch - Duck Typing and Strategy Swapping.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>Python OOP &amp; Intermediate Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

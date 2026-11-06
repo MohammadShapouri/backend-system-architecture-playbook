@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 6: Data Persistence with SQLAlchemy 2.0 &amp; Alembic Migrations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 06 - Permanent Storage, Async Architecture &amp; Migrations)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Production Relational Persistence
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Data Persistence: SQLAlchemy 2.0 &amp; Alembic
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                From volatile memory to persistent disk: Mastering the Unit of Work pattern, ACID transactions, modern SQLAlchemy 2.0 type-safe declarative mappings, avoiding the dreaded <code class="font-mono text-emerald-400">DetachedInstanceError</code>, synchronous vs. asynchronous database drivers, schema version control with Alembic, and race-free container migration rollouts.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 06: Replacing Memory with SQL</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        Until now, restarting our server erased all stored notes. In this milestone, we dismantle the ephemeral dictionary and build a real database tier: establishing a persistent SQLite database (seamlessly swappable with PostgreSQL via <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">DATABASE_URL</code>), defining modern SQLAlchemy 2.0 ORM models, connecting our yielding session dependency, mapping the exact boundary between synchronous and asynchronous database engines, tracking all changes with Alembic migration revisions, and structuring multi-pod migration rollouts for production containers.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Unit of Work &amp; ACID properties</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> SQLAlchemy 2.0 <code class="text-purple-300">Mapped[]</code> models</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Solving <code class="text-purple-300">DetachedInstanceError</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Sync vs. Async drivers (<code class="text-purple-300">AsyncSession</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Soft Deletes &amp; JSON tag column</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Alembic autogenerate &amp; upgrades</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Safe multi-container migration rollouts</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Persistence: Impedance Mismatch & ACID -->
+        <section id="cs-persistence" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Unit of Work &amp; ACID Guarantees</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Relational databases (PostgreSQL, SQLite, MySQL) store data in flat two-dimensional tables of rows and columns governed by relational algebra. In contrast, object-oriented Python programs represent business domains as interconnected graphs of rich class instances with methods and nested types. This fundamental dissonance is known as the <strong>Object-Relational Impedance Mismatch</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- ACID Principles -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-mono font-bold">1</span>
+                        ACID Transaction Semantics
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Every relational write must adhere to four safety guarantees:
+                    </p>
+                    <ul class="text-xs text-slate-600 space-y-2">
+                        <li><strong>Atomicity:</strong> All mutations inside a transaction succeed together or fail together. If step 2 of 3 fails, the entire transaction is rolled back.</li>
+                        <li><strong>Consistency:</strong> The database enforces all constraints (foreign keys, check bounds, unique indexes) before committing to disk.</li>
+                        <li><strong>Isolation:</strong> Concurrent transactions run independently without seeing uncommitted intermediate states from other workers.</li>
+                        <li><strong>Durability:</strong> Once committed, data is written to a write-ahead log (WAL) and survives power cuts or OS crashes.</li>
+                    </ul>
+                </div>
+
+                <!-- Unit of Work -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-mono font-bold">2</span>
+                        The Unit of Work Pattern (The Session)
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        An ORM Session is not simply an open TCP socket. It is an implementation of Martin Fowler's <strong>Unit of Work</strong> pattern:
+                    </p>
+                    <ul class="text-xs text-slate-600 space-y-2">
+                        <li><strong>Identity Map:</strong> The Session keeps a registry of every loaded entity. If you query Note ID 1 five times in one request, SQLAlchemy executes SQL once and returns the exact same in-memory object instance.</li>
+                        <li><strong>Dirty Tracking:</strong> The Session watches your objects for attribute changes. When you call <code class="font-mono text-purple-700 font-bold">db.commit()</code>, it computes the minimal SQL update changeset necessary.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Unit of Work Pipeline Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs overflow-x-auto">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-xs">
+                    The SQLAlchemy Session Unit of Work Lifecycle
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl w-full md:w-44">
+                        <span class="text-sky-300 font-bold block">1. Session Spawn</span>
+                        <span class="text-[10px] text-slate-400">Checked out from Engine Pool</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; Read/Mutate &rarr;</div>
+                    <div class="p-3 bg-purple-950 border border-purple-700 rounded-xl w-full md:w-56">
+                        <span class="text-purple-300 font-bold block">2. Sandbox Staging</span>
+                        <span class="text-[10px] text-purple-200">db.add(entity) / entity.title = 'X'</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; Commit/Rollback &rarr;</div>
+                    <div class="p-3 bg-emerald-950 border border-emerald-700 rounded-xl w-full md:w-48">
+                        <span class="text-emerald-300 font-bold block">3. Flush &amp; Commit</span>
+                        <span class="text-[10px] text-emerald-200">Emits SQL &bull; Closes in finally</span>
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-slate-400 font-mono text-center">
+                    Calling <code class="text-emerald-300">db.add()</code> does <strong>not</strong> write to disk immediately. It stages the object in the sandbox. The SQL <code class="text-emerald-300">INSERT</code> statement is emitted only when <code class="text-purple-300">db.commit()</code> or <code class="text-purple-300">db.flush()</code> is executed.
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. SQLAlchemy 2.0: The Modern Type-Safe Syntax -->
+        <section id="sqlalchemy-2-deepdive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SQLAlchemy 2.0: Modern Type-Safe Declarative Models</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                SQLAlchemy 2.0 represents a major paradigm shift. Legacy 1.x syntax relied on untyped <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">Column(String, primary_key=True)</code> declarations and implicit queries like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">db.query(Note).filter(...)</code>.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                Modern 2.0 syntax leverages standard Python type hinting (<code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">Mapped[]</code>, <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">mapped_column()</code>) and explicit query construction using <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-emerald-600 font-bold">select()</code> statements that integrate cleanly with IDE autocompletion, Pyright, and mypy.
+            </p>
+
+            <!-- 1.x vs 2.0 Syntax Comparison -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Legacy 1.x Card -->
+                <div class="bg-rose-50 border border-rose-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-rose-700 uppercase tracking-wide">Legacy 1.x Syntax (Deprecated / Legacy Style)</div>
+                    <pre class="bg-slate-900 text-rose-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-slate-500"># Legacy 1.x: No IDE type validation, string lookups</span>
+<span class="text-purple-400">class</span> <span class="text-rose-400">Note</span>(Base):
+    __tablename__ = <span class="text-amber-300">"notes"</span>
+    id = Column(Integer, primary_key=<span class="text-rose-400">True</span>)
+    title = Column(String(100), nullable=<span class="text-rose-400">False</span>)
+
+<span class="text-slate-500"># Legacy Query API:</span>
+notes = db.query(Note).filter(Note.title == <span class="text-amber-300">"Test"</span>).all()</pre>
+                </div>
+
+                <!-- Modern 2.0 Card -->
+                <div class="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wide">Modern 2.0 Syntax (Type-Safe / DeclarativeBase)</div>
+                    <pre class="bg-slate-900 text-emerald-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-slate-500"># Modern 2.0: Type-annotated, fully checked</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400">Note</span>(Base):
+    __tablename__ = <span class="text-amber-300">"notes"</span>
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>)
+    title: Mapped[str] = mapped_column(String(100))
+
+<span class="text-slate-500"># Modern Select API (Standardized with Core):</span>
+stmt = select(Note).where(Note.title == <span class="text-amber-300">"Test"</span>)
+notes = db.scalars(stmt).all()</pre>
+                </div>
+            </div>
+
+            <!-- Deep Dive: Synchronous vs. Asynchronous Database Drivers -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800 text-xs font-mono font-bold">Driver Architecture</span>
+                    Synchronous vs. Asynchronous Database Engines (psycopg2 vs. asyncpg)
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    A crucial decision in FastAPI architecture is selecting your database driver and session type. Python cannot perform asynchronous database I/O using traditional synchronous drivers:
+                </p>
+
+                <div class="grid md:grid-cols-2 gap-4 text-xs font-mono">
+                    <div class="p-4 bg-slate-900 text-slate-300 rounded-xl border border-slate-800 space-y-2">
+                        <div class="text-amber-400 font-bold">Synchronous Engine (Standard)</div>
+                        <ul class="text-[11px] text-slate-300 space-y-1 font-sans">
+                            <li><strong>PostgreSQL Driver:</strong> <code class="text-amber-300 font-mono">psycopg2</code> or <code class="text-amber-300 font-mono">psycopg</code></li>
+                            <li><strong>SQLite Driver:</strong> standard library <code class="text-amber-300 font-mono">sqlite3</code></li>
+                            <li><strong>FastAPI Route Type:</strong> Standard <code class="text-purple-300 font-mono">def endpoint()</code></li>
+                            <li><strong>Execution:</strong> FastAPI offloads each synchronous call to its AnyIO worker threadpool so the event loop does not freeze.</li>
+                        </ul>
+                    </div>
+
+                    <div class="p-4 bg-slate-900 text-slate-300 rounded-xl border border-slate-800 space-y-2">
+                        <div class="text-emerald-400 font-bold">Asynchronous Engine (High Concurrency)</div>
+                        <ul class="text-[11px] text-slate-300 space-y-1 font-sans">
+                            <li><strong>PostgreSQL Driver:</strong> <code class="text-emerald-300 font-mono">asyncpg</code></li>
+                            <li><strong>SQLite Driver:</strong> <code class="text-emerald-300 font-mono">aiosqlite</code></li>
+                            <li><strong>FastAPI Route Type:</strong> Non-blocking <code class="text-emerald-300 font-mono">async def endpoint()</code></li>
+                            <li><strong>Execution:</strong> Queries yield control directly back to the event loop using <code class="text-emerald-300 font-mono">await session.execute(...)</code> with zero threadpool context switches.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Async SQLAlchemy Code Architecture -->
+                <div class="space-y-2 pt-2">
+                    <span class="text-xs font-bold text-slate-800 font-mono">How to Configure Async SQLAlchemy in database.py:</span>
+                    <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-slate-500"># URL format uses async driver protocol: sqlite+aiosqlite or postgresql+asyncpg</span>
+ASYNC_DB_URL = <span class="text-amber-300">"sqlite+aiosqlite:///./notevault.db"</span>
+
+async_engine = create_async_engine(ASYNC_DB_URL, pool_pre_ping=<span class="text-rose-400">True</span>)
+AsyncSessionLocal = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=<span class="text-rose-400">False</span>)
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_async_db</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">async with</span> AsyncSessionLocal() <span class="text-purple-400">as</span> session:
+        <span class="text-purple-400">yield</span> session</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Infamous DetachedInstanceError & Eager vs Lazy Loading -->
+        <section id="detached-instance-error" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Solving the <code>DetachedInstanceError</code> &amp; Lazy Loading</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Almost every developer working with FastAPI and SQLAlchemy eventually encounters this runtime crash:
+                <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">sqlalchemy.orm.exc.DetachedInstanceError: Parent instance is not bound to a Session; lazy load operation cannot proceed</code>.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Why Does This Error Happen?</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    By default, SQLAlchemy uses <strong>Lazy Loading</strong> for relationships. If a <code class="font-mono text-slate-800">User</code> has many <code class="font-mono text-slate-800">notes</code>, SQLAlchemy does <em>not</em> query the notes table when loading the user. It waits until your code accesses <code class="font-mono text-purple-700">user.notes</code> in Python, and only then executes a secondary SQL query behind the scenes.
+                </p>
+
+                <!-- Step-by-Step Flow of the Bug -->
+                <div class="bg-slate-950 p-4 rounded-xl text-xs font-mono text-slate-300 space-y-2 border border-slate-800">
+                    <div class="text-sky-300">1. Route Controller executes: <code class="text-emerald-300">user = db.scalar(select(User))</code></div>
+                    <div class="text-sky-300">2. Route Controller returns: <code class="text-emerald-300">return user</code></div>
+                    <div class="text-amber-300">3. Dependency teardown runs: <code class="text-rose-400">db.close()</code> executes in the finally block! Session is closed.</div>
+                    <div class="text-purple-300">4. FastAPI begins serialization to JSON: attempts to read <code class="text-rose-400">user.notes</code>...</div>
+                    <div class="text-rose-400 font-bold">5. CRASH! DetachedInstanceError: The session is already closed, so SQLAlchemy cannot run the query.</div>
+                </div>
+
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded-r-xl text-xs text-emerald-900 space-y-1">
+                    <p class="font-bold">The Solution: Eager Loading via joinedload / selectinload</p>
+                    <p class="text-emerald-800 text-[11px] leading-relaxed">
+                        Never rely on lazy loading across request boundaries. Instruct SQLAlchemy to fetch related data upfront while the session is still active:
+                    </p>
+                    <div class="font-mono bg-white p-2 rounded border border-emerald-200 text-[11px] text-slate-800 mt-1">
+                        stmt = select(User).options(selectinload(User.notes))<br>
+                        user = db.scalar(stmt)  # User and all notes fetched together; safe to serialize after session closes!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: Database Tier Architecture -->
+        <section id="database-tier-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 06: Database Architecture</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble the production database layer for NoteVault:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── <span class="text-sky-300">alembic.ini</span>                  <span class="text-slate-500"># Alembic environment and logging configuration</span></div>
+                <div>├── <span class="text-sky-300 font-bold">alembic/</span>                     <span class="text-slate-500"># Database migration scripts directory</span></div>
+                <div>│   ├── <span class="text-emerald-300">env.py</span>                   <span class="text-slate-500"># Configures target metadata for autogenerate</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">versions/</span>                <span class="text-slate-500"># Historical migration revisions (.py files)</span></div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">database.py</span>              <span class="text-slate-500"># Engine creation, sessionmaker, and Base</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">models.py</span>                <span class="text-slate-500"># SQLAlchemy 2.0 ORM class declarations</span></div>
+                <div>│   ├── schemas.py</div>
+                <div>│   ├── dependencies.py          <span class="text-slate-500"># Yields db: Session directly from pool</span></div>
+                <div>│   ├── routers/</div>
+                <div>│   │   ├── notes.py             <span class="text-slate-500"># Swapped from in-memory to real SQL queries</span></div>
+                <div>│   │   └── views.py</div>
+                <div>│   └── main.py</div>
+                <div>└── templates/</div>
+            </div>
+
+            <!-- File 1: app/database.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Database Connection Factory: <code class="text-purple-700">app/database.py</code></span>
+                    <span class="text-slate-400">Engine &amp; Sessionmaker Setup</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Database Connection Engine (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> create_engine
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> sessionmaker, DeclarativeBase
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+
+<span class="text-slate-500"># 1. Connection URL: Read dynamically from .env</span>
+<span class="text-slate-500"># Defaults to local SQLite, but seamlessly switches to PostgreSQL in prod:</span>
+<span class="text-slate-500"># "postgresql+psycopg2://user:password@localhost:5432/notevault"</span>
+DATABASE_URL = getattr(settings, <span class="text-amber-300">"DATABASE_URL"</span>, <span class="text-amber-300">"sqlite:///./notevault.db"</span>)
+
+<span class="text-slate-500"># 2. Instantiate Engine (The Global Connection Pool)</span>
+<span class="text-slate-500"># Notice: create_engine is executed ONCE at module load, NOT per request!</span>
+engine_args = {}
+<span class="text-purple-400">if</span> DATABASE_URL.startswith(<span class="text-amber-300">"sqlite"</span>):
+    <span class="text-slate-500"># SQLite specific: allow multi-threaded access for FastAPI async workers</span>
+    engine_args[<span class="text-amber-300">"connect_args"</span>] = {<span class="text-amber-300">"check_same_thread"</span>: <span class="text-rose-400">False</span>}
+<span class="text-purple-400">else</span>:
+    <span class="text-slate-500"># Production PostgreSQL settings</span>
+    engine_args.update({
+        <span class="text-amber-300">"pool_size"</span>: 10,        <span class="text-slate-500"># Persistent open connections kept in pool</span>
+        <span class="text-amber-300">"max_overflow"</span>: 20,     <span class="text-slate-500"># Extra connections allowed during spikes</span>
+        <span class="text-amber-300">"pool_pre_ping"</span>: <span class="text-rose-400">True</span>,  <span class="text-slate-500"># Detect and discard dead connections automatically</span>
+    })
+
+engine = create_engine(DATABASE_URL, **engine_args)
+
+<span class="text-slate-500"># 3. Sessionmaker: Factory for lightweight Unit of Work sandbox instances</span>
+<span class="text-slate-500"># autoflush=False: Prevents premature DB writes before validation completes</span>
+<span class="text-slate-500"># autocommit=False: Enforces explicit transaction boundaries</span>
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=<span class="text-rose-400">False</span>,
+    autoflush=<span class="text-rose-400">False</span>,
+    expire_on_commit=<span class="text-rose-400">False</span>  <span class="text-slate-500"># CRITICAL: Prevents DetachedInstanceError on attribute access!</span>
+)
+
+<span class="text-slate-500"># 4. Declarative Base: The foundation for all ORM models</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-slate-500"># All models inherit this base class</span>
+    pass</pre>
+            </div>
+
+            <!-- File 2: app/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. SQLAlchemy 2.0 ORM Declarations: <code class="text-purple-700">app/models.py</code></span>
+                    <span class="text-slate-400">Physical Database Table Schemas</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Relational Models (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Text, Integer, Boolean, DateTime, JSON, Index
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> Mapped, mapped_column
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> Base
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteModel</span>(Base):
+    <span class="text-slate-500">"""
+    Maps directly to the physical 'notes' table in our relational database.
+    Built with modern SQLAlchemy 2.0 Mapped type annotations.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"notes"</span>
+
+    <span class="text-slate-500"># Primary Key with auto-increment</span>
+    id: Mapped[int] = mapped_column(Integer, primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+
+    <span class="text-slate-500"># Indexed fields for high-speed queries</span>
+    title: Mapped[str] = mapped_column(String(120), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    content: Mapped[str] = mapped_column(Text, nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># JSON column: stores structured lists/dicts natively (JSONB in PostgreSQL)</span>
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list, nullable=<span class="text-rose-400">False</span>)
+    
+    priority: Mapped[int] = mapped_column(Integer, default=1, nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Soft Delete Pattern: Never physically destroy rows; mark them inactive</span>
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=<span class="text-rose-400">False</span>, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+
+    <span class="text-slate-500"># Timestamps: Stored in UTC</span>
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc),
+        nullable=<span class="text-rose-400">False</span>
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-rose-400">None</span>,
+        nullable=<span class="text-rose-400">True</span>
+    )
+
+    <span class="text-slate-500"># Composite index to optimize common queries: "Active notes ordered by date"</span>
+    __table_args__ = (
+        Index(<span class="text-amber-300">"ix_notes_active_created"</span>, <span class="text-amber-300">"is_archived"</span>, <span class="text-amber-300">"created_at"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 3: app/dependencies.py Refactor -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Yielding Session Dependency: <code class="text-purple-700">app/dependencies.py</code></span>
+                    <span class="text-slate-400">Guaranteed Connection Cleanup</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Database Session Dependencies (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Annotated, Generator
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> Depends
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> Session
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> SessionLocal
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_db</span>() -> Generator[Session, <span class="text-rose-400">None</span>, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""
+    Yields an isolated SQLAlchemy Session per request.
+    Guarantees session teardown and returns connection to pool even on error.
+    """</span>
+    db = SessionLocal()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">yield</span> db
+    <span class="text-purple-400">finally</span>:
+        db.close()  <span class="text-slate-500"># Always return connection to the pool</span>
+
+<span class="text-slate-500"># Type alias for easy route injection</span>
+DbSession = Annotated[Session, Depends(get_db)]</pre>
+            </div>
+
+            <!-- File 4: app/routers/notes.py Refactor to Pure SQL -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Refactored SQL Router: <code class="text-purple-700">app/routers/notes.py</code></span>
+                    <span class="text-slate-400">Executing Real SQL Queries</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Notes API Router with SQLAlchemy (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select, or_
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> NoteCreate, NoteUpdate, NoteResponse
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> NoteModel
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> DbSession
+
+router = APIRouter()
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Create a note in persistent storage"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_note</span>(payload: NoteCreate, db: DbSession):
+    <span class="text-slate-500"># 1. Instantiate the SQLAlchemy ORM model</span>
+    new_note = NoteModel(
+        title=payload.title,
+        content=payload.content,
+        tags=payload.tags,
+        priority=payload.priority,
+        is_archived=<span class="text-rose-400">False</span>,
+        created_at=datetime.now(timezone.utc)
+    )
+
+    <span class="text-slate-500"># 2. Add to session (sandbox) and commit to disk</span>
+    db.add(new_note)
+    db.commit()
+
+    <span class="text-slate-500"># 3. Refresh loads generated primary key ID and defaults from database</span>
+    db.refresh(new_note)
+    <span class="text-purple-400">return</span> new_note
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=List[NoteResponse],
+    summary=<span class="text-amber-300">"Query notes using SQLAlchemy select statements"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    db: DbSession,
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>, min_length=2, max_length=50),
+    include_archived: bool = Query(<span class="text-rose-400">False</span>),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100)
+):
+    <span class="text-slate-500"># 1. Build type-safe SQL query</span>
+    stmt = select(NoteModel)
+
+    <span class="text-purple-400">if not</span> include_archived:
+        stmt = stmt.where(NoteModel.is_archived == <span class="text-rose-400">False</span>)
+
+    <span class="text-purple-400">if</span> search:
+        search_pattern = f<span class="text-amber-300">"%&#123;search&#125;%"</span>
+        stmt = stmt.where(
+            or_(
+                NoteModel.title.ilike(search_pattern),
+                NoteModel.content.ilike(search_pattern)
+            )
+        )
+
+    <span class="text-slate-500"># 2. Add pagination and ordering</span>
+    stmt = stmt.order_by(NoteModel.created_at.desc()).offset(skip).limit(limit)
+
+    <span class="text-slate-500"># 3. Execute query: scalars() unwraps row tuples into ORM instances</span>
+    notes = db.scalars(stmt).all()
+    <span class="text-purple-400">return</span> notes
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, response_model=NoteResponse)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_note</span>(note_id: int = Path(..., ge=1), db: DbSession = ...):
+    stmt = select(NoteModel).where(NoteModel.id == note_id)
+    note = db.scalar(stmt)
+    <span class="text-purple-400">if not</span> note:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+    <span class="text-purple-400">return</span> note
+
+
+<span class="text-purple-400">@router.delete</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, status_code=status.HTTP_204_NO_CONTENT)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">delete_note</span>(note_id: int = Path(..., ge=1), db: DbSession = ...):
+    <span class="text-slate-500">"""
+    Demonstrates soft deletion: preserve historical data by marking is_archived = True.
+    """</span>
+    stmt = select(NoteModel).where(NoteModel.id == note_id)
+    note = db.scalar(stmt)
+    <span class="text-purple-400">if not</span> note:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Note not found."</span>)
+    
+    note.is_archived = <span class="text-rose-400">True</span>
+    db.commit()
+    <span class="text-purple-400">return</span> <span class="text-rose-400">None</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Database Schema Evolution: Alembic Migrations & Migration Rollouts -->
+        <section id="alembic-migrations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Schema Evolution: The Alembic Migration Flow &amp; Production Rollouts</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In development, some developers use <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">Base.metadata.create_all(bind=engine)</code> to initialize database tables.
+                <strong>Never run <code>create_all()</code> in production.</strong> <code class="font-mono text-xs">create_all()</code> creates missing tables, but it cannot modify existing columns, add indexes, or rename fields on tables that already exist. Attempting schema changes by hand leads to drift and data loss.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Alembic</strong> tracks database schema changes in code, much like Git tracks source code.
+            </p>
+
+            <!-- Alembic Flow Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs overflow-x-auto">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-xs">
+                    The Alembic Migration Lifecycle
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl">
+                        <span class="text-sky-300 font-bold block">1. Model Mutation</span>
+                        <span class="text-[10px] text-slate-400">You edit <code>app/models.py</code> (e.g., add a new <code>is_pinned</code> boolean column)</span>
+                    </div>
+                    <div class="text-center text-slate-500 font-bold">&darr;</div>
+                    <div class="p-3 bg-purple-950 border border-purple-700 rounded-xl">
+                        <span class="text-purple-300 font-bold block">2. alembic revision --autogenerate -m "add is_pinned"</span>
+                        <span class="text-[10px] text-purple-200">Alembic inspects DB schema, diffs it against <code>Base.metadata</code>, and generates an upgrade/downgrade script</span>
+                    </div>
+                    <div class="text-center text-slate-500 font-bold">&darr;</div>
+                    <div class="p-3 bg-emerald-950 border border-emerald-700 rounded-xl">
+                        <span class="text-emerald-300 font-bold block">3. alembic upgrade head</span>
+                        <span class="text-[10px] text-emerald-200">Executes the SQL DDL statements, applies changes, and updates the <code>alembic_version</code> table</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuring alembic/env.py -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-mono font-bold">Important Step</span>
+                    Wiring Alembic: The <code>alembic/env.py</code> Configuration
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    By default, a freshly initialized Alembic project knows nothing about your application's models. You must edit <code class="font-mono text-purple-700 font-bold">alembic/env.py</code> to point <code class="font-mono text-slate-800">target_metadata</code> to your application's Declarative Base:
+                </p>
+                <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># In alembic/env.py:</span>
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> Base
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> NoteModel  <span class="text-slate-500"># Must import models so Base registers table metadata!</span>
+
+<span class="text-slate-500"># Point Alembic to our application's metadata registry</span>
+target_metadata = Base.metadata</pre>
+            </div>
+
+            <!-- Migration Rollout Callout: Multi-Pod Race Conditions -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    Production Reality: The Multi-Container Migration Race Condition
+                </h3>
+                <p class="text-xs text-amber-950 leading-relaxed font-sans">
+                    A catastrophic mistake in production deployment is placing <code class="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-bold">alembic upgrade head</code> directly inside your container entrypoint script (<code class="font-mono text-amber-900 font-bold">CMD</code> or <code class="font-mono text-amber-900 font-bold">ENTRYPOINT</code>).
+                </p>
+                <div class="bg-amber-100/70 p-3 rounded-lg text-xs font-mono text-amber-950 space-y-1">
+                    <div>1. You trigger a deployment with 4 container replicas (Pods).</div>
+                    <div>2. All 4 containers start simultaneously on your cluster.</div>
+                    <div>3. All 4 processes execute <code class="text-rose-700 font-bold">alembic upgrade head</code> at the exact same millisecond!</div>
+                    <div class="text-rose-800 font-bold">&rarr; Result: Database table locks, deadlocks, and corrupted alembic_version metadata table state.</div>
+                </div>
+                <p class="text-[11px] text-amber-900 leading-relaxed font-sans">
+                    <strong>The Production Architecture Standard:</strong> Migrations must run exactly <strong>once</strong> in an isolated step <em>before</em> the application containers receive traffic:
+                </p>
+                <ul class="list-disc pl-5 text-[11px] text-amber-900 space-y-1 font-sans">
+                    <li><strong>Kubernetes:</strong> Run Alembic migrations inside a one-off <code class="font-mono font-bold">Job</code> or an <code class="font-mono font-bold">initContainer</code> that completes before application Pods start.</li>
+                    <li><strong>Platform-as-a-Service (Render, Fly.io, Heroku):</strong> Use a dedicated <strong>Release Phase / Pre-Deploy Command</strong> (<code class="font-mono font-bold">release_command: alembic upgrade head</code>) that runs to completion before routing live traffic to the new revision.</li>
+                    <li><strong>Docker Compose:</strong> Use a dedicated migration service that exits cleanly before starting the web workers:
+                        <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200">command: sh -c "alembic upgrade head &amp;&amp; exit 0"</code>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Committing Inside a Loop</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">for item in items: db.add(item); db.commit()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is slow:</strong> Every call to <code class="font-mono">db.commit()</code> forces the database to write to disk and wait for physical I/O confirmation (fsync). For 1,000 items, committing inside the loop executes 1,000 separate disk flushes and network round-trips. Always stage your entities with <code class="font-mono">db.add_all(items)</code> and commit <strong>once</strong> at the end.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The N+1 Query Problem</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Querying 50 notes, and then iterating over them in Python to access a related author object: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">[note.author.name for note in notes]</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this impacts performance:</strong> SQLAlchemy runs 1 query to fetch the 50 notes, plus 50 additional queries to fetch each note's author—making 51 queries in total! Always use eager loading (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">options(joinedload(NoteModel.author))</code>) to fetch all related data in a single joined SQL query.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Running Alembic Migrations &amp; Validating NoteVault</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Ensure <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">sqlalchemy</code> and <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">alembic</code> are installed in your virtual environment. Run the migration sequence to create your database tables:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Alembic -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize Alembic environment (run once per project):</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300 mt-1">
+                        alembic init alembic
+                    </div>
+                </div>
+
+                <!-- Step 2: Generate Migration -->
+                <div>
+                    <span class="text-slate-500"># 2. Automatically generate the initial migration revision:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        alembic revision --autogenerate -m "create notes table"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Inspect the newly created file in alembic/versions/ to review the generated table schema.</span>
+                </div>
+
+                <!-- Step 3: Upgrade Database -->
+                <div>
+                    <span class="text-slate-500"># 3. Apply the migration to the database:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        alembic upgrade head
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Output will show: Running upgrade ... -&gt; create notes table</span>
+                </div>
+
+                <!-- Step 4: Verify API -->
+                <div>
+                    <span class="text-slate-500"># 4. Boot the server and create a note (verify persistence across restarts):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/notes \
+                        -H "Content-Type: application/json" \
+                        -d '{"title": "Persistent Database Note", "content": "Saved in SQLite!", "tags": ["db", "sql"], "priority": 3}'
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 7 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Security Fundamentals (Authentication &amp; Authorization)</h4>
+                <p class="text-xs text-slate-500">Securing NoteVault: Password hashing with Bcrypt, stateless JSON Web Tokens (JWT), and protecting endpoints with OAuth2.</p>
+            </div>
+            <a href="chapter7_security.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 7 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

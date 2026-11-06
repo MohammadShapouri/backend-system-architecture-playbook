@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Type-Safe Declarative Mapping &amp; Precision Fields</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 02 - Schema &amp; Precision Layer)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Schema Design &amp; Precision Modeling
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Type-Safe Declarative Mapping &amp; Precision Fields
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Building mission-critical schema models: Transitioning to modern SQLAlchemy 2.0 type annotations with <code class="font-mono text-emerald-400">Mapped[]</code>, preventing catastrophic floating-point money corruption with <code class="font-mono text-emerald-400">Numeric</code>, primary key indexing trade-offs (UUIDv4 vs. Sequential), and constructing LedgerCore's financial models.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 02: Financial Precision Schema</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established our connection pool and diagnostic telemetry. In Milestone 02, we define the relational heart of <strong>LedgerCore</strong>. We introduce <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">app/models.py</code>, constructing the <code class="font-mono text-purple-300">Account</code> and <code class="font-mono text-purple-300">Transaction</code> models with type-safe mappings, database-enforced check constraints, and fixed-point decimal arithmetic capable of processing millions of dollars with zero rounding error.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Modern <code class="text-purple-300">DeclarativeBase</code> &amp; <code class="text-purple-300">Mapped[]</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fixed-point <code class="text-purple-300">Numeric(14, 4)</code> money fields</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Primary Keys: UUID vs. BigInteger</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Portable database-level <code class="text-purple-300">Enum</code> types</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Database constraints (<code class="text-purple-300">CheckConstraint</code>)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Financial Precision: Float vs. Decimal -->
+        <section id="cs-precision" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Floating-Point Catastrophe</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In software engineering, using a floating-point data type (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">Float</code>, <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">DOUBLE PRECISION</code>, or Python's native <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">float</code>) for monetary balances, accounting entries, or pricing is an immediate production liability.
+            </p>
+
+            <!-- Float Corruption Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">IEEE 754 Binary Floating-Point vs. Exact Decimal Representation</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Computers Cannot Store 10 Cents Accurately in Binary</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Float Box -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">IEEE 754 Floating-Point (Float)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Unsafe for Money</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Computers count in base 2. In binary, numbers like $0.10$ ($1/10$) produce an infinite repeating fraction:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>0.10 &rarr; 0.000110011001100110011... (binary)</div>
+                            <div>0.1 + 0.2 == 0.300000000000000044408920985...</div>
+                        </div>
+                        <p class="text-rose-400 text-[11px] font-sans">
+                            &cross; Over millions of ledger entries, fractional truncation causes balance sheets to go out of balance, violating GAAP/IFRS accounting standards.
+                        </p>
+                    </div>
+
+                    <!-- Decimal Box -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">Exact Fixed-Point (Numeric / Decimal)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Financial Standard</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Stores numbers as base-10 scaled integers with explicit scale and precision definitions:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>Numeric(14, 4) &rarr; Stores $12,500.5000 as scaled int 125005000</div>
+                            <div>Decimal('0.10') + Decimal('0.20') == Decimal('0.3000')</div>
+                        </div>
+                        <p class="text-emerald-300 text-[11px] font-sans">
+                            &check; 100% deterministic precision. Python maps SQLAlchemy <code class="font-mono text-white">Numeric</code> columns directly to <code class="font-mono text-white">decimal.Decimal</code> objects.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <span class="text-emerald-400 font-bold">// Anatomy of Numeric(precision, scale):</span>
+                    <p class="font-sans text-slate-400 leading-relaxed">
+                        <code class="text-white font-mono">Numeric(precision=14, scale=4)</code> means the column can store a maximum of <strong>14 total digits</strong> (the precision), of which <strong>4 digits</strong> are reserved after the decimal point (the scale). This allows values up to <code class="text-white font-mono">9,999,999,999.9999</code>—large enough for multi-billion-dollar enterprise ledgers, with 4 decimal places to handle currency exchange spreads, crypto micro-fees, and interest rates.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. SQLAlchemy 2.0 Declarative System: Mapped & mapped_column -->
+        <section id="declarative-mapping" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The 2.0 Paradigm: <code>Mapped[]</code> &amp; <code>mapped_column()</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In SQLAlchemy 1.x, models were declared using untyped columns: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">balance = Column(Numeric(14, 4), nullable=False)</code>. Python type checkers (Mypy, Pyright) and IDEs had no idea what Python type <code class="font-mono text-xs">account.balance</code> represented at runtime, leading to frequent runtime bugs and requiring verbose plugin extensions.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                SQLAlchemy 2.0 rewrote the declarative layer around Python 3 PEP 484 type annotations. The type annotation is now the <strong>single source of truth</strong> for runtime ORM typing and static analysis:
+            </p>
+
+            <!-- 1.x vs 2.0 Comparison Matrix -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Legacy 1.x -->
+                <div class="bg-rose-50 border border-rose-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-rose-700 uppercase tracking-wide">Legacy 1.x (Untyped Declarative)</div>
+                    <pre class="bg-slate-900 text-rose-300 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed">
+<span class="text-slate-500"># Legacy: IDEs see `id` as Column[Any], not int</span>
+<span class="text-purple-400">class</span> <span class="text-rose-400">Account</span>(Base):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+    id = Column(Integer, primary_key=<span class="text-rose-400">True</span>)
+    balance = Column(Numeric(14, 4), nullable=<span class="text-rose-400">False</span>)
+    name = Column(String(100), nullable=<span class="text-rose-400">True</span>)</pre>
+                    <p class="text-[11px] text-rose-800 font-sans">
+                        Requires third-party plugins like <code class="font-mono text-rose-900">sqlalchemy-stubs</code>. Nullability must be repeated across both column definitions and documentation.
+                    </p>
+                </div>
+
+                <!-- Modern 2.0 -->
+                <div class="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wide">Modern 2.0 (Type-Annotated Declarative)</div>
+                    <pre class="bg-slate-900 text-emerald-300 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed">
+<span class="text-slate-500"># Modern: Python type dictates nullability &amp; IDE type</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400">Account</span>(Base):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>)
+    balance: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    name: Mapped[Optional[str]] = mapped_column(String(100))</pre>
+                    <p class="text-[11px] text-emerald-800 font-sans">
+                        Full IDE autocompletion. Mypy validates assignments. Nullability is automatically inferred: <code class="font-mono text-emerald-900">Optional[T]</code> marks <code class="font-mono text-emerald-900">nullable=True</code> automatically!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Nullability Inference Rules Table -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">How 2.0 Infers Database Nullability from Type Annotations</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Type Annotation</th>
+                                <th class="p-3">Inferred DB Nullability</th>
+                                <th class="p-3">Python Runtime Type</th>
+                                <th class="p-3">Generated DDL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">Mapped[str]</td>
+                                <td class="p-3 font-semibold text-rose-700">nullable=False</td>
+                                <td class="p-3 text-slate-600">str (Cannot be None)</td>
+                                <td class="p-3 text-slate-800">VARCHAR NOT NULL</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">Mapped[Optional[str]]</td>
+                                <td class="p-3 font-semibold text-emerald-700">nullable=True</td>
+                                <td class="p-3 text-slate-600">str | None</td>
+                                <td class="p-3 text-slate-800">VARCHAR NULL</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">Mapped[Decimal]</td>
+                                <td class="p-3 font-semibold text-rose-700">nullable=False</td>
+                                <td class="p-3 text-slate-600">decimal.Decimal</td>
+                                <td class="p-3 text-slate-800">NUMERIC(14, 4) NOT NULL</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-slate-500 font-sans italic">
+                    Note: You can still override nullability explicitly with <code class="font-mono text-slate-700">mapped_column(nullable=True)</code>, but adhering to the Python type annotation is considered standard enterprise best practice.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Primary Key Strategies: UUIDv4 vs UUIDv7 vs BigInteger -->
+        <section id="primary-keys" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Primary Key Architecture: Integer vs. UUID &amp; B-Tree Health</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Choosing the identifier type for our LedgerCore tables has massive architectural consequences for database indexing, horizontal sharding, and security.
+            </p>
+
+            <!-- B-Tree Index Health Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">B-Tree Index Physical Layout Under Heavy Write Loads</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Completely Random UUIDv4 Degrades PostgreSQL Performance Over Time</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Sequential B-Tree -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold block text-sm">Sequential Keys (BigInteger / UUIDv7)</span>
+                        <div class="space-y-1.5 text-[11px] font-sans text-slate-300">
+                            <p>Every newly generated ID is chronologically larger than the previous one:</p>
+                            <div class="bg-slate-900 p-2.5 rounded font-mono text-emerald-300 text-[10px]">
+                                ID: 101 &rarr; ID: 102 &rarr; ID: 103 (Appends to Rightmost Page)
+                            </div>
+                            <ul class="list-disc pl-4 space-y-1 text-slate-400 text-[10px]">
+                                <li>Inserts only append to the rightmost leaf of the B-Tree index.</li>
+                                <li>Index pages remain densely packed (~90%+ fillfactor).</li>
+                                <li>Hot index pages stay resident in RAM buffer cache.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Random UUID B-Tree -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <span class="text-amber-400 font-bold block text-sm">Random Keys (Standard UUIDv4)</span>
+                        <div class="space-y-1.5 text-[11px] font-sans text-slate-300">
+                            <p>UUIDv4 generates pseudorandom bits without temporal ordering:</p>
+                            <div class="bg-slate-900 p-2.5 rounded font-mono text-amber-300 text-[10px]">
+                                4f82... &rarr; 1a03... &rarr; e9b1... (Inserts Everywhere)
+                            </div>
+                            <ul class="list-disc pl-4 space-y-1 text-slate-400 text-[10px]">
+                                <li>Random writes strike arbitrary leaf pages throughout the B-Tree.</li>
+                                <li>Forces expensive <strong>Page Splits</strong> on disk, fragmenting index storage.</li>
+                                <li>Causes high disk I/O because index pages cannot stay cached in RAM.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The LedgerCore Design Decision:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        For LedgerCore, we use <strong>UUIDs for Public External IDs</strong> (preventing enumeration attacks where competitors guess transaction volume via sequential IDs like <code class="font-mono text-slate-200">/transactions/101</code>), and <strong>BigInteger Sequences for Internal Database Primary Keys</strong> where extreme insertion throughput and index compactness are paramount.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: LedgerCore Milestone 02 Models -->
+        <section id="ledgercore-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 02: Full Model Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct the physical database models in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/models.py</code>. We declare our models using <code class="font-mono text-purple-700 font-bold">DeclarativeBase</code>, wire our precision fields, configure database-level check constraints, and integrate portable Python enums.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">models.py</span>                  <span class="text-slate-500"># Declarative Base, Account &amp; Transaction ORM Models</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">schemas.py</span>                 <span class="text-slate-500"># Pydantic v2 Serialization Contracts</span></div>
+                <div>│   └── main.py                    <span class="text-slate-500"># Account Creation &amp; Balance Verification API</span></div>
+            </div>
+
+            <!-- File 1: app/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Declarative Models: <code class="text-purple-700">app/models.py</code></span>
+                    <span class="text-slate-400">ORM Entities &amp; Constraints</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># LedgerCore Backend - Declarative Schema Models (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> (
+    String, Numeric, DateTime, Boolean, 
+    CheckConstraint, ForeignKey, Enum <span class="text-purple-400">as</span> SQLEnum, Index
+)
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column, relationship
+
+<span class="text-slate-500"># 1. Base Class definition for all models</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    pass
+
+<span class="text-slate-500"># 2. Strict Enum definitions for Account &amp; Transaction states</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountStatus</span>(str, Enum):
+    ACTIVE = <span class="text-amber-300">"active"</span>
+    FROZEN = <span class="text-amber-300">"frozen"</span>
+    CLOSED = <span class="text-amber-300">"closed"</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionType</span>(str, Enum):
+    DEPOSIT = <span class="text-amber-300">"deposit"</span>
+    WITHDRAWAL = <span class="text-amber-300">"withdrawal"</span>
+    TRANSFER = <span class="text-amber-300">"transfer"</span>
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Model: Account</span>
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Account</span>(Base):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+
+    <span class="text-slate-500"># Primary Key: BigInteger sequence for fast clustered index lookups</span>
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    
+    <span class="text-slate-500"># Public ID: UUIDv4 exposed to clients to prevent sequential enumeration</span>
+    uuid: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Account Holder Reference</span>
+    account_number: Mapped[str] = mapped_column(String(32), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    owner_name: Mapped[str] = mapped_column(String(100), nullable=<span class="text-rose-400">False</span>)
+
+    <span class="text-slate-500"># FINANCIAL PRECISION: 14 total digits, 4 decimal places</span>
+    <span class="text-slate-500"># Maps to decimal.Decimal in Python. Guaranteed zero floating-point drift!</span>
+    balance: Mapped[Decimal] = mapped_column(Numeric(precision=14, scale=4), default=Decimal(<span class="text-amber-300">"0.0000"</span>), nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Portable Enum: native_enum=False creates VARCHAR + CHECK constraint (cross-DB safe)</span>
+    status: Mapped[AccountStatus] = mapped_column(
+        SQLEnum(AccountStatus, native_enum=<span class="text-rose-400">False</span>), 
+        default=AccountStatus.ACTIVE, 
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc),
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    <span class="text-slate-500"># DEFENSIVE DATABASE CONSTRAINT: Enforce positive balance at the RDBMS level!</span>
+    __table_args__ = (
+        CheckConstraint(<span class="text-amber-300">"balance &gt;= 0"</span>, name=<span class="text-amber-300">"ck_account_balance_non_negative"</span>),
+    )
+
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Model: Transaction</span>
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Transaction</span>(Base):
+    __tablename__ = <span class="text-amber-300">"transactions"</span>
+
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    uuid: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+
+    <span class="text-slate-500"># Foreign Key binding to Account</span>
+    account_id: Mapped[int] = mapped_column(ForeignKey(<span class="text-amber-300">"accounts.id"</span>, ondelete=<span class="text-amber-300">"RESTRICT"</span>), index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    
+    <span class="text-slate-500"># Exact Transaction Amount</span>
+    amount: Mapped[Decimal] = mapped_column(Numeric(precision=14, scale=4), nullable=<span class="text-rose-400">False</span>)
+    
+    transaction_type: Mapped[TransactionType] = mapped_column(
+        SQLEnum(TransactionType, native_enum=<span class="text-rose-400">False</span>), 
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=<span class="text-rose-400">True</span>)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=<span class="text-rose-400">True</span>),
+        default=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc),
+        nullable=<span class="text-rose-400">False</span>
+    )
+
+    <span class="text-slate-500"># DEFENSIVE DATABASE CONSTRAINT: Amount must never be zero or negative!</span>
+    __table_args__ = (
+        CheckConstraint(<span class="text-amber-300">"amount &gt; 0"</span>, name=<span class="text-amber-300">"ck_transaction_amount_positive"</span>),
+        Index(<span class="text-amber-300">"ix_transactions_account_created"</span>, <span class="text-amber-300">"account_id"</span>, <span class="text-amber-300">"created_at"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 2: app/schemas.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Data Transfer Contracts: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">Pydantic v2 Ingestion Contracts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># LedgerCore Backend - Pydantic v2 Validation Schemas (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> uuid <span class="text-purple-400">import</span> UUID
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field, ConfigDict
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> AccountStatus
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountCreate</span>(BaseModel):
+    account_number: str = Field(..., min_length=5, max_length=32, examples=[<span class="text-amber-300">"ACC-US-98214"</span>])
+    owner_name: str = Field(..., min_length=2, max_length=100, examples=[<span class="text-amber-300">"Jane Doe"</span>])
+    initial_balance: Decimal = Field(default=Decimal(<span class="text-amber-300">"0.0000"</span>), ge=0, examples=[<span class="text-amber-300">"1000.5000"</span>])
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountResponse</span>(BaseModel):
+    uuid: UUID
+    account_number: str
+    owner_name: str
+    balance: Decimal
+    status: AccountStatus
+    created_at: datetime
+
+    <span class="text-slate-500"># Pydantic v2 configuration to serialize from SQLAlchemy ORM instances</span>
+    model_config = ConfigDict(from_attributes=<span class="text-rose-400">True</span>)</pre>
+            </div>
+
+            <!-- File 3: app/main.py Refactored -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. API Wire-Up: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Creating &amp; Reading Decimal Accounts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># LedgerCore Backend - API Endpoints (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, status, HTTPException
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> Session
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> engine, probe_database_connectivity
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> Base, Account
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> AccountCreate, AccountResponse
+
+<span class="text-purple-400">@asynccontextmanager</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">lifespan</span>(app: FastAPI):
+    <span class="text-slate-500"># Create tables on boot (Used in Dev/Test; replaced by Alembic in Chapter 8)</span>
+    Base.metadata.create_all(bind=engine)
+    <span class="text-purple-400">yield</span>
+    engine.dispose()
+
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/api/v1/accounts"</span>, response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_account</span>(payload: AccountCreate):
+    <span class="text-slate-500">"""Creates a new financial account with exact Decimal balance."""</span>
+    <span class="text-purple-400">with</span> Session(engine) <span class="text-purple-400">as</span> session:
+        <span class="text-slate-500"># Verify account number uniqueness</span>
+        stmt = select(Account).where(Account.account_number == payload.account_number)
+        <span class="text-purple-400">if</span> session.scalar(stmt):
+            <span class="text-purple-400">raise</span> HTTPException(status_code=409, detail=<span class="text-amber-300">"Account number already registered."</span>)
+
+        new_account = Account(
+            account_number=payload.account_number,
+            owner_name=payload.owner_name,
+            balance=payload.initial_balance
+        )
+        session.add(new_account)
+        session.commit()
+        session.refresh(new_account)
+        <span class="text-purple-400">return</span> new_account</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Passing Executed Callables to Defaults</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">created_at: Mapped[datetime] = mapped_column(default=datetime.now())</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes subtle bugs:</strong> The parentheses <code class="font-mono">()</code> execute the function <em>once</em> when the Python module is first imported by the server. Every row inserted for the next 3 weeks will receive the exact same static timestamp—the millisecond the server process started!
+                        <strong>Fix:</strong> Pass the callable reference without parentheses: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">default=lambda: datetime.now(timezone.utc)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Using Naive Timestamps</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">mapped_column(DateTime)</code> instead of <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">DateTime(timezone=True)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is dangerous:</strong> In PostgreSQL, standard <code class="font-mono">DateTime</code> compiles to <code class="font-mono">TIMESTAMP WITHOUT TIME ZONE</code>. If your server runs in UTC and your database runs in US/Eastern, or when Daylight Saving Time shifts, calculations comparing transactions become unreliable.
+                        <strong>Fix:</strong> Always specify <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">DateTime(timezone=True)</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your application and verify exact fixed-point decimal creation:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Start Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start the server (creates accounts and transactions tables automatically):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Create Account -->
+                <div>
+                    <span class="text-slate-500"># 2. Post a new Account with exact decimal balance:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/accounts \
+                        -H "Content-Type: application/json" \
+                        -d '{"account_number": "ACC-CORP-001", "owner_name": "Apex Holdings", "initial_balance": "14250000.7550"}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">Notice the balance remains exactly 14250000.7550 with zero binary float drift.</span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's updated schema in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 3 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: Table Design, Mixins &amp; Enterprise Standards</h4>
+                <p class="text-xs text-slate-500 font-sans">Eliminating boilerplate and preparing for Alembic migrations: Building a <code class="font-mono">TimestampMixin</code>, enforcing explicit constraint naming conventions, and Single-Table vs. Joined-Table inheritance.</p>
+            </div>
+            <a href="Chapter 03 - Table Design, Mixins and Enterprise Standards.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 3 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

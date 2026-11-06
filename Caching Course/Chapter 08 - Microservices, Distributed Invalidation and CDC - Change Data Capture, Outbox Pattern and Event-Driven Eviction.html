@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 08: Microservices, Distributed Invalidation &amp; CDC: Change Data Capture, Outbox Pattern &amp; Event-Driven Eviction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Caching &amp; Edge Acceleration Series &bull; Senior Engineering Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">CacheForge (Milestone 08 - Distributed Invalidation, CDC &amp; Cache Tagging)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Distributed Systems &amp; Event-Driven Architecture
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Microservices, Distributed Invalidation &amp; CDC: Change Data Capture, Outbox Pattern &amp; Event-Driven Eviction
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Solving the hardest problem in computer science: Deconstructing the Dual-Write anomaly across distributed database boundaries, engineering the Transactional Outbox pattern, streaming WAL-level evictions via Change Data Capture (CDC with Debezium), eliminating dangerous O(N) wildcard key scans with <strong>Redis Set-based Cache Tagging</strong>, and building the event-driven invalidation layer of <strong>CacheForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">CacheForge Milestone 08: Event-Driven Distributed Invalidation</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 07, we connected CacheForge to HTTP wire protocols using RFC 9111 ETags and ASGI middleware. But in modern microservice architectures, data mutations rarely occur on the exact same service or process that serves reads. When an Inventory Service or Billing Service mutates a database entity, how do external read-replicas, API gateways, and edge caches invalidate their stale keys without introducing tight coupling or catastrophic race conditions? In Milestone 08, we solve the infamous <strong>Dual-Write Hazard</strong>. We engineer the <strong>Transactional Outbox pattern</strong>, emulate PostgreSQL Write-Ahead Log (WAL) <strong>Change Data Capture (CDC)</strong> streams, and implement high-speed <strong>Atomic Cache Tagging</strong> using Redis Sets to invalidate thousands of related keys in a single sub-millisecond call.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Deconstructing the Dual-Write Distributed Race</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Transactional Outbox Pattern Architecture</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CDC via PostgreSQL WAL &amp; Debezium Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Eliminating <code class="text-purple-300">KEYS *</code> with Set-Based Cache Tagging</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Atomic Tag Eviction via Redis Lua Scripts</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> End-to-End Event-Driven Invalidation Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of the Dual-Write Hazard -->
+        <section id="cs-dual-write" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Dual-Write Distributed Race Condition</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Phil Karlton famously observed: <em>"There are only two hard things in Computer Science: cache invalidation and naming things."</em>
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The core source of cache corruption in microservices is the <strong>Dual-Write Hazard</strong>. When an application mutates state, it must write to two completely independent distributed systems: the relational database (System of Record) and the distributed cache (Redis).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Because distributed two-phase commit (2PC) transactions across disparate storage engines are prohibitively slow, developers write sequential updates. No matter which order you choose, a plain dual-write without an outbox pattern <strong>guarantees eventual data corruption</strong>:
+            </p>
+
+            <!-- Dual-Write Failure Sequences (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">The Dual-Write Failure Sequences</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Sequential Dual Writes Inevitably Corrupt Data</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Failure Mode 1 -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">Sequence A: Write DB &rarr; Delete Cache</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Crash Window</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>1. Worker writes update to PostgreSQL (COMMIT successful)</div>
+                            <div class="text-rose-400 font-bold">2. Worker container crashes (OOM / SIGKILL / Network partition)</div>
+                            <div>3. cache.delete(key) IS NEVER EXECUTED!</div>
+                        </div>
+                        <p class="text-rose-300 font-sans text-[11px] leading-relaxed">
+                            &cross; <strong>The Outage:</strong> Database holds fresh state, but Redis holds the stale record indefinitely. Future readers read stale data until TTL expires or manual intervention occurs.
+                        </p>
+                    </div>
+
+                    <!-- Failure Mode 2 -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">Sequence B: Delete Cache &rarr; Write DB</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Interleaved Read Race</span>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>1. Worker 1 evicts key from Redis: cache.delete("user:42")</div>
+                            <div class="text-amber-300 font-bold">2. Concurrent Worker 2 reads "user:42" &rarr; Cache Miss!</div>
+                            <div>3. Worker 2 reads OLD state from DB and repopulates Redis!</div>
+                            <div>4. Worker 1 FINALLY commits new state to PostgreSQL</div>
+                        </div>
+                        <p class="text-rose-300 font-sans text-[11px] leading-relaxed">
+                            &cross; <strong>Permanent Desynchronization:</strong> Redis is re-populated with the stale pre-mutation value <em>after</em> the deletion occurred, corrupting the cache permanently!
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Distributed Systems Conclusion:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Application code cannot reliably coordinate dual writes across network boundaries. The only way to guarantee cache consistency is to make the database mutation and the invalidation intent <strong>strictly atomic within a single local database transaction</strong>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Transactional Outbox Pattern & Change Data Capture (CDC) -->
+        <section id="outbox-and-cdc" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architecture: The Transactional Outbox Pattern &amp; Change Data Capture (CDC)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To guarantee zero cache desynchronization across independent microservices, enterprise cloud platforms employ the <strong>Transactional Outbox Pattern</strong> coupled with <strong>Change Data Capture (CDC)</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Instead of attempting to talk to Redis during an HTTP request, the application writes both the domain entity and an <em>outbox invalidation event</em> into the database inside the exact same local ACID transaction:
+            </p>
+
+            <!-- Transactional Outbox & CDC Architecture Visual (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Transactional Outbox &amp; CDC Invalidation Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-slate-900 font-bold block text-sm">1. FastAPI Service</span>
+                        <div class="text-[10px] text-slate-500 font-sans">Atomic Local Transaction</div>
+                        <div class="bg-white p-1.5 rounded text-[10px] text-purple-700 border border-slate-200">
+                            BEGIN TX<br>
+                            UPDATE products ...<br>
+                            INSERT INTO outbox ...<br>
+                            COMMIT TX
+                        </div>
+                    </div>
+
+                    <div class="text-purple-600 font-bold text-base">&rarr; WAL stream &rarr;</div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-900 font-bold block text-sm">2. Debezium / CDC</span>
+                        <div class="text-[10px] text-purple-700 font-sans">Zero Overhead Tailer</div>
+                        <div class="bg-white p-1.5 rounded text-[10px] text-purple-900 border border-purple-200">
+                            Reads Postgres WAL<br>
+                            Extracts outbox events<br>
+                            Pushes to Kafka / PubSub
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold text-base">&rarr; broadcast &rarr;</div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block text-sm">3. CacheForge Invalidator</span>
+                        <div class="text-[10px] text-emerald-700 font-sans">Event-Driven Worker</div>
+                        <div class="bg-white p-1.5 rounded text-[10px] text-emerald-900 border border-emerald-200">
+                            Consumes event stream<br>
+                            Atomic Redis DEL<br>
+                            Sub-millisecond latency
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl leading-relaxed border border-slate-800 space-y-2 font-sans text-xs">
+                    <strong class="font-mono text-emerald-400">Why CDC Guarantees 100% Invalidation Reliability:</strong>
+                    <p class="text-slate-300 leading-relaxed text-[11px]">
+                        Because the outbox event is committed to PostgreSQL in the same transaction as the row update, <strong>it is physically impossible for the data update to succeed while the invalidation event fails</strong>. If the database rolls back, the outbox record rolls back. If the application pod dies immediately after commit, Debezium tails the Write-Ahead Log (WAL) independently and executes the eviction asynchronously.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Cache Tagging: Eliminating Dangerous KEYS * Wildcard Scans -->
+        <section id="cache-tagging" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Tagging Mechanics: Eliminating Dangerous $O(N)$ Wildcard Scans</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In real-world web APIs, entities do not exist in isolation. Consider an e-commerce platform where a merchant updates their store settings:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>You have cached the merchant's profile: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">merchant:42:profile</code></li>
+                <li>You have cached 50 paginated product listing pages: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">merchant:42:products:page_1</code>, <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">merchant:42:products:page_2</code> ...</li>
+                <li>You have cached discounted deals: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">merchant:42:deals</code></li>
+            </ul>
+            <p class="text-slate-700 leading-relaxed">
+                When the merchant updates their business name, how do you invalidate all 52 keys simultaneously?
+            </p>
+
+            <!-- Dangerous KEYS * vs Tagging Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Bad: Wildcard Scan -->
+                <div class="bg-rose-50 border-2 border-rose-300 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-rose-200 pb-2">
+                        <span class="font-bold text-rose-800 text-sm">&#10060; The Antipattern: Wildcard Scans</span>
+                        <span class="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded font-bold">O(N) Disastrous</span>
+                    </div>
+                    <p class="text-[11px] text-rose-950 font-sans leading-relaxed">
+                        Junior engineers write: <code class="font-bold bg-white px-1 py-0.5 rounded">keys = redis.keys("merchant:42:*"); redis.delete(*keys)</code>.
+                    </p>
+                    <div class="bg-rose-900 text-rose-100 p-3 rounded-lg text-[10px] space-y-1">
+                        <div>&bull; Redis is SINGLE THREADED!</div>
+                        <div>&bull; KEYS * scans every single key in the entire cluster (e.g. 50,000,000 keys)</div>
+                        <div class="font-bold text-white">&bull; Global lock held for 8,000ms &rarr; Cluster freezes!</div>
+                    </div>
+                    <p class="text-[11px] text-rose-900 font-sans">
+                        Production databases crash from timeouts when <code class="font-mono">KEYS *</code> is called under load.
+                    </p>
+                </div>
+
+                <!-- Good: Cache Tagging -->
+                <div class="bg-emerald-50 border-2 border-emerald-300 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-emerald-200 pb-2">
+                        <span class="font-bold text-emerald-800 text-sm">&#10004; The Industrial Fix: Cache Tagging</span>
+                        <span class="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-bold">O(1) Atomic</span>
+                    </div>
+                    <p class="text-[11px] text-emerald-950 font-sans leading-relaxed">
+                        Maintain secondary inverted indexes using <strong>Redis Sets</strong>:
+                    </p>
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-lg text-[10px] space-y-1">
+                        <div>&bull; When caching: <code class="text-white">SADD tag:merchant:42 "m:42:page_1"</code></div>
+                        <div>&bull; To invalidate tag: Fetch set members via <code class="text-white">SMEMBERS</code></div>
+                        <div class="font-bold text-emerald-400">&bull; Atomic Lua script unlinks keys and tag in &lt; 0.5ms!</div>
+                    </div>
+                    <p class="text-[11px] text-emerald-900 font-sans">
+                        Zero cluster iteration overhead. Executes in constant time proportional only to the merchant's items ($O(K)$).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: CacheForge Milestone 08 -->
+        <section id="cacheforge-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">CacheForge Milestone 08: Outbox Stream &amp; Cache Tagging Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 08 for <strong>CacheForge</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/patterns/tagging.py</code>: atomic, Redis Set-backed Cache Tagging manager with Lua-accelerated cascade deletions.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/patterns/outbox.py</code>: transactional outbox processor emulating Change Data Capture (CDC) streaming event consumption.</li>
+                <li>We write an integration test suite in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_cdc_tagging.py</code> demonstrating tag-based batch evictions and outbox processing.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated CacheForge Hierarchy (Milestone 08)</div>
+                <div>cacheforge/</div>
+                <div>├── src/</div>
+                <div>│   └── cacheforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── serialization/</div>
+                <div>│       ├── storage/</div>
+                <div>│       ├── patterns/</div>
+                <div>│       │   ├── bloom.py</div>
+                <div>│       │   ├── cache_aside.py</div>
+                <div>│       │   ├── write_behind.py</div>
+                <div>│       │   ├── singleflight.py</div>
+                <div>│       │   ├── xfetch.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">tagging.py</span>               <span class="text-slate-500"># Milestone 08: Atomic Redis Set Cache Tagging</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">outbox.py</span>                <span class="text-slate-500"># Milestone 08: Transactional Outbox &amp; CDC Streamer</span></div>
+                <div>│       ├── coherency/</div>
+                <div>│       └── web/</div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── integration/</div>
+                <div>        ├── test_serialization_driver.py</div>
+                <div>        ├── test_multitier.py</div>
+                <div>        ├── test_asgi_cache.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_cdc_tagging.py</span>         <span class="text-slate-500"># Milestone 08: CDC &amp; Tag Invalidation Tests</span></div>
+            </div>
+
+            <!-- File 1: src/cacheforge/patterns/tagging.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Set-Based Cache Tagging Engine: <code class="text-purple-700">src/cacheforge/patterns/tagging.py</code></span>
+                    <span class="text-slate-400">Atomic Lua Tag Eviction</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Patterns - Redis Set-Based Cache Tagging Engine (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, List, Optional
+<span class="text-purple-400">from</span> cacheforge.storage.remote_client <span class="text-purple-400">import</span> RemoteCacheDriver
+
+<span class="text-slate-500"># Atomic Lua script: Fetches all keys mapped to a tag, deletes the keys, and deletes the tag set</span>
+INVALIDATE_TAG_LUA = <span class="text-amber-300">"""
+local tag_key = KEYS[1]
+local members = redis.call('SMEMBERS', tag_key)
+if #members &gt; 0 then
+    redis.call('DEL', unpack(members))
+end
+redis.call('DEL', tag_key)
+return #members
+"""</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TaggingCacheManager</span>:
+    <span class="text-slate-500">"""
+    ATOMIC CACHE TAGGING ENGINE:
+    Maintains secondary inverted indexes using Redis Sets.
+    Eliminates dangerous KEYS * wildcard scans completely.
+    Invalidates thousands of related keys atomically in sub-millisecond Lua operations.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, driver: RemoteCacheDriver):
+        self.driver = driver
+        self._invalidate_lua_sha: Optional[str] = <span class="text-rose-400">None</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">initialize</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Pre-compiles the tag invalidation Lua script in Redis RAM."""</span>
+        self._invalidate_lua_sha = <span class="text-purple-400">await</span> self.driver.client.script_load(INVALIDATE_TAG_LUA)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">set_with_tags</span>(
+        self,
+        key: str,
+        value: Any,
+        tags: List[str],
+        ttl_seconds: Optional[int] = <span class="text-rose-400">None</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Stores value and associates key with one or more invalidation tags."""</span>
+        <span class="text-purple-400">await</span> self.driver.set(key, value, ttl_seconds=ttl_seconds)
+
+        <span class="text-purple-400">if</span> tags:
+            pipe = self.driver.client.pipeline()
+            <span class="text-purple-400">for</span> tag <span class="text-purple-400">in</span> tags:
+                tag_key = f<span class="text-amber-300">"tag:&#123;tag&#125;"</span>
+                pipe.sadd(tag_key, key)
+                <span class="text-purple-400">if</span> ttl_seconds:
+                    pipe.expire(tag_key, ttl_seconds * 2)  <span class="text-slate-500"># Tag set outlives members slightly</span>
+            <span class="text-purple-400">await</span> pipe.execute()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">invalidate_tag</span>(self, tag: str) -> int:
+        <span class="text-slate-500">"""
+        Atomically evicts all keys associated with the given tag.
+        Returns the count of deleted keys.
+        """</span>
+        <span class="text-purple-400">if not</span> self._invalidate_lua_sha:
+            <span class="text-purple-400">await</span> self.initialize()
+
+        tag_key = f<span class="text-amber-300">"tag:&#123;tag&#125;"</span>
+        deleted_count = <span class="text-purple-400">await</span> self.driver.client.evalsha(
+            self._invalidate_lua_sha, 1, tag_key
+        )
+        <span class="text-purple-400">return</span> int(deleted_count)</pre>
+            </div>
+
+            <!-- File 2: src/cacheforge/patterns/outbox.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Transactional Outbox CDC Consumer: <code class="text-purple-700">src/cacheforge/patterns/outbox.py</code></span>
+                    <span class="text-slate-400">Asynchronous Event-Driven Eviction</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Patterns - Transactional Outbox &amp; CDC Streamer (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass, asdict
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, List, Optional
+<span class="text-purple-400">from</span> cacheforge.patterns.tagging <span class="text-purple-400">import</span> TaggingCacheManager
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OutboxEvent</span>:
+    <span class="text-slate-500">"""Represents an atomic outbox event written inside database transactions."""</span>
+    event_id: str
+    aggregate_type: str  <span class="text-slate-500"># e.g., "product", "merchant", "user"</span>
+    aggregate_id: str    <span class="text-slate-500"># e.g., "42"</span>
+    event_type: str      <span class="text-slate-500"># e.g., "UPDATED", "DELETED"</span>
+    invalidation_keys: List[str]
+    invalidation_tags: List[str]
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CDCOutboxConsumer</span>:
+    <span class="text-slate-500">"""
+    CHANGE DATA CAPTURE (CDC) EVENT CONSUMER:
+    Emulates a Debezium / Kafka stream tailer.
+    Consumes outbox events emitted by database WAL commits and executes
+    targeted key deletions and tag invalidations in CacheForge.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, tag_manager: TaggingCacheManager):
+        self.tag_manager = tag_manager
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">process_cdc_message</span>(self, raw_message: str | bytes) -> int:
+        <span class="text-slate-500">"""Parses CDC payload and executes cache invalidations."""</span>
+        data = json.loads(raw_message)
+        event = OutboxEvent(**data)
+
+        total_evictions = 0
+
+        <span class="text-slate-500"># 1. Direct Key Evictions</span>
+        <span class="text-purple-400">for</span> key <span class="text-purple-400">in</span> event.invalidation_keys:
+            <span class="text-purple-400">if await</span> self.tag_manager.driver.delete(key):
+                total_evictions += 1
+
+        <span class="text-slate-500"># 2. Tag-Based Cascade Evictions</span>
+        <span class="text-purple-400">for</span> tag <span class="text-purple-400">in</span> event.invalidation_tags:
+            evicted = <span class="text-purple-400">await</span> self.tag_manager.invalidate_tag(tag)
+            total_evictions += evicted
+
+        <span class="text-purple-400">return</span> total_evictions</pre>
+            </div>
+
+            <!-- File 3: tests/integration/test_cdc_tagging.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. CDC &amp; Tag Invalidation Battery: <code class="text-purple-700">tests/integration/test_cdc_tagging.py</code></span>
+                    <span class="text-slate-400">Real Redis Tag Testing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> testcontainers.redis <span class="text-purple-400">import</span> RedisContainer
+<span class="text-purple-400">from</span> cacheforge.storage.remote_client <span class="text-purple-400">import</span> RemoteCacheDriver
+<span class="text-purple-400">from</span> cacheforge.patterns.tagging <span class="text-purple-400">import</span> TaggingCacheManager
+<span class="text-purple-400">from</span> cacheforge.patterns.outbox <span class="text-purple-400">import</span> CDCOutboxConsumer, OutboxEvent
+
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">redis_server</span>():
+    <span class="text-purple-400">with</span> RedisContainer(<span class="text-amber-300">"redis:7-alpine"</span>) <span class="text-purple-400">as</span> server:
+        <span class="text-purple-400">yield</span> server
+
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestCDCTaggingInvalidation</span>:
+    <span class="text-slate-500">"""Verifies atomic tag invalidations and CDC outbox event consumption."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_tag_invalidation_evicts_all_associated_entries</span>(self, redis_server):
+        url = f<span class="text-amber-300">"redis://&#123;redis_server.get_container_host_ip()&#125;:&#123;redis_server.get_exposed_port(6379)&#125;/0"</span>
+        driver = RemoteCacheDriver(redis_url=url)
+        tag_manager = TaggingCacheManager(driver)
+        <span class="text-purple-400">await</span> tag_manager.initialize()
+
+        <span class="text-slate-500"># Cache 3 distinct product pages under the same tag "merchant:88"</span>
+        <span class="text-purple-400">await</span> tag_manager.set_with_tags(<span class="text-amber-300">"m:88:p1"</span>, {<span class="text-amber-300">"page"</span>: 1}, tags=[<span class="text-amber-300">"merchant:88"</span>])
+        <span class="text-purple-400">await</span> tag_manager.set_with_tags(<span class="text-amber-300">"m:88:p2"</span>, {<span class="text-amber-300">"page"</span>: 2}, tags=[<span class="text-amber-300">"merchant:88"</span>])
+        <span class="text-purple-400">await</span> tag_manager.set_with_tags(<span class="text-amber-300">"m:88:p3"</span>, {<span class="text-amber-300">"page"</span>: 3}, tags=[<span class="text-amber-300">"merchant:88"</span>])
+
+        <span class="text-slate-500"># Unrelated merchant</span>
+        <span class="text-purple-400">await</span> tag_manager.set_with_tags(<span class="text-amber-300">"m:99:p1"</span>, {<span class="text-amber-300">"page"</span>: 1}, tags=[<span class="text-amber-300">"merchant:99"</span>])
+
+        <span class="text-slate-500"># Invalidate tag "merchant:88"</span>
+        evicted = <span class="text-purple-400">await</span> tag_manager.invalidate_tag(<span class="text-amber-300">"merchant:88"</span>)
+        assert evicted == 3
+
+        <span class="text-slate-500"># All 3 pages for merchant 88 MUST be evicted</span>
+        assert <span class="text-purple-400">await</span> driver.get(<span class="text-amber-300">"m:88:p1"</span>) <span class="text-purple-400">is None</span>
+        assert <span class="text-purple-400">await</span> driver.get(<span class="text-amber-300">"m:88:p2"</span>) <span class="text-purple-400">is None</span>
+        assert <span class="text-purple-400">await</span> driver.get(<span class="text-amber-300">"m:88:p3"</span>) <span class="text-purple-400">is None</span>
+
+        <span class="text-slate-500"># Unrelated merchant remains active and intact</span>
+        assert <span class="text-purple-400">await</span> driver.get(<span class="text-amber-300">"m:99:p1"</span>) <span class="text-purple-400">is not None</span>
+        <span class="text-purple-400">await</span> driver.close()
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_cdc_outbox_consumer_processes_stream_message</span>(self, redis_server):
+        url = f<span class="text-amber-300">"redis://&#123;redis_server.get_container_host_ip()&#125;:&#123;redis_server.get_exposed_port(6379)&#125;/0"</span>
+        driver = RemoteCacheDriver(redis_url=url)
+        tag_manager = TaggingCacheManager(driver)
+        <span class="text-purple-400">await</span> tag_manager.initialize()
+
+        <span class="text-purple-400">await</span> tag_manager.set_with_tags(<span class="text-amber-300">"user:500:profile"</span>, {<span class="text-amber-300">"name"</span>: <span class="text-amber-300">"Alice"</span>}, tags=[<span class="text-amber-300">"user:500"</span>])
+
+        consumer = CDCOutboxConsumer(tag_manager)
+        event_payload = json.dumps({
+            <span class="text-amber-300">"event_id"</span>: <span class="text-amber-300">"evt_101"</span>,
+            <span class="text-amber-300">"aggregate_type"</span>: <span class="text-amber-300">"user"</span>,
+            <span class="text-amber-300">"aggregate_id"</span>: <span class="text-amber-300">"500"</span>,
+            <span class="text-amber-300">"event_type"</span>: <span class="text-amber-300">"UPDATED"</span>,
+            <span class="text-amber-300">"invalidation_keys"</span>: [<span class="text-amber-300">"user:500:profile"</span>],
+            <span class="text-amber-300">"invalidation_tags"</span>: [<span class="text-amber-300">"user:500"</span>]
+        })
+
+        <span class="text-slate-500"># Process simulated CDC stream event</span>
+        total = <span class="text-purple-400">await</span> consumer.process_cdc_message(event_payload)
+        assert total &gt;= 1
+
+        <span class="text-slate-500"># Profile key is evicted</span>
+        assert <span class="text-purple-400">await</span> driver.get(<span class="text-amber-300">"user:500:profile"</span>) <span class="text-purple-400">is None</span>
+        <span class="text-purple-400">await</span> driver.close()</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Deleting Cache Inside DB Transactions</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">with db.transaction(): db.update(); redis.delete(key)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes severe bugs:</strong> If your database transaction takes 50ms to finish committing after the Redis deletion occurs, a concurrent reader can experience a cache miss, read the uncommitted old state from the database, and write it back to Redis! Furthermore, if the database transaction rolls back, your cache was deleted for an update that never happened. Always emit outbox records or invalidate <strong>strictly after commit</strong>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Unbounded Cache Tag Set Accumulation</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Adding millions of unique product keys to a single tag set without setting a TTL or cleaning up expired keys.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes memory leaks:</strong> In Redis, Set members do not expire individually when the underlying target key expires. Over months of traffic, tag sets accumulate millions of dead string keys. Always attach a safety TTL to the tag set itself or periodically prune stale tag members.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating CacheForge Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify Set-based tag invalidation and test simulated Change Data Capture (CDC) outbox message consumption:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Integration Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the CDC and Tag Invalidation integration suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_cdc_tagging.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.8s. Confirms atomic Lua tag deletion and CDC event consumption!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Inspect Tagged Invalidation Lua execution:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from cacheforge.patterns.tagging import INVALIDATE_TAG_LUA; print('Lua Script Length:', len(INVALIDATE_TAG_LUA), 'bytes')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Script runs in ~0.2ms inside Redis single-threaded core, completely bypassing slow KEYS * iterations!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 09 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next &bull; The Final Milestone</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Operational Engineering: Cache Observability, Memory Leaks, Chaos Partitioning &amp; The Staff Audit</h4>
+                <p class="text-xs text-slate-500 font-sans">Operating caching at scale: Metrics metrology, tuning maxmemory eviction policies, chaos testing Redis network partitions, building an administrative operator CLI with Typer, and executing the 10-Point Staff Production Audit.</p>
+            </div>
+            <a href="Chapter 09 - Operational Engineering - Cache Observability, Memory Leaks, Chaos Partitioning and The Staff Audit.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 09 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

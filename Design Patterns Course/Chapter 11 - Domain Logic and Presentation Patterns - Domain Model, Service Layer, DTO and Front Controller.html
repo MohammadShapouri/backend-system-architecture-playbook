@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 11: Domain Logic &amp; Presentation Patterns: Domain Model, Service Layer, DTO &amp; Front Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Design Patterns &amp; Architecture Series &bull; Software Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NexusCore (Milestone 11 - Domain Model, Service Layer &amp; DTOs)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 11 &bull; Domain &amp; Presentation Patterns
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Domain Logic &amp; Presentation Patterns: Domain Model, Service Layer, DTO &amp; Front Controller
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Connecting clean domain logic to modern web frameworks: Defeating the Anemic Domain Model anti-pattern with a rich, encapsulated <strong>Domain Model</strong>, orchestrating cross-cutting business transactions in the <strong>Service Layer</strong>, shielding internal schemas from client exposure using <strong>Data Transfer Objects (DTOs)</strong>, routing and handling centralized HTTP concerns with FastAPI as a <strong>Front Controller</strong>, and constructing the application tier of <strong>NexusCore</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NexusCore Milestone 11: Enterprise Web &amp; Service Layer Architecture</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 10, we isolated database persistence using SQLAlchemy 2.0 Async Repositories, Unit of Work, and Data Mappers. In Milestone 11, we construct the application brain and web presentation interface for <strong>NexusCore</strong>. We prevent our controllers from turning into bloated "Fat Controllers" by introducing a strict <strong>Clean Architecture boundary</strong>: pure business rules live exclusively inside our rich <strong>Domain Model</strong>, multi-repository transactional workflows are coordinated by an application <strong>Service Layer</strong>, wire contracts are strictly enforced via Pydantic v2 <strong>DTOs</strong>, and HTTP request lifecycles are governed by FastAPI acting as the unified <strong>Front Controller</strong>.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 11 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #27: The Rich Domain Model</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #28: The Service Layer</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #29: Data Transfer Object (DTO)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Design Pattern #30: The Front Controller</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Anemic Domain Model Anti-Pattern &amp; Cure</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full FastAPI &amp; Clean Architecture Test Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Architectural Theory -->
+        <section id="layering-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Architecture Fundamentals</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Clean Layering: Separating Presentation, Application &amp; Domain</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A software system degrades when boundaries between responsibilities blur. When an API route function parses JSON parameters, executes business calculations, queries a database, and generates an invoice all within a single file, the system becomes impossible to test, maintain, or adapt.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In Martin Fowler's <em>Patterns of Enterprise Application Architecture</em> and Clean Architecture, a robust system is divided into four distinct concentric layers with a strict <strong>unidirectional dependency rule</strong>:
+            </p>
+
+            <!-- 4-Tier Clean Architecture Layering Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Enterprise Layered Architecture Topology
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Presentation Layer -->
+                    <div class="w-full p-3.5 bg-sky-950 border border-sky-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-sky-300 font-bold block text-sm">1. Presentation Layer (Front Controller &amp; DTOs)</span>
+                        <span class="text-[10px] text-sky-200 font-sans">FastAPI Routes &bull; HTTP Status Codes &bull; Input Validation &bull; JSON Serialization</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; calls with DTOs &darr;</div>
+
+                    <!-- Application Layer -->
+                    <div class="w-full p-3.5 bg-purple-950 border border-purple-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-purple-300 font-bold block text-sm">2. Application Layer (Service Layer)</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Use Case Coordination &bull; Transaction Management (Unit of Work) &bull; Security &bull; Notifications</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; mutates &darr;</div>
+
+                    <!-- Domain Layer -->
+                    <div class="w-full p-3.5 bg-emerald-950 border border-emerald-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Domain Layer (Rich Domain Model)</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Pure Business Rules &bull; Invariant Validation &bull; Entities &amp; Value Objects &bull; ZERO External Dependencies</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; persists via &darr;</div>
+
+                    <!-- Persistence Layer -->
+                    <div class="w-full p-3.5 bg-slate-950 border border-slate-700 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-slate-300 font-bold block text-sm">4. Infrastructure Layer (Repository &amp; Data Mapper)</span>
+                        <span class="text-[10px] text-slate-400 font-sans">SQLAlchemy 2.0 &bull; Database Connections &bull; Redis Sockets &bull; External Message Queues</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Dependency Rule Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Dependencies only point inwards. The <strong>Domain Layer</strong> knows nothing about the Service Layer, the Web Layer, or the Database. You can replace FastAPI with a CLI or replace PostgreSQL with MongoDB without changing a single line of your core domain business rules!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 1: DOMAIN MODEL -->
+        <section id="pattern-domain-model" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Enterprise Pattern #27
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Domain Model (Rich Domain vs. Anemic Anti-Pattern)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Domain Logic Pattern &bull; Martin Fowler (P of EAA p. 116)
+                </p>
+            </div>
+
+            <!-- 1. Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine a living human being versus a plastic display mannequin in a department store.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    A plastic mannequin has physical dimensions, plastic arms, and clothes (data), but zero autonomous behavior. If you want the mannequin to wave, an external human puppeteer must physically walk over, grab its plastic wrist, and move it back and forth. The mannequin has no say in whether its arm is ripped off.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A real human being (A Rich Domain Model) encapsulates both anatomy (data) and autonomous reflexes (behavior). If you tell a person: "Run a marathon," their brain evaluates internal invariants (heart rate, stamina, hydration). If they are completely exhausted, they refuse. They protect their own internal state from corruption.
+                </p>
+            </div>
+
+            <!-- 2. The Problem: The Anemic Domain Model Anti-Pattern -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: The Dreaded Anemic Domain Model</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Martin Fowler coined the term <strong>Anemic Domain Model</strong> to describe one of the most common architectural antipatterns in modern software engineering. It occurs when domain classes are nothing more than hollow bags of fields (getters and setters), while all business rules and state validations are smeared across arbitrary controller functions:
+                </p>
+
+                <!-- Bad Code Box -->
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-rose-900 shadow-xl">
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># ANTI-PATTERN: The Anemic Domain Model (Zero Behavior / Naked Data)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">AnemicSettlementAccount</span>:
+    <span class="text-slate-500"># Just a dumb container with zero logic or invariants:</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, account_id: str, balance: float, is_frozen: bool):
+        self.account_id = account_id
+        self.balance = balance
+        self.is_frozen = is_frozen
+
+<span class="text-slate-500"># The Catastrophe: Business logic leaks directly into FastAPI controllers!</span>
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/settle"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">settle_endpoint</span>(account: AnemicSettlementAccount, amount: float):
+    <span class="text-slate-500"># Controller is forced to enforce fundamental domain rules:</span>
+    <span class="text-purple-400">if</span> account.is_frozen:
+        <span class="text-purple-400">raise</span> HTTPException(400, <span class="text-amber-300">"Account frozen!"</span>)
+    <span class="text-purple-400">if</span> account.balance &lt; amount:
+        <span class="text-purple-400">raise</span> HTTPException(400, <span class="text-amber-300">"Insufficient balance!"</span>)
+    
+    <span class="text-slate-500"># Direct naked state mutation:</span>
+    account.balance -= amount
+    <span class="text-slate-500"># If another developer writes a BackgroundJob, they must copy-paste these exact checks!</span>
+    <span class="text-slate-500"># If they forget, invalid or negative balances are silently written to the database!</span></pre>
+            </div>
+
+            <!-- Decision Rulebook: Domain Model -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Rich Domain Model</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Your domain contains complex business invariants, calculations, state transitions, and validation rules.</li>
+                        <li>You want to test core business rules in pure, sub-millisecond unit tests without mocking databases or spinning up web servers.</li>
+                        <li>Multiple entry points (REST API, Celery worker, CLI, event consumer) interact with the same business concepts.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Rich Domain Model</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>The application is pure CRUD (Create, Read, Update, Delete) where data is simply stored and retrieved with zero business rules.</li>
+                        <li>The system is an ETL pipeline whose sole purpose is copying data from one schema format to another without business transformations.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 2: SERVICE LAYER -->
+        <section id="pattern-service-layer" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Enterprise Pattern #28
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Service Layer (Application Service)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Enterprise Application Pattern &bull; Martin Fowler (P of EAA p. 133)
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-purple-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    Imagine the Head General Manager of a fine-dining restaurant.
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans">
+                    The General Manager does not chop onions or season steaks (that is the domain of the Chef). The General Manager also does not seat guests or pour water at tables (that is the job of the Host).
+                </p>
+                <p class="text-xs text-purple-900 leading-relaxed font-sans font-bold">
+                    Instead, the General Manager coordinates the complete operational workflow: When a VIP table reservation occurs, the General Manager opens the booking register, instructs the cellar master to pull a vintage bottle of wine, coordinates with the chef on dietary restrictions, and ensures the billing transaction executes cleanly. The Service Layer coordinates the use case from start to finish!
+                </p>
+            </div>
+
+            <!-- The Problem: Fat Controllers -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: The "Fat Controller" Antipattern</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    Without a Service Layer, web route controllers become bloated. They take on the responsibility of managing database transactions, calling multiple repositories, checking permissions, sending notification emails, and handling retries. When a CLI command or asynchronous task queue needs to perform the identical use case, code must be copied:
+                </p>
+
+                <!-- Visual Comparison of Responsibilities -->
+                <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                    <div class="text-center font-bold text-purple-400 uppercase tracking-widest text-[11px]">
+                        Separation of Concerns: Service Layer vs. Domain Model
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <!-- Service Layer Scope -->
+                        <div class="p-4 bg-slate-950 border border-purple-500 rounded-2xl space-y-2">
+                            <span class="text-purple-300 font-bold block text-sm">Service Layer (Application Scope)</span>
+                            <ul class="text-[11px] text-slate-300 font-sans space-y-1 list-disc pl-4">
+                                <li><strong>Transaction Boundaries:</strong> Opens and commits the Unit of Work.</li>
+                                <li><strong>Orchestration:</strong> Loads entities via Repositories.</li>
+                                <li><strong>External Collaborators:</strong> Sends email alerts, publishes events to RabbitMQ.</li>
+                                <li><strong>Security:</strong> Verifies user permissions and access rights.</li>
+                                <li><strong>No Business Rules:</strong> Never calculates interest rates, discounts, or risk limits directly!</li>
+                            </ul>
+                        </div>
+
+                        <!-- Domain Model Scope -->
+                        <div class="p-4 bg-slate-950 border border-emerald-500 rounded-2xl space-y-2">
+                            <span class="text-emerald-300 font-bold block text-sm">Domain Model (Business Scope)</span>
+                            <ul class="text-[11px] text-slate-300 font-sans space-y-1 list-disc pl-4">
+                                <li><strong>Business Rules:</strong> Calculates fees, validates settlement conditions.</li>
+                                <li><strong>Invariant Protection:</strong> Guarantees balance never drops below overdraft limit.</li>
+                                <li><strong>Pure Logic:</strong> No knowledge of HTTP, sessions, SQL, or email senders.</li>
+                                <li><strong>Self-Contained:</strong> Operates entirely on internal memory attributes.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decision Rulebook: Service Layer -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use Service Layer</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You have multiple operations that must execute as a single atomic transaction across multiple entities and repositories.</li>
+                        <li>The application has multiple clients (e.g. REST API, CLI tool, background Celery queue) that need to invoke the exact same business use case.</li>
+                        <li>You want to keep web route controllers ultra-thin (1 to 3 lines of code).</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use Service Layer</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>You create an anemic 1-line service layer that just passes calls directly from controller to repository without coordinating any use case logic.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 3: DATA TRANSFER OBJECT (DTO) -->
+        <section id="pattern-dto" class="space-y-6">
+            <div class="border-b-2 border-sky-500 pb-3">
+                <span class="bg-sky-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Enterprise Pattern #29
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Data Transfer Object (DTO)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Enterprise Distribution Pattern &bull; Martin Fowler (P of EAA p. 401)
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine shipping valuable goods internationally through customs.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    When you ship a package, you do not hand the customs border officer your company's entire internal filing cabinet, payroll ledger, and confidential trade secrets.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    You fill out a standardized Customs Declaration Manifest (The DTO). The manifest includes only the specific fields necessary for transit: destination address, item weight, and declared value. It is a sealed, plain data envelope containing no internal business behavior.
+                </p>
+            </div>
+
+            <!-- The Problem: Entity Leakage -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">The Problem: Exposing Internal Domain Entities Over the Wire</h3>
+                <p class="text-slate-700 text-sm leading-relaxed">
+                    When API controllers serialize internal domain entities or database models directly to JSON, two severe hazards arise:
+                </p>
+                <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-2 font-sans">
+                    <li><strong>Security Data Leaks:</strong> Internal fields (password hashes, tax IDs, internal risk scores, audit timestamps) are accidentally leaked to public web clients.</li>
+                    <li><strong>API Contract Rigidity:</strong> Renaming an internal attribute in your Python class immediately breaks mobile apps and external API consumers because the JSON payload structure changed.</li>
+                </ol>
+                <p class="text-slate-700 text-sm leading-relaxed font-bold">
+                    DTOs (implemented via Pydantic v2 schemas in Python) act as strict firewalls between external network payloads and internal domain objects.
+                </p>
+            </div>
+
+            <!-- Decision Rulebook: DTO -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-emerald-900 text-sm block">&#10004; When to Use DTO</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Validating incoming wire data before passing it to the application or domain layers.</li>
+                        <li>Projecting filtered, safe response payloads that hide sensitive internal fields.</li>
+                        <li>Decoupling public API version contracts from internal database schema refactoring.</li>
+                    </ul>
+                </div>
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">&#10008; When NOT to Use DTO</span>
+                    <ul class="text-[11px] text-slate-700 space-y-1.5 font-sans list-disc pl-4">
+                        <li>Passing data strictly between internal functions within the same domain boundary. Use domain models or dataclasses directly.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- PATTERN 4: FRONT CONTROLLER -->
+        <section id="pattern-front-controller" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Enterprise Pattern #30
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Pattern Name: Front Controller
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Formal Classification: Web Presentation Pattern &bull; Martin Fowler (P of EAA p. 344)
+                </p>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-amber-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Imagine the main entrance security lobby of a corporate skyscraper.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Visitors do not wander directly into the CEO's office, server rooms, or marketing suites through random open windows. Every single person enters through the <strong>Front Lobby Desk</strong>.
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans font-bold">
+                    The front lobby handles cross-cutting concerns: badge scanning, visitor logging, weapon detection, and elevator routing. Once cleared, the visitor is directed to the specific floor they requested. In web engineering, a Front Controller centralizes all request intake before routing to specific handlers.
+                </p>
+            </div>
+
+            <!-- FastAPI as Front Controller -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-sm text-slate-700 leading-relaxed">
+                <h3 class="font-bold text-slate-900 text-base font-mono">Modern Realization: FastAPI as the Master Front Controller</h3>
+                <p>
+                    Historically in Java or PHP, developers manually wrote a massive <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">FrontControllerServlet</code> with giant regex matching tables.
+                </p>
+                <p>
+                    In modern Python architecture, <strong>FastAPI acts as your production Front Controller</strong>:
+                </p>
+                <ul class="list-disc pl-5 text-xs font-mono text-slate-600 space-y-1">
+                    <li>It intercepts 100% of incoming HTTP request streams.</li>
+                    <li>It executes cross-cutting concerns (CORS, TLS termination, global error handlers, authentication tokens).</li>
+                    <li>It injects application dependencies via <code class="font-mono text-purple-700 font-bold">Depends()</code>.</li>
+                    <li>It validates incoming DTO payloads before delegating control to the Service Layer.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: NEXUSCORE MILESTONE 11 -->
+        <section id="nexuscore-milestone-11" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NexusCore Milestone 11: Enterprise Clean Architecture Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 11 for <strong>NexusCore</strong>. Below is the production-grade implementation of all four patterns: a rich domain model with encapsulated business invariants, an application service layer orchestrating the Unit of Work from Chapter 10, Pydantic v2 DTOs, and a clean FastAPI Front Controller router:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// NexusCore Architecture Layout (Milestone 11)</div>
+                <div>nexuscore/</div>
+                <div>├── src/</div>
+                <div>│   └── nexuscore/</div>
+                <div>│       ├── storage/</div>
+                <div>│       │   ├── models.py</div>
+                <div>│       │   ├── repository.py</div>
+                <div>│       │   └── unit_of_work.py</div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">domain/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">settlement.py</span>         <span class="text-slate-500"># Milestone 11: Rich Domain Model (Behavior + Invariants)</span></div>
+                <div>│       ├── <span class="text-emerald-300 font-bold">services/</span></div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">settlement_service.py</span> <span class="text-slate-500"># Milestone 11: Service Layer Use Case Orchestrator</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">api/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">dto.py</span>                <span class="text-slate-500"># Milestone 11: Pydantic v2 Wire DTOs</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">router.py</span>             <span class="text-slate-500"># Milestone 11: FastAPI Front Controller Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_service_layer.py</span>        <span class="text-slate-500"># Milestone 11 End-to-End Clean Architecture Suite</span></div>
+            </div>
+
+            <!-- File 1: src/nexuscore/domain/settlement.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Rich Domain Model: <code class="text-purple-700">src/nexuscore/domain/settlement.py</code></span>
+                    <span class="text-slate-400">Encapsulated Invariants</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Domain - Rich Domain Model (Behavior + State Encapsulation)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountStatus</span>(str, Enum):
+    ACTIVE = <span class="text-amber-300">"ACTIVE"</span>
+    FROZEN = <span class="text-amber-300">"FROZEN"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">DomainValidationError</span>(ValueError):
+    <span class="text-slate-500">"""Raised when a business invariant is violated."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SettlementAccount</span>:
+    <span class="text-slate-500">"""
+    RICH DOMAIN MODEL:
+    Encapsulates state AND core financial behavior.
+    Guarantees internal invariants: balance, status checks, and overdraft ceilings.
+    Has ZERO knowledge of databases, SQL, or web frameworks!
+    """</span>
+    account_id: str
+    user_id: str
+    balance: float
+    status: AccountStatus = AccountStatus.ACTIVE
+    overdraft_limit: float = 0.0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">debit</span>(self, amount: float) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Invariant 1: Positive amounts</span>
+        <span class="text-purple-400">if</span> amount &lt;= 0:
+            <span class="text-purple-400">raise</span> DomainValidationError(<span class="text-amber-300">"Debit amount must be strictly positive."</span>)
+
+        <span class="text-slate-500"># Invariant 2: Active account status</span>
+        <span class="text-purple-400">if</span> self.status == AccountStatus.FROZEN:
+            <span class="text-purple-400">raise</span> DomainValidationError(f<span class="text-amber-300">"Cannot debit frozen account '{self.account_id}'."</span>)
+
+        <span class="text-slate-500"># Invariant 3: Overdraft limits</span>
+        <span class="text-purple-400">if</span> (self.balance - amount) &lt; -self.overdraft_limit:
+            <span class="text-purple-400">raise</span> DomainValidationError(
+                f<span class="text-amber-300">"Insufficient funds: Balance ${self.balance:,.2f} with overdraft limit "</span>
+                f<span class="text-amber-300">"${self.overdraft_limit:,.2f} cannot absorb debit of ${amount:,.2f}."</span>
+            )
+
+        self.balance -= amount
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">credit</span>(self, amount: float) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> amount &lt;= 0:
+            <span class="text-purple-400">raise</span> DomainValidationError(<span class="text-amber-300">"Credit amount must be strictly positive."</span>)
+
+        <span class="text-purple-400">if</span> self.status == AccountStatus.FROZEN:
+            <span class="text-purple-400">raise</span> DomainValidationError(f<span class="text-amber-300">"Cannot credit frozen account '{self.account_id}'."</span>)
+
+        self.balance += amount
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">freeze</span>(self) -> <span class="text-rose-400">None</span>:
+        self.status = AccountStatus.FROZEN</pre>
+            </div>
+
+            <!-- File 2: src/nexuscore/api/dto.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Data Transfer Objects: <code class="text-purple-700">src/nexuscore/api/dto.py</code></span>
+                    <span class="text-slate-400">Pydantic v2 Wire Schemas</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore API - Data Transfer Objects (Pydantic v2 Wire Contracts)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field, field_validator
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SettlementRequestDTO</span>(BaseModel):
+    <span class="text-slate-500">"""
+    INCOMING DTO:
+    Validates external JSON input before it touches domain or service layers.
+    """</span>
+    sender_account_id: str = Field(..., min_length=3, max_length=50)
+    receiver_account_id: str = Field(..., min_length=3, max_length=50)
+    amount: float = Field(..., gt=0.0, description=<span class="text-amber-300">"Settlement amount in fiat units"</span>)
+    idempotency_key: str = Field(..., min_length=10)
+
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"receiver_account_id"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">prevent_self_transfer</span>(cls, v: str, info) -> str:
+        sender = info.data.get(<span class="text-amber-300">"sender_account_id"</span>)
+        <span class="text-purple-400">if</span> sender <span class="text-purple-400">and</span> v == sender:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Sender and receiver accounts must be distinct."</span>)
+        <span class="text-purple-400">return</span> v
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SettlementResponseDTO</span>(BaseModel):
+    <span class="text-slate-500">"""
+    OUTGOING DTO:
+    Projects filtered, safe response data. Hides internal database keys and schemas.
+    """</span>
+    settlement_id: str
+    status: str
+    amount: float
+    sender_account_id: str
+    receiver_account_id: str
+    sender_new_balance: float</pre>
+            </div>
+
+            <!-- File 3: src/nexuscore/services/settlement_service.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Application Service Layer: <code class="text-purple-700">src/nexuscore/services/settlement_service.py</code></span>
+                    <span class="text-slate-400">Use Case Orchestrator</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore Services - Application Service Layer (Transactional Orchestrator)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable
+<span class="text-purple-400">from</span> nexuscore.domain.settlement <span class="text-purple-400">import</span> SettlementAccount, DomainValidationError
+<span class="text-purple-400">from</span> nexuscore.api.dto <span class="text-purple-400">import</span> SettlementRequestDTO, SettlementResponseDTO
+<span class="text-purple-400">from</span> nexuscore.storage.unit_of_work <span class="text-purple-400">import</span> IUnitOfWork
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SettlementService</span>:
+    <span class="text-slate-500">"""
+    APPLICATION SERVICE LAYER:
+    Coordinates the use case:
+    1. Manages Unit of Work transaction boundary.
+    2. Loads domain models via repositories.
+    3. Invokes rich business logic on domain entities.
+    4. Commits atomic state changes.
+    5. Returns a clean DTO projection.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, uow_factory: Callable[[], IUnitOfWork]):
+        self.uow_factory = uow_factory
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute_settlement</span>(self, dto: SettlementRequestDTO) -> SettlementResponseDTO:
+        uow = self.uow_factory()
+
+        <span class="text-slate-500"># Atomic Transaction Boundary</span>
+        <span class="text-purple-400">async with</span> uow:
+            <span class="text-slate-500"># 1. Fetch entities</span>
+            sender_domain = <span class="text-purple-400">await</span> uow.accounts.get(dto.sender_account_id)
+            <span class="text-purple-400">if not</span> sender_domain:
+                <span class="text-purple-400">raise</span> DomainValidationError(f<span class="text-amber-300">"Sender account '{dto.sender_account_id}' does not exist."</span>)
+
+            receiver_domain = <span class="text-purple-400">await</span> uow.accounts.get(dto.receiver_account_id)
+            <span class="text-purple-400">if not</span> receiver_domain:
+                <span class="text-purple-400">raise</span> DomainValidationError(f<span class="text-amber-300">"Receiver account '{dto.receiver_account_id}' does not exist."</span>)
+
+            <span class="text-slate-500"># Map to Rich Domain Models</span>
+            sender = SettlementAccount(
+                account_id=sender_domain.account_id,
+                user_id=sender_domain.user_id,
+                balance=sender_domain.balance
+            )
+            receiver = SettlementAccount(
+                account_id=receiver_domain.account_id,
+                user_id=receiver_domain.user_id,
+                balance=receiver_domain.balance
+            )
+
+            <span class="text-slate-500"># 2. Invoke Domain Behavior (Enforces business invariants!)</span>
+            sender.debit(dto.amount)
+            receiver.credit(dto.amount)
+
+            <span class="text-slate-500"># 3. Update storage models</span>
+            sender_domain.balance = sender.balance
+            receiver_domain.balance = receiver.balance
+            <span class="text-purple-400">await</span> uow.accounts.add(sender_domain)
+            <span class="text-purple-400">await</span> uow.accounts.add(receiver_domain)
+
+            <span class="text-slate-500"># 4. Atomic Commit</span>
+            <span class="text-purple-400">await</span> uow.commit()
+
+            <span class="text-slate-500"># 5. Return projected DTO</span>
+            <span class="text-purple-400">return</span> SettlementResponseDTO(
+                settlement_id=f<span class="text-amber-300">"stl_{uuid.uuid4().hex[:10]}"</span>,
+                status=<span class="text-amber-300">"COMPLETED"</span>,
+                amount=dto.amount,
+                sender_account_id=sender.account_id,
+                receiver_account_id=receiver.account_id,
+                sender_new_balance=sender.balance
+            )</pre>
+            </div>
+
+            <!-- File 4: src/nexuscore/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. FastAPI Front Controller Router: <code class="text-purple-700">src/nexuscore/api/router.py</code></span>
+                    <span class="text-slate-400">Front Controller Pattern</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NexusCore API - FastAPI Front Controller &amp; Settlement Endpoints</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, HTTPException, status
+<span class="text-purple-400">from</span> nexuscore.api.dto <span class="text-purple-400">import</span> SettlementRequestDTO, SettlementResponseDTO
+<span class="text-purple-400">from</span> nexuscore.services.settlement_service <span class="text-purple-400">import</span> SettlementService
+<span class="text-purple-400">from</span> nexuscore.domain.settlement <span class="text-purple-400">import</span> DomainValidationError
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/settlements"</span>, tags=[<span class="text-amber-300">"Settlements"</span>])
+
+<span class="text-slate-500"># Dependency injection stub (overridden in application startup or tests)</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_settlement_service</span>() -> SettlementService:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=SettlementResponseDTO,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Execute Account-to-Account Financial Settlement"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_settlement</span>(
+    dto: SettlementRequestDTO,
+    service: SettlementService = Depends(get_settlement_service)
+) -> SettlementResponseDTO:
+    <span class="text-slate-500">"""
+    ULTRA-THIN CONTROLLER:
+    Front controller validates DTO and handles HTTP exceptions.
+    100% of transaction logic is delegated to the Service Layer!
+    """</span>
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">return await</span> service.execute_settlement(dto)
+    <span class="text-purple-400">except</span> DomainValidationError <span class="text-purple-400">as</span> exc:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc)
+        )</pre>
+            </div>
+
+            <!-- File 5: tests/test_service_layer.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Clean Architecture Test Battery: <code class="text-purple-700">tests/test_service_layer.py</code></span>
+                    <span class="text-slate-400">PyTest &amp; Async HTTPX Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI
+<span class="text-purple-400">import</span> httpx
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> ASGITransport
+
+<span class="text-purple-400">from</span> nexuscore.domain.settlement <span class="text-purple-400">import</span> SettlementAccount, AccountStatus, DomainValidationError
+<span class="text-purple-400">from</span> nexuscore.api.dto <span class="text-purple-400">import</span> SettlementRequestDTO
+<span class="text-purple-400">from</span> nexuscore.services.settlement_service <span class="text-purple-400">import</span> SettlementService
+<span class="text-purple-400">from</span> nexuscore.api.router <span class="text-purple-400">import</span> router, get_settlement_service
+<span class="text-purple-400">from</span> nexuscore.storage.models <span class="text-purple-400">import</span> DomainAccount
+<span class="text-purple-400">from</span> nexuscore.storage.unit_of_work <span class="text-purple-400">import</span> IUnitOfWork
+
+
+<span class="text-slate-500"># In-Memory Fake Unit of Work for sub-millisecond service layer testing</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FakeAccountRepository</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, accounts):
+        self._accounts = accounts
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get</span>(self, account_id: str):
+        <span class="text-purple-400">return</span> self._accounts.get(account_id)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">add</span>(self, account: DomainAccount):
+        self._accounts[account.account_id] = account
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FakeUnitOfWork</span>(IUnitOfWork):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, accounts_dict):
+        self._accounts_dict = accounts_dict
+        self.committed = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">__aenter__</span>(self):
+        self.accounts = FakeAccountRepository(self._accounts_dict)
+        <span class="text-purple-400">return</span> self
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">__aexit__</span>(self, exc_type, exc_val, exc_tb):
+        <span class="text-purple-400">pass</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">commit</span>(self):
+        self.committed = <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">rollback</span>(self):
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestCleanArchitectureSuite</span>:
+    <span class="text-slate-500">"""Verifies Rich Domain invariants, Service orchestration, and Front Controller routing."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_rich_domain_model_enforces_invariants_in_isolation</span>(self):
+        <span class="text-slate-500"># 1. Successful debit</span>
+        acc = SettlementAccount(<span class="text-amber-300">"acc_1"</span>, <span class="text-amber-300">"user_1"</span>, balance=500.0, overdraft_limit=100.0)
+        acc.debit(550.0)
+        assert acc.balance == -50.0
+
+        <span class="text-slate-500"># 2. Rejects exceeding overdraft</span>
+        <span class="text-purple-400">with</span> pytest.raises(DomainValidationError, match=<span class="text-amber-300">"Insufficient funds"</span>):
+            acc.debit(100.0)  <span class="text-slate-500"># -50 - 100 = -150 &lt; -100</span>
+
+        <span class="text-slate-500"># 3. Rejects operation on frozen account</span>
+        acc.freeze()
+        <span class="text-purple-400">with</span> pytest.raises(DomainValidationError, match=<span class="text-amber-300">"frozen"</span>):
+            acc.credit(50.0)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_service_layer_orchestration</span>(self):
+        accounts = {
+            <span class="text-amber-300">"src"</span>: DomainAccount(<span class="text-amber-300">"src"</span>, <span class="text-amber-300">"u1"</span>, 1000.0),
+            <span class="text-amber-300">"dst"</span>: DomainAccount(<span class="text-amber-300">"dst"</span>, <span class="text-amber-300">"u2"</span>, 200.0)
+        }
+        service = SettlementService(uow_factory=<span class="text-purple-400">lambda</span>: FakeUnitOfWork(accounts))
+
+        dto = SettlementRequestDTO(
+            sender_account_id=<span class="text-amber-300">"src"</span>,
+            receiver_account_id=<span class="text-amber-300">"dst"</span>,
+            amount=400.0,
+            idempotency_key=<span class="text-amber-300">"idemp_key_12345"</span>
+        )
+
+        res = <span class="text-purple-400">await</span> service.execute_settlement(dto)
+        assert res.status == <span class="text-amber-300">"COMPLETED"</span>
+        assert res.sender_new_balance == 600.0
+        assert accounts[<span class="text-amber-300">"src"</span>].balance == 600.0
+        assert accounts[<span class="text-amber-300">"dst"</span>].balance == 600.0
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_front_controller_http_api_validation</span>(self):
+        accounts = {
+            <span class="text-amber-300">"acc_a"</span>: DomainAccount(<span class="text-amber-300">"acc_a"</span>, <span class="text-amber-300">"u1"</span>, 100.0),
+            <span class="text-amber-300">"acc_b"</span>: DomainAccount(<span class="text-amber-300">"acc_b"</span>, <span class="text-amber-300">"u2"</span>, 50.0)
+        }
+        service = SettlementService(uow_factory=<span class="text-purple-400">lambda</span>: FakeUnitOfWork(accounts))
+
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_settlement_service] = <span class="text-purple-400">lambda</span>: service
+
+        transport = ASGITransport(app=app)
+        <span class="text-purple-400">async with</span> httpx.AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://test"</span>) <span class="text-purple-400">as</span> client:
+            <span class="text-slate-500"># Test 1: Self-transfer rejected by DTO validation</span>
+            bad_res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/settlements"</span>, json={
+                <span class="text-amber-300">"sender_account_id"</span>: <span class="text-amber-300">"acc_a"</span>,
+                <span class="text-amber-300">"receiver_account_id"</span>: <span class="text-amber-300">"acc_a"</span>,
+                <span class="text-amber-300">"amount"</span>: 50.0,
+                <span class="text-amber-300">"idempotency_key"</span>: <span class="text-amber-300">"1234567890"</span>
+            })
+            assert bad_res.status_code == 422  <span class="text-slate-500"># Pydantic validation error</span>
+
+            <span class="text-slate-500"># Test 2: Successful settlement execution</span>
+            good_res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/settlements"</span>, json={
+                <span class="text-amber-300">"sender_account_id"</span>: <span class="text-amber-300">"acc_a"</span>,
+                <span class="text-amber-300">"receiver_account_id"</span>: <span class="text-amber-300">"acc_b"</span>,
+                <span class="text-amber-300">"amount"</span>: 40.0,
+                <span class="text-amber-300">"idempotency_key"</span>: <span class="text-amber-300">"1234567890"</span>
+            })
+            assert good_res.status_code == 201
+            assert good_res.json()[<span class="text-amber-300">"sender_new_balance"</span>] == 60.0</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Anemic Domain Model</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing domain classes with only public fields and placing all validation logic in controllers or service procedures.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes system degradation:</strong> As the application grows, developers write duplicate validation rules across multiple controllers. If a rule changes (e.g. overdraft limit calculation), it must be updated in 10 different files. Inevitably, one is forgotten, leading to data corruption! <strong>Keep entities rich: let the entity protect its own invariants.</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Leaking Entities Across Wire Boundaries</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Returning domain or ORM objects directly from route handlers: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">return account</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes outages and security leaks:</strong> Public API clients become tightly coupled to internal model attribute names. Renaming an internal Python variable immediately breaks external mobile apps! Furthermore, sensitive internal fields (hashed passwords, internal risk scores) are accidentally leaked over the network. <strong>Always project safe responses using explicit DTOs.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating NexusCore Milestone 11</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Clean Architecture test battery across Domain, Service Layer, DTO, and FastAPI Front Controller:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install FastAPI, Pydantic v2, HTTPX, and PyTest:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install fastapi pydantic&gt;=2.0.0 httpx pytest pytest-asyncio
+                    </div>
+                </div>
+
+                <!-- Step 2: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the Clean Architecture test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_service_layer.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.05s. Confirms Rich Domain invariants, Service Layer transaction handling, DTO validation, and HTTP 201 settlement creation!
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 3. Test Rich Domain invariant protection in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from nexuscore.domain.settlement import SettlementAccount; a = SettlementAccount('1', 'u', 100.0); a.debit(40.0); print('New Balance:', a.balance)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">New Balance: 60.0</code> with zero database or web overhead!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 12 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 12: High-Performance Concurrency: Producer-Consumer, Thread Pools, RWLock &amp; SingleFlight</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering POSA Vol. 2 Concurrency Patterns: Ingesting 100,000 orders/sec into bounded queues, multi-reader concurrent lock optimization, and deduplicating in-flight tasks with SingleFlight in Asyncio.</p>
+            </div>
+            <a href="Chapter 12 - High-Performance Concurrency - Producer-Consumer, Thread Pools, RWLock and SingleFlight.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 12 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

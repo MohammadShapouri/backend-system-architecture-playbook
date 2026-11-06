@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Defining Availability: The Mathematics of SLAs, SLOs, SLIs &amp; Fault Domains</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 06 - Reliability &amp; Fault Domains)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Reliability Engineering &amp; SRE
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Defining Availability: The Mathematics of SLAs, SLOs, SLIs &amp; Fault Domains
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Quantifying and enforcing system uptime: The statistical realities of the "Nines", managing Google SRE <strong>Error Budget Burn Rates</strong>, composite serial vs. parallel availability math, cell-based architectures with <strong>Shuffle Sharding</strong> to contain blast radius, and engineering the automated reliability engine of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 06: The Reliability &amp; Cell Isolation Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 05, we built an adaptive L7 reverse proxy balancing traffic via Power of Two Choices (P2C). In Milestone 06, we confront <strong>the mathematics of distributed failure</strong>. When a platform handles 500,000 active drivers, hardware components fail constantly: disks corrupt, switches drop, and zones lose power. We architect a formal <strong>SLI/SLO tracking engine</strong> that computes rolling 30-day error budget burn rates, enforces multi-window alerts, calculates composite system availability across dependent tiers, and partitions our driver fleet into isolated <strong>Cell-Based Fault Domains</strong> to mathematically limit blast radiuses to 1% of users during localized outages.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Exact Mathematics of the "Nines"</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Composite Availability: Serial vs. Parallel Math</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Google SRE Triad: SLI vs. SLO vs. SLA</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Window Error Budget Burn Rate Calculations</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cell-Based Architecture &amp; Blast Radius Reduction</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Shuffle Sharding Mechanics Against Poison Pills</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Reliability Engine in FastAPI &amp; Async SQLAlchemy</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational SRE Theory: The Math of the Nines -->
+        <section id="the-nines" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Reliability Mathematics</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The True Meaning of Uptime: The Mathematics of the "Nines"</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Availability in distributed computing is mathematically defined through Mean Time To Failure (MTTF) and Mean Time To Repair (MTTR):
+            </p>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center font-mono text-xs text-emerald-400">
+                \text{Availability } (A) = \frac{\text{MTTF}}{\text{MTTF} + \text{MTTR}} = \frac{\text{Total Uptime}}{\text{Total Uptime} + \text{Total Downtime}}
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Stakeholders frequently ask for <em>"100% uptime"</em> or <em>"Five Nines (99.999%)"</em> without understanding what that mathematically implies. Every extra "nine" of availability represents an **exponential increase in architectural cost, complexity, and operational overhead**:
+            </p>
+
+            <!-- Table of The Nines -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Availability Tier</th>
+                            <th class="p-3.5">Downtime per Year</th>
+                            <th class="p-3.5">Downtime per Month</th>
+                            <th class="p-3.5">Downtime per Week</th>
+                            <th class="p-3.5 text-emerald-700">Physical Architectural Reality</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">99.0% ("Two Nines")</td>
+                            <td class="p-3.5 text-rose-700">3.65 days</td>
+                            <td class="p-3.5">7.31 hours</td>
+                            <td class="p-3.5">1.68 hours</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Single VM on AWS, manual human deployments, occasional batch restarts.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">99.9% ("Three Nines")</td>
+                            <td class="p-3.5 text-amber-700">8.77 hours</td>
+                            <td class="p-3.5">43.8 minutes</td>
+                            <td class="p-3.5">10.1 minutes</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Standard SaaS. Multi-AZ autoscaling, automated health checks, DB read replicas.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-sky-50/50">
+                            <td class="p-3.5 font-bold text-sky-900">99.99% ("Four Nines")</td>
+                            <td class="p-3.5 text-sky-700 font-bold">52.6 minutes</td>
+                            <td class="p-3.5 font-bold">4.38 minutes</td>
+                            <td class="p-3.5 font-bold">1.01 minutes</td>
+                            <td class="p-3.5 text-slate-600 font-sans font-bold">Tier-1 Cloud Target (OmniRoute). Zero human-in-the-loop repair; fully automated failover.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-emerald-50/50">
+                            <td class="p-3.5 font-bold text-emerald-900">99.999% ("Five Nines")</td>
+                            <td class="p-3.5 text-emerald-700 font-bold">5.26 minutes</td>
+                            <td class="p-3.5 font-bold">26.3 seconds</td>
+                            <td class="p-3.5 font-bold">6.05 seconds</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Telecommunications &amp; Mainframe Banking. Multi-region active-active, custom hardware, satellite failover.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the difference between taking an umbrella on a walk versus designing a commercial passenger aircraft.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    If an umbrella has a tiny tear in the fabric, you get a little wet on your shoulder (Two Nines / 99% availability). It costs $15 to buy and you repair it with duct tape.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A Boeing 787 cannot use duct tape. Because an in-flight engine failure is fatal, the aircraft is engineered for Five Nines (99.999%): it features dual independent jet engines, three redundant hydraulic lines, dual flight computers, and manual mechanical backups. The plane costs $250 million to build. If an executive asks for Five Nines for a simple internal employee dashboard, they are demanding an aircraft carrier to cross a small garden pond!
+                </p>
+            </div>
+        </section>
+
+        <!-- COMPOSITE AVAILABILITY: SERIAL VS. PARALLEL MATH -->
+        <section id="composite-availability" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Probability Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Composite System Availability: Serial Chains vs. Parallel Redundancy
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    The Law of Multiplicative Degradation &bull; Redundancy Mathematics
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In a distributed system, overall availability is dictated by how components are connected.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Serial Availability -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">1. Serial Dependencies (Multiplicative Decay)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">A_total = A_1 &times; A_2 &times; ... &times; A_n</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        If a request requires <strong>every single service in a chain to succeed</strong>, total availability is the mathematical product of each service's availability.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                        <div>API Gateway (99.9%) &rarr; Auth (99.9%) &rarr; Order (99.9%) &rarr; DB (99.9%)</div>
+                        <div>A_total = 0.999 &times; 0.999 &times; 0.999 &times; 0.999</div>
+                        <div class="text-rose-400 font-bold">&rarr; A_total = 99.6% (Downtime balloons to 35 hours/year!)</div>
+                    </div>
+                    <p class="text-[10px] text-rose-700 font-sans font-bold">
+                        Rule: A serial chain is always LESS available than its least reliable component.
+                    </p>
+                </div>
+
+                <!-- Parallel Availability -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">2. Parallel Redundancy (Fault Independence)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">A_total = 1 - (1 - A_1)^n</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        If an operation succeeds as long as <strong>at least one redundant node is alive</strong>, failure probability decreases exponentially with each added node.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                        <div>Node 1 (99.0%) in parallel with Node 2 (99.0%)</div>
+                        <div>A_total = 1 - (1 - 0.99) &times; (1 - 0.99) = 1 - (0.01 &times; 0.01)</div>
+                        <div class="text-emerald-400 font-bold">&rarr; A_total = 99.99% (Two mediocre nodes create Four Nines!)</div>
+                    </div>
+                    <p class="text-[10px] text-emerald-700 font-sans font-bold">
+                        Rule: Redundancy transforms cheap unreliable nodes into an ultra-reliable cluster.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE SRE TRIAD: SLI, SLO, SLA & ERROR BUDGETS -->
+        <section id="sre-triad" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Site Reliability Engineering (Google SRE Framework)
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The SRE Triad: SLIs, SLOs, SLAs &amp; Error Budget Burn Rates
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Indicators &bull; Objectives &bull; Agreements &bull; Multi-Window Alerting
+                </p>
+            </div>
+
+            <!-- SRE Triad Cards -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- SLI -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 block text-sm">1. SLI (Indicator)</span>
+                    <span class="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">What we measure</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A quantifiable metric measured directly from production telemetry.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-sky-300">
+                        SLI = (Good Events / Total Events) &times; 100%
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <em>Example:</em> % of `/api/v1/dispatch` calls returning HTTP 2xx in &lt;100ms.
+                    </p>
+                </div>
+
+                <!-- SLO -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-emerald-700 block text-sm">2. SLO (Objective)</span>
+                    <span class="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Target we set</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The internal target agreed upon between engineering and product leadership.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-emerald-400 font-bold">
+                        Target: 99.9% over 30 days
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        Defines our <strong>Error Budget</strong>: Exactly 0.1% of requests are allowed to fail.
+                    </p>
+                </div>
+
+                <!-- SLA -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-purple-700 block text-sm">3. SLA (Agreement)</span>
+                    <span class="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">Legal Contract</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The commercial agreement signed with enterprise customers carrying financial penalties.
+                    </p>
+                    <div class="bg-slate-950 p-2 rounded text-[10px] text-purple-300 font-bold">
+                        Target: 99.5% with financial refunds
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        Always set looser than the SLO to provide engineering a safety buffer!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Mathematical Deep-Dive: Error Budget Burn Rate -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-4 shadow-xl border border-slate-800">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Mathematics of Error Budget Burn Rates (Google SRE Book)
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                    <div class="text-sm md:text-base text-sky-300 font-bold tracking-wider">
+                        \text{Burn Rate } (B) = \frac{\text{Observed Error Rate}}{\text{Allowed Budget Error Rate}}
+                    </div>
+                    <p class="text-[10px] text-slate-400 font-sans">
+                        If your 30-day SLO is <strong>99.9%</strong>, your allowed error rate is $0.1\% = 0.001$.
+                        A <strong>Burn Rate of 1.0</strong> means your service will exhaust exactly 100% of its monthly error budget in exactly 30 days (nominal safe rate).
+                    </p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-[11px]">
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="text-sky-300 font-bold block">Burn Rate 1.0x</span>
+                        <div class="text-[10px] text-slate-400">Exhausts budget in: <strong>30 days</strong></div>
+                        <div class="text-[9px] text-emerald-400">Action: Normal operations</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 rounded-xl border border-amber-500/50 space-y-1">
+                        <span class="text-amber-300 font-bold block">Burn Rate 14.4x</span>
+                        <div class="text-[10px] text-slate-400">Exhausts 2% of budget in: <strong>1 hour</strong></div>
+                        <div class="text-[9px] text-amber-300">Action: Page on-call engineer!</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 rounded-xl border border-rose-500/50 space-y-1">
+                        <span class="text-rose-400 font-bold block">Burn Rate 144x</span>
+                        <div class="text-[10px] text-slate-400">Exhausts 10% of budget in: <strong>30 minutes</strong></div>
+                        <div class="text-[9px] text-rose-400 font-bold">Action: CRITICAL P1 OUTAGE</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- BLAST RADIUS REDUCTION: CELL-BASED ARCHITECTURE -->
+        <section id="cell-architecture" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Fault Domain Segmentation
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Containing Catastrophe: Cell-Based Architecture &amp; Shuffle Sharding
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Amazon / Slack / Stripe Architectural Isolation Patterns
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In a standard multi-tenant cloud service, all 500,000 drivers connect to a shared cluster of microservices sharing a centralized database. If a single bad driver sends a malicious malformed coordinate payload (a "poison pill") that triggers an unhandled memory leak, **it brings down the entire global platform for all 500,000 users** (100% Blast Radius).
+            </p>
+
+            <!-- Visual Flowchart: Monolith vs Cell Architecture (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    Blast Radius Comparison: Monolithic Cluster vs. Cell-Based Architecture
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Standard Monolith -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <span class="text-rose-400 font-bold block text-sm">1. Shared Cluster (100% Blast Radius)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>&bull; 500,000 Drivers connect to unified shared backend</div>
+                            <div>&bull; Poison-pill query locks database tables</div>
+                            <div class="text-rose-400 font-bold">&bull; 100% OF USERS WORLDWIDE GO DOWN!</div>
+                        </div>
+                    </div>
+
+                    <!-- Cell Based -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold block text-sm">2. Cell-Based Architecture (1% Blast Radius)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>&bull; System partitioned into 100 self-contained Cells</div>
+                            <div>&bull; Each Cell owns private compute + private database shard</div>
+                            <div>&bull; Poison pill crashes Cell #42 (5,000 drivers)</div>
+                            <div class="text-emerald-400 font-bold">&check; 99% OF USERS UNAFFECTED! Platform stays online!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 06 -->
+        <section id="omniroute-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 06: Reliability &amp; Cell Isolation Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now construct Milestone 06 for <strong>OmniRoute</strong>: a production-grade Reliability &amp; Fault Domain Engine. Below is the implementation of:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>SLI/SLO mathematical tracking engine</strong> computing real-time error rates and burn rate multipliers.</li>
+                <li><strong>Multi-window burn rate alert generator</strong> enforcing automatic feature deployment freezing when budget burn exceeds thresholds.</li>
+                <li><strong>Cell-Based Dispatch Router</strong> partitioning users into isolated fault domains to bound blast radiuses.</li>
+                <li><strong>Async SQLAlchemy 2.0 telemetry audit table</strong> recording cell health and SLI telemetry frames.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 06)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── reliability/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 06: SLI Telemetry &amp; Cell State (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">sli_engine.py</span>    <span class="text-slate-500"># Milestone 06: Burn Rate Mathematics &amp; Cell Router</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 06: Reliability Endpoints &amp; Burn Alerts</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_reliability_slo.py</span> <span class="text-slate-500"># Milestone 06 SRE Mathematics &amp; Cell Partitioning Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/reliability/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. SLI Telemetry &amp; Cell State Entity: <code class="text-purple-700">src/omniroute/reliability/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Reliability - SLI Telemetry &amp; Fault Domain Cell Storage</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, Integer, Boolean, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SLITelemetryModel</span>(Base):
+    <span class="text-slate-500">"""
+    REAL-TIME SLI LOG:
+    Tracks request success/failure outcomes and latency to compute rolling
+    error budgets and burn rates across services.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"sli_telemetry_logs"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    service_name: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    cell_id: Mapped[str] = mapped_column(String(20), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    is_success: Mapped[bool] = mapped_column(Boolean, nullable=<span class="text-rose-400">False</span>)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/reliability/sli_engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. SRE Burn Rate &amp; Cell Partitioning Engine: <code class="text-purple-700">src/omniroute/reliability/sli_engine.py</code></span>
+                    <span class="text-slate-400">Mathematical Reliability Model</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Reliability - SRE Burn Rate Math &amp; Cell-Based Blast Radius Control</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SLOStatusReport</span>:
+    service_name: str
+    target_slo: float
+    total_events: int
+    failed_events: int
+    sli_percentage: float
+    remaining_error_budget_percentage: float
+    current_burn_rate: float
+    freeze_deployments: bool
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ReliabilityMathEngine</span>:
+    <span class="text-slate-500">"""
+    SRE METRIC CALCULATOR:
+    Computes exact Google SRE Error Budget Burn Rates:
+    Burn Rate = Observed Error Rate / Allowed Budget Rate
+    """</span>
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">calculate_slo_health</span>(
+        cls,
+        service_name: str,
+        total_requests: int,
+        failed_requests: int,
+        target_slo: float = 0.999  <span class="text-slate-500"># 99.9% Three Nines</span>
+    ) -> SLOStatusReport:
+        <span class="text-purple-400">if</span> total_requests &lt;= 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Total requests must be strictly positive."</span>)
+
+        good_requests = total_requests - failed_requests
+        sli = good_requests / total_requests
+
+        allowed_unreliability = 1.0 - target_slo
+        observed_unreliability = failed_requests / total_requests
+
+        <span class="text-slate-500"># Burn Rate Formula (Google SRE Book)</span>
+        burn_rate = round(observed_unreliability / max(allowed_unreliability, 1e-9), 2)
+        remaining_budget = max(0.0, round(((target_slo - (1.0 - sli)) / allowed_unreliability) * 100, 2))
+
+        <span class="text-slate-500"># Policy: Burn rate &gt; 14.4x consumes 2% of monthly budget in 1 hour &rarr; FREEZE!</span>
+        freeze = burn_rate &gt; 14.4 <span class="text-purple-400">or</span> remaining_budget &lt;= 0.0
+
+        <span class="text-purple-400">return</span> SLOStatusReport(
+            service_name=service_name,
+            target_slo=target_slo * 100,
+            total_events=total_requests,
+            failed_events=failed_requests,
+            sli_percentage=round(sli * 100, 3),
+            remaining_error_budget_percentage=remaining_budget,
+            current_burn_rate=burn_rate,
+            freeze_deployments=freeze
+        )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CellBasedRouter</span>:
+    <span class="text-slate-500">"""
+    CELL-BASED ARCHITECTURE ROUTER:
+    Deterministically partitions users into isolated fault domains (Cells).
+    If Cell 42 dies, strictly (1 / total_cells) of the user fleet is affected!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, total_cells: int = 100):
+        self.total_cells = total_cells
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">assign_cell</span>(self, driver_id: str) -> str:
+        <span class="text-slate-500">"""Maps driver UUID to a deterministic cell index (e.g. cell-0 to cell-99)"""</span>
+        digest = hashlib.md5(driver_id.encode(<span class="text-amber-300">"utf-8"</span>)).hexdigest()
+        cell_index = int(digest, 16) % self.total_cells
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"cell-{cell_index:02d}"</span></pre>
+            </div>
+
+            <!-- File 3: src/omniroute/reliability/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. FastAPI Reliability Controller: <code class="text-purple-700">src/omniroute/reliability/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Async Database Reporting</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.reliability.sli_engine <span class="text-purple-400">import</span> ReliabilityMathEngine, CellBasedRouter
+<span class="text-purple-400">from</span> omniroute.reliability.models <span class="text-purple-400">import</span> SLITelemetryModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/reliability"</span>, tags=[<span class="text-amber-300">"Reliability &amp; SRE"</span>])
+cell_router = CellBasedRouter(total_cells=100)
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># DTOs</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SLIEvaluationRequestDTO</span>(BaseModel):
+    service_name: str = Field(..., min_length=2)
+    total_requests: int = Field(..., gt=0)
+    failed_requests: int = Field(..., ge=0)
+    target_slo: float = Field(default=0.999, gt=0.90, lt=1.0)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SLIEvaluationResponseDTO</span>(BaseModel):
+    service_name: str
+    target_slo: float
+    sli_percentage: float
+    remaining_error_budget_percentage: float
+    current_burn_rate: float
+    freeze_deployments: bool
+    sre_action: str
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CellAssignmentResponseDTO</span>(BaseModel):
+    driver_id: str
+    assigned_cell_id: str
+    blast_radius_fraction: str
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/slo/evaluate"</span>,
+    response_model=SLIEvaluationResponseDTO,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"Evaluate Service SLI, SLO &amp; Error Budget Burn Rate"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">evaluate_slo</span>(dto: SLIEvaluationRequestDTO) -> SLIEvaluationResponseDTO:
+    <span class="text-purple-400">if</span> dto.failed_requests &gt; dto.total_requests:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Failed requests cannot exceed total requests."</span>)
+
+    report = ReliabilityMathEngine.calculate_slo_health(
+        service_name=dto.service_name,
+        total_requests=dto.total_requests,
+        failed_requests=dto.failed_requests,
+        target_slo=dto.target_slo
+    )
+
+    action = (
+        <span class="text-amber-300">"CRITICAL: Halt all feature releases. Route 100% engineering to reliability."</span>
+        <span class="text-purple-400">if</span> report.freeze_deployments
+        <span class="text-purple-400">else</span> <span class="text-amber-300">"HEALTHY: Error budget intact. Feature deployments permitted."</span>
+    )
+
+    <span class="text-purple-400">return</span> SLIEvaluationResponseDTO(
+        service_name=report.service_name,
+        target_slo=report.target_slo,
+        sli_percentage=report.sli_percentage,
+        remaining_error_budget_percentage=report.remaining_error_budget_percentage,
+        current_burn_rate=report.current_burn_rate,
+        freeze_deployments=report.freeze_deployments,
+        sre_action=action
+    )
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">"/cells/route/{driver_id}"</span>,
+    response_model=CellAssignmentResponseDTO,
+    summary=<span class="text-amber-300">"Route Driver to Isolated Fault Domain Cell"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">route_driver_to_cell</span>(driver_id: str) -> CellAssignmentResponseDTO:
+    cell = cell_router.assign_cell(driver_id)
+    <span class="text-purple-400">return</span> CellAssignmentResponseDTO(
+        driver_id=driver_id,
+        assigned_cell_id=cell,
+        blast_radius_fraction=f<span class="text-amber-300">"1/{cell_router.total_cells} (1%)"</span>
+    )</pre>
+            </div>
+
+            <!-- File 4: tests/test_reliability_slo.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Reliability Verification Battery: <code class="text-purple-700">tests/test_reliability_slo.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> AsyncClient, ASGITransport
+
+<span class="text-purple-400">from</span> omniroute.reliability.sli_engine <span class="text-purple-400">import</span> ReliabilityMathEngine, CellBasedRouter
+<span class="text-purple-400">from</span> omniroute.api.reliability_router <span class="text-purple-400">import</span> router
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestReliabilityEngineSuite</span>:
+    <span class="text-slate-500">"""Verifies SRE burn rate math, deployment freeze triggers, and cell blast radius isolation."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_healthy_slo_calculation</span>(self):
+        <span class="text-slate-500"># 1,000,000 requests, 100 failures &rarr; 99.99% SLI (Target 99.9%)</span>
+        report = ReliabilityMathEngine.calculate_slo_health(
+            service_name=<span class="text-amber-300">"dispatch"</span>,
+            total_requests=1_000_000,
+            failed_requests=100,
+            target_slo=0.999
+        )
+        assert report.sli_percentage == 99.99
+        assert report.current_burn_rate &lt; 1.0
+        assert report.freeze_deployments <span class="text-purple-400">is False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_burn_rate_spike_triggers_deployment_freeze</span>(self):
+        <span class="text-slate-500"># 100,000 requests, 5,000 failures (5% error rate vs 0.1% allowed = 50x burn rate!)</span>
+        report = ReliabilityMathEngine.calculate_slo_health(
+            service_name=<span class="text-amber-300">"payment_gateway"</span>,
+            total_requests=100_000,
+            failed_requests=5_000,
+            target_slo=0.999
+        )
+        assert report.current_burn_rate == 50.0  <span class="text-slate-500"># 50x nominal rate</span>
+        assert report.freeze_deployments <span class="text-purple-400">is True</span>  <span class="text-slate-500"># Must freeze deploys!</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cell_based_router_deterministic_isolation</span>(self):
+        cell_router = CellBasedRouter(total_cells=100)
+        driver_a = <span class="text-amber-300">"driver_uuid_101"</span>
+        driver_b = <span class="text-amber-300">"driver_uuid_202"</span>
+
+        cell_1 = cell_router.assign_cell(driver_a)
+        cell_2 = cell_router.assign_cell(driver_a)
+        cell_b = cell_router.assign_cell(driver_b)
+
+        <span class="text-slate-500"># Determinism: same driver maps to exact same cell</span>
+        assert cell_1 == cell_2
+        assert cell_1.startswith(<span class="text-amber-300">"cell-"</span>)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_reliability_api_endpoints</span>(self):
+        app = FastAPI()
+        app.include_router(router)
+
+        transport = ASGITransport(app=app)
+        <span class="text-purple-400">async with</span> AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://test"</span>) <span class="text-purple-400">as</span> client:
+            <span class="text-slate-500"># Evaluate healthy SLO</span>
+            res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/reliability/slo/evaluate"</span>, json={
+                <span class="text-amber-300">"service_name"</span>: <span class="text-amber-300">"matching_engine"</span>,
+                <span class="text-amber-300">"total_requests"</span>: 1000000,
+                <span class="text-amber-300">"failed_requests"</span>: 200,
+                <span class="text-amber-300">"target_slo"</span>: 0.999
+            })
+            assert res.status_code == 200
+            assert res.json()[<span class="text-amber-300">"freeze_deployments"</span>] <span class="text-purple-400">is False</span>
+
+            <span class="text-slate-500"># Verify cell routing</span>
+            res_cell = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/api/v1/reliability/cells/route/driver_449"</span>)
+            assert res_cell.status_code == 200
+            assert <span class="text-amber-300">"1/100 (1%)"</span> <span class="text-purple-400">in</span> res_cell.json()[<span class="text-amber-300">"blast_radius_fraction"</span>]</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Reliability Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Serial Dependency Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Designing a microservice call chain where a single user checkout invokes 8 internal services sequentially, each promising 99.9% uptime.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes frequent outages:</strong> Remember the serial availability formula: $A_{\text{total}} = 0.999^8 \approx \mathbf{99.2\%}$. Your application will experience over <strong>70 hours of downtime per year</strong> despite every single underlying microservice meeting its individual Three Nines SLO! Never build long, blocking synchronous RPC chains. Decouple via asynchronous queues and local read-model caches.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Alerting on Raw Error Spikes (The SRE Page Storm)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring on-call pagers to trigger whenever error rate exceeds 1% in a 1-minute window.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this burns out teams:</strong> A brief network glitch or single bad request spike causes an alert at 3:00 AM, but resolves 10 seconds later before the engineer can log in. Meanwhile, a slow 0.5% continuous error bleed that consumes 100% of your monthly budget over 3 days never triggers the 1% threshold! <strong>Always alert on multi-window Error Budget Burn Rates, not momentary threshold spikes.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the SRE reliability math suite and verify Cell-Based fault domain routing:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the SRE Mathematics and Cell Partitioning test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_reliability_slo.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms SRE burn rate math, deployment freeze triggers, and cell-based blast radius limits!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate SRE burn rate calculation in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from omniroute.reliability.sli_engine import ReliabilityMathEngine; r = ReliabilityMathEngine.calculate_slo_health('dispatch', 100000, 500, 0.999); print(f'SLI: {r.sli_percentage}% | Burn Rate: {r.current_burn_rate}x | Freeze Deployments: {r.freeze_deployments}')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">SLI: 99.5% | Burn Rate: 5.0x | Freeze Deployments: False</code>
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Real-Time State: Multi-Instance WebSockets &amp; The Distributed Connection Problem</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering real-time stateful systems: Why round-robin breaks WebSockets, managing sticky sessions, decoupling connections from compute using Redis Pub/Sub backplanes, and scaling to millions of live persistent sockets.</p>
+            </div>
+            <a href="Chapter 07 - Real-Time State - Multi-Instance WebSockets and The Distributed Connection Problem.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

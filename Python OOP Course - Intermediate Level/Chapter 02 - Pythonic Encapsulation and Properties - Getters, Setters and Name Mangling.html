@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Pythonic Encapsulation &amp; Properties - Getters, Setters &amp; Name Mangling</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP &amp; Intermediate Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OrderForge (Milestone 02 - State Validation &amp; Properties)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Protecting Internal State
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 02: Pythonic Encapsulation &amp; Properties - Getters, Setters &amp; Name Mangling
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Securing the internal boundaries of your objects: Exploring the Uniform Access Principle, why Java-style <code class="font-mono text-emerald-400">get_price()</code> methods are considered harmful in Python, transparently wrapping attributes with the <code class="font-mono text-emerald-400">@property</code> descriptor, deconstructing CPython's name mangling mechanism, and building a validated <code class="font-mono text-emerald-400">OrderItem</code> for <strong>OrderForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Module 2 Encapsulation</span>
+                    <h2 class="text-2xl font-extrabold">OrderForge Milestone 02: Validating Order Items</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established our basic <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Item</code> blueprint. In real-world E-Commerce, users don't just buy "an item"; they select a quantity. A quantity of $-3$ or $0$ violates core business logic. In Milestone 02, we build the <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">OrderItem</code> class. Instead of forcing callers to use clunky <code class="font-mono text-slate-300 bg-slate-950 px-1 py-0.5 rounded">item.set_quantity(5)</code> methods, we implement Python's <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">@property</code> decorator. This allows us to expose <code class="font-mono text-slate-300 bg-slate-950 px-1 py-0.5 rounded">item.quantity = 5</code> to the outside world while silently running strict validation logic behind the scenes.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Uniform Access Principle</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Private vs. Protected Cultural Conventions</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython Name Mangling (<code class="text-purple-300">__var</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">@property</code> Descriptor</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Computed / Read-Only Properties</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> OrderForge <code class="text-purple-300">OrderItem</code> Core Architecture</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Pythonic Encapsulation -->
+        <section id="uniform-access-principle" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Uniform Access Principle</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Encapsulation is the practice of hiding the internal state of an object and requiring all interactions to be performed through an object's methods. In static languages (like Java), this is rigidly enforced by making attributes <code class="font-mono text-slate-800">private</code> and exposing <code class="font-mono text-slate-800">public getPrice()</code> and <code class="font-mono text-slate-800">setPrice()</code> methods from day one, "just in case" you need validation later.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Python rejects this boilerplate in favor of Bertrand Meyer's <strong>Uniform Access Principle</strong>. In Python, you start with simple, public attributes. If business rules change and you suddenly need to validate an attribute, you wrap it in a <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@property</code>. 
+            </p>
+            <p class="text-slate-700 leading-relaxed font-semibold">
+                The caller continues using standard dot notation (<code class="font-mono text-slate-800">obj.price = 50</code>), completely unaware that they are now triggering hidden validation methods under the hood!
+            </p>
+
+            <!-- Java vs Python Visual Comparison (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Encapsulation Mechanics: Java Boilerplate vs. Pythonic Properties
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Java Style (Anti-Pattern in Python) -->
+                    <div class="p-5 bg-slate-950 border border-rose-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Explicit Getters/Setters (Un-Pythonic)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded font-bold border border-rose-800">Verbose API</span>
+                        </div>
+                        <pre class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">OrderItem</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, qty: int):
+        self.set_quantity(qty)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_quantity</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._qty
+        
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">set_quantity</span>(self, value: int):
+        <span class="text-purple-400">if</span> value &lt;= 0: <span class="text-purple-400">raise</span> ValueError()
+        self._qty = value
+
+<span class="text-slate-500"># Caller usage is clunky:</span>
+item.set_quantity(item.get_quantity() + 1)</pre>
+                    </div>
+
+                    <!-- Python Style (@property) -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Python @property (Uniform Access)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">Clean API</span>
+                        </div>
+                        <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderItem</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, qty: int):
+        self.quantity = qty <span class="text-slate-500"># Triggers setter!</span>
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">quantity</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._qty
+        
+    <span class="text-purple-400">@quantity.setter</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">quantity</span>(self, value: int):
+        <span class="text-purple-400">if</span> value &lt;= 0: <span class="text-purple-400">raise</span> ValueError()
+        self._qty = value
+
+<span class="text-slate-500"># Caller usage is elegant and natural:</span>
+item.quantity += 1</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Protected vs. Private (Name Mangling) -->
+        <section id="visibility-conventions" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Visibility Conventions: Protected vs. Name Mangling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Because Python has no compiler-enforced <code class="font-mono text-slate-800">private</code> keyword, it relies on two primary mechanisms to signal visibility to developers:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Protected (Single Underscore) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-sky-700 uppercase tracking-widest block">The Cultural Convention</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Protected (_single_leading)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        A single leading underscore (e.g., <code class="font-mono text-slate-800">self._quantity</code>) is purely a <strong>cultural convention</strong>. It does nothing at runtime.
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        It signals to other developers: <em>"This is an internal implementation detail. If you access it directly from outside the class, your code might break in the next version."</em> It is the standard way to store the actual data behind a <code class="font-mono text-slate-800">@property</code>.
+                    </p>
+                </div>
+
+                <!-- Private (Double Underscore) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">The Runtime Mechanism</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Name Mangling (__double_leading)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        A double leading underscore (e.g., <code class="font-mono text-slate-800">self.__secret</code>) triggers <strong>Name Mangling</strong>. CPython dynamically rewrites the attribute name during compilation to include the class name: <code class="font-mono text-slate-800">_ClassName__secret</code>.
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        This is <strong>not</strong> for security! Its sole architectural purpose is to prevent accidental attribute name collisions in deep inheritance trees (where a subclass might unknowingly use the same variable name as a parent class).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Computed / Read-Only Properties -->
+        <section id="computed-properties" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computed Attributes: Read-Only Properties</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A powerful feature of the <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">@property</code> decorator is the ability to create <strong>Computed Attributes</strong> (also known as Read-Only properties).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If you define a <code class="font-mono text-slate-800">@property</code> but intentionally omit the <code class="font-mono text-slate-800">@name.setter</code>, the attribute becomes strictly read-only from the outside. Attempting to assign a value to it raises an immediate <code class="font-mono text-rose-700 font-bold">AttributeError: can't set attribute</code>. This is highly effective for dynamically calculated totals (like <code class="font-mono text-slate-800">subtotal = price * quantity</code>) where storing the result in a separate variable would risk state de-synchronization.
+            </p>
+        </section>
+
+        <!-- 4. Project Implementation: OrderForge Milestone 02 -->
+        <section id="orderforge-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OrderForge Milestone 02: The OrderItem &amp; Validation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 02 of <strong>OrderForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/orderforge/domain/order_item.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">OrderItem</code>: Composes the <code class="font-mono text-slate-800">Item</code> from Chapter 1 with a purchase quantity.</li>
+                <li><strong>Validation on Initialization:</strong> Passing <code class="font-mono text-slate-800">self.quantity = quantity</code> inside <code class="font-mono text-slate-800">__init__</code> intentionally triggers the property setter, ensuring validation rules run immediately upon creation.</li>
+                <li><strong>Data Encapsulation:</strong> The true integer is stored safely in the protected <code class="font-mono text-slate-800">_quantity</code> variable.</li>
+                <li><strong>Computed Property:</strong> <code class="font-mono text-slate-800">subtotal</code> dynamically calculates the total cost, preventing out-of-sync data if the quantity is later updated.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OrderForge Project Hierarchy (Milestone 02)</div>
+                <div>orderforge/</div>
+                <div>├── src/</div>
+                <div>│   └── orderforge/</div>
+                <div>│       └── domain/</div>
+                <div>│           ├── item.py                 <span class="text-slate-500"># Milestone 01: Class Anatomy</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">order_item.py</span>           <span class="text-slate-500"># Milestone 02: Encapsulation &amp; Properties</span></div>
+                <div>└── tests/</div>
+                <div>    ├── test_item.py                <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>    └── <span class="text-purple-300 font-bold">test_order_item.py</span>          <span class="text-slate-500"># Milestone 02: Validation &amp; Property Tests</span></div>
+            </div>
+
+            <!-- File 1: src/orderforge/domain/order_item.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Domain Model: <code class="text-purple-700">src/orderforge/domain/order_item.py</code></span>
+                    <span class="text-slate-400">Validation &amp; Computed Properties</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Domain - Pythonic Encapsulation &amp; Properties (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> orderforge.domain.item <span class="text-purple-400">import</span> Item
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderItem</span>:
+    <span class="text-slate-500">"""
+    Domain Model: Represents a specific quantity of an Item added to an Order.
+    Demonstrates the Uniform Access Principle via @property validation.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, item: Item, quantity: int) -> <span class="text-rose-400">None</span>:
+        self.item: Item = item
+        
+        <span class="text-slate-500"># TRICK: Assigning to the public attribute `self.quantity`</span>
+        <span class="text-slate-500"># automatically triggers the `@quantity.setter` method below!</span>
+        <span class="text-slate-500"># This ensures validation runs immediately upon instantiation.</span>
+        self.quantity = quantity
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">quantity</span>(self) -> int:
+        <span class="text-slate-500">"""Getter: Exposes the protected _quantity attribute seamlessly."""</span>
+        <span class="text-purple-400">return</span> self._quantity
+
+    <span class="text-purple-400">@quantity.setter</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">quantity</span>(self, value: int) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Setter: Enforces domain business rules before modifying internal state."""</span>
+        <span class="text-purple-400">if not isinstance</span>(value, int):
+            <span class="text-purple-400">raise</span> TypeError(<span class="text-amber-300">"Quantity must be a whole integer."</span>)
+        <span class="text-purple-400">if</span> value &lt;= 0:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Quantity must be greater than zero. Received: {value}"</span>)
+        
+        <span class="text-slate-500"># Safe assignment to the protected convention variable</span>
+        self._quantity: int = value
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">subtotal</span>(self) -> float:
+        <span class="text-slate-500">"""
+        Computed / Read-Only Property.
+        Has no @subtotal.setter. Cannot be manually overridden.
+        Dynamically calculates the total based on current price and quantity.
+        """</span>
+        <span class="text-purple-400">return</span> self.item.price * self.quantity
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"OrderItem(item={self.item.sku!r}, quantity={self.quantity}, subtotal={self.subtotal:.2f})"</span></pre>
+            </div>
+
+            <!-- File 2: tests/test_order_item.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/test_order_item.py</code></span>
+                    <span class="text-slate-400">Testing Properties &amp; Constraints</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Test Suite - OrderItem Property Verification (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> orderforge.domain.item <span class="text-purple-400">import</span> Item
+<span class="text-purple-400">from</span> orderforge.domain.order_item <span class="text-purple-400">import</span> OrderItem
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestOrderItemProperties</span>:
+    <span class="text-slate-500">"""Unit tests asserting property validation, computed attributes, and error boundaries."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">setup_method</span>(self):
+        <span class="text-slate-500"># Reusable base item for tests</span>
+        self.item = Item(sku=<span class="text-amber-300">"SKU-100"</span>, name=<span class="text-amber-300">"Monitor"</span>, price=200.0)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_successful_creation_and_computed_subtotal</span>(self):
+        order_item = OrderItem(self.item, quantity=3)
+        
+        # Test standard property access
+        assert order_item.quantity == 3
+        # Test computed read-only property
+        assert order_item.subtotal == 600.0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_setter_validation_blocks_invalid_quantity</span>(self):
+        order_item = OrderItem(self.item, quantity=1)
+        
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"greater than zero"</span>):
+            order_item.quantity = -5  # Triggers setter validation
+
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"greater than zero"</span>):
+            order_item.quantity = 0
+
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"whole integer"</span>):
+            order_item.quantity = <span class="text-amber-300">"five"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_computed_property_is_read_only</span>(self):
+        order_item = OrderItem(self.item, quantity=2)
+        
+        <span class="text-purple-400">with</span> pytest.raises(AttributeError, match=<span class="text-amber-300">r"can't set attribute"</span>):
+            # subtotal lacks a @subtotal.setter, so it cannot be manually overridden
+            order_item.subtotal = 999.99
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_subtotal_dynamically_updates_on_state_change</span>(self):
+        order_item = OrderItem(self.item, quantity=2)
+        assert order_item.subtotal == 400.0
+        
+        # Mutate the quantity through the public property
+        order_item.quantity = 5
+        
+        # Subtotal must dynamically reflect the new state!
+        assert order_item.subtotal == 1000.0</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Infinite Recursion Trap in Setters</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">self.quantity = value</code> inside the <code class="font-mono text-rose-900 font-bold">@quantity.setter</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why it crashes:</strong> Assigning to the public property name inside the setter triggers the setter *again*, which assigns the name *again*, resulting in an infinite loop that crashes Python with a <code class="font-mono text-rose-950 font-bold">RecursionError: maximum recursion depth exceeded</code>. You must store the value in a protected attribute, e.g., <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">self._quantity = value</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Expensive Logic in Properties</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Putting a database query or network request inside a <code class="font-mono text-rose-900 font-bold">@property</code>, like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">@property def current_weather(self): return api.get('/weather')</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is terrible for maintenance:</strong> Python developers naturally assume that accessing an attribute (e.g. <code class="font-mono">obj.weather</code>) is a cheap, instant, in-memory operation. If someone puts <code class="font-mono">obj.weather</code> inside a `for` loop, your app will make 10,000 API calls and lock up. <strong>Rule:</strong> If an operation requires heavy computation or external I/O, expose it as an explicit method (<code class="font-mono text-rose-900 font-bold">def fetch_weather():</code>).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OrderForge Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify the <code class="font-mono text-slate-400">OrderItem</code> property validations:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute OrderItem unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_order_item.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.02s. Confirms setter validation guards, dynamic properties, and read-only protection.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Entire Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute all tests across Milestones 01 and 02:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/ -v
+                    </div>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration of CPython Name Mangling:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "class Secret:
+    def __init__(self): self.__password = 'admin'
+s = Secret()
+print('Available attributes:', s.__dict__.keys())
+print('Accessing mangled name:', s._Secret__password)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how '__password' doesn't exist in the dictionary, but '_Secret__password' does! This proves mangling is for namespace safety, not security.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: Object Composition &amp; Nested Instances - Building Complex Hierarchies</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving from isolated objects to complex systems. Discover why "Composition over Inheritance" is the golden rule of OOP, how to safely nest Address and Customer objects, and assembling the master Order aggregate.</p>
+            </div>
+            <a href="Chapter 03 - Object Composition and Nested Instances - Building Complex Hierarchies.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>Python OOP &amp; Intermediate Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

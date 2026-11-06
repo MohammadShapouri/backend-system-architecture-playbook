@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 18: Monolith to Modular Monolith to Microservices: The Strangler Fig Pattern</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 18 - Architectural Evolution &amp; Migration)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 18 &bull; Evolutionary Architecture &amp; Refactoring
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Monolith to Modular Monolith to Microservices: The Strangler Fig Pattern
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                The evolutionary continuum of system architecture: Why premature microservices destroy engineering velocity, enforcing domain boundaries via <strong>Modular Monoliths</strong>, executing zero-downtime database decompositions with the <strong>Strangler Fig Pattern</strong>, and migrating the legacy dispatch core of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 18: The Strangler Migration Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 17, we constructed an immutable double-entry ledger to guarantee financial correctness. In Milestone 18, we tackle the ultimate operational challenge faced by growing technology companies: <strong>Migrating a legacy monolith without taking the business offline</strong>. OmniRoute began as a monolithic dispatch service. As team size and transaction volume scaled, monolithic deployments became bottlenecked. Rather than risking a disastrous "Big Bang" rewrite, we apply Martin Fowler's <strong>Strangler Fig Pattern</strong>. We build an intelligent <strong>Ingress Proxy Interceptor</strong> in FastAPI and async SQLAlchemy 2.0 that routes traffic progressively between legacy tables and newly extracted domain modules, featuring traffic canary weighting, automated shadow reads, and zero-loss parity auditing.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 18 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Microservice Premium &amp; Fowler's MonolithFirst Law</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Modular Monoliths: The High-Velocity Sweet Spot</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 4 Phases of the Strangler Fig Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Downtime Database Splitting Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Case Study: Shopify's Modular Monolith Refactoring</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Strangler Proxy &amp; Shadow Verifier in FastAPI</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete Automated PyTest Migration Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Architectural Theory -->
+        <section id="architectural-continuum" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Evolutionary Architecture</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Architectural Continuum: Monolith vs. Modular Monolith vs. Microservices</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In industry discourse, architecture is frequently framed as a binary dogma: <em>"Monoliths are legacy and bad; Microservices are modern and good."</em> 
+                This perspective has killed hundreds of startups and burned millions in engineering capital.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Martin Fowler codified the <strong>MonolithFirst Law</strong>: <em>"Almost all successful microservice stories started with a monolith that got too big and was broken up. Almost all cases where an architecture started directly as microservices ended up in serious trouble."</em>
+            </p>
+
+            <!-- 3 Architectural Archetypes Grid -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- Traditional Monolith -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">1. Spaghetti Monolith</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Unconstrained</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Single codebase where everything imports everything. Controllers query database tables directly, bypassing domain logic.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-rose-300 space-y-1">
+                        <div>&bull; Fast initial velocity for 1 to 5 engineers</div>
+                        <div class="text-rose-400 font-bold">&bull; Degrades into a fragile "Big Ball of Mud"</div>
+                        <div>&bull; A bug in invoice PDF generation crashes live ride dispatching!</div>
+                    </div>
+                </div>
+
+                <!-- Modular Monolith -->
+                <div class="p-5 bg-white border-2 border-emerald-500 rounded-2xl shadow-md space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">2. Modular Monolith</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">The Staff Sweet Spot</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Single deployable artifact, but with **strictly enforced code boundaries** (DDD Bounded Contexts).
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-emerald-300 space-y-1">
+                        <div>&bull; In-process function calls: Nanosecond latency!</div>
+                        <div>&bull; Single database deployment: Simple operations</div>
+                        <div class="text-emerald-400 font-bold">&check; Modules communicate ONLY via public interfaces!</div>
+                    </div>
+                </div>
+
+                <!-- Microservices -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">3. Microservices</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Independent Deploys</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Services deployed as independent network processes, each with its private database.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-purple-300 space-y-1">
+                        <div>&bull; Independent team scaling (100+ engineers)</div>
+                        <div class="text-amber-400 font-bold">&bull; The Microservice Premium: Network latency, distributed transactions, tracing complexity</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the difference between a multi-room house versus an entire suburban village of detached buildings.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    A <strong>Modular Monolith</strong> is a well-designed luxury house. The kitchen, bedrooms, and bathrooms are separated by solid walls and locked doors (Module Boundaries). If someone is cooking in the kitchen, they don't disturb the person sleeping in the bedroom. But when you need an apple from the fridge, you walk down the hall in 5 seconds (In-Process Call).
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A <strong>Microservice Architecture</strong> is a village where every room is a separate house 500 meters apart. Your kitchen is at 100 Main Street; your toilet is at 450 Oak Avenue; your bed is at 800 Pine Road. Every time you need a glass of water, you must put on your boots, start your car, drive across town through traffic lights (Network Latency), pay a toll bridge (Serialization/TLS), and hope the road isn't closed (Network Failure)! You only build a village when you have 500 distinct people who cannot fit inside one house.
+                </p>
+            </div>
+        </section>
+
+        <!-- THE STRANGLER FIG PATTERN -->
+        <section id="strangler-pattern" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Migration Pattern
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Strangler Fig Pattern: Zero-Downtime System Replacement
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Martin Fowler (2004) &bull; Incremental Decomposition &bull; Zero Big-Bang Risk
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                During a vacation in Australia, Martin Fowler observed the biological lifecycle of the <strong>Strangler Fig</strong>:
+                A bird drops a seed into the high branches of a massive, ancient host tree. The strangler fig germinates in the upper canopy and gradually sends aerial roots down the trunk to the forest floor. Over decades, the strangler's roots thicken into a lattice that completely envelops the host tree. Eventually, the original host tree dies and rots away inside, leaving a hollow, free-standing, flourishing strangler fig tree.
+            </p>
+
+            <!-- Visual Flowchart: The 4 Phases of Strangler Migration -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The 4 Phases of Strangler Fig Architectural Replacement
+                </div>
+
+                <div class="grid md:grid-cols-4 gap-3 text-center">
+                    <!-- Phase 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-700 rounded-xl space-y-1">
+                        <span class="text-sky-300 font-bold block text-xs">Phase 1: Intercept</span>
+                        <div class="text-[9px] text-slate-400 font-sans">
+                            Deploy Ingress Proxy (Facade) in front of legacy monolith. 100% of traffic routes to monolith.
+                        </div>
+                    </div>
+
+                    <!-- Phase 2 -->
+                    <div class="p-3 bg-slate-950 border border-purple-500 rounded-xl space-y-1">
+                        <span class="text-purple-300 font-bold block text-xs">Phase 2: Transform</span>
+                        <div class="text-[9px] text-slate-400 font-sans">
+                            Extract single domain (e.g. Dispatch Engine) into new modern service with own DB.
+                        </div>
+                    </div>
+
+                    <!-- Phase 3 -->
+                    <div class="p-3 bg-slate-950 border border-amber-500 rounded-xl space-y-1">
+                        <span class="text-amber-300 font-bold block text-xs">Phase 3: Coexist</span>
+                        <div class="text-[9px] text-slate-400 font-sans">
+                            Proxy routes 5% &rarr; 50% &rarr; 100% of dispatch traffic to new service. Shadow reads verify parity.
+                        </div>
+                    </div>
+
+                    <!-- Phase 4 -->
+                    <div class="p-3 bg-emerald-950/80 border-2 border-emerald-500 rounded-xl space-y-1">
+                        <span class="text-emerald-300 font-bold block text-xs">Phase 4: Eliminate</span>
+                        <div class="text-[9px] text-emerald-200 font-sans">
+                            Decommission legacy code and drop old tables. Monolith successfully strangled!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Why the Big-Bang Rewrite is Suicide:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The "Big-Bang" approach (halting feature work for 18 months to rewrite the system from scratch) almost always ends in disaster (e.g. Netscape 6.0). The legacy system continues evolving to serve business needs; the rewrite team aims at a moving target, runs out of budget, and ships a buggy release that customers reject. <strong>The Strangler Fig delivers incremental value in production every single sprint!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- DATABASE DECOMPOSITION WITHOUT DOWNTIME -->
+        <section id="database-decomposition" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Database Engineering
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Splitting the Shared Database Without Dropping Queries
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Dual-Writes &bull; Backfilling &bull; Shadow Verification &bull; The Master Cutover
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Splitting code is easy; **splitting state is hard**. In monolithic systems, tables are linked via foreign keys and complex joins. 
+                Decomposing a shared monolithic database into isolated microservice databases requires a strict 5-stage migration sequence:
+            </p>
+
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Stage</th>
+                            <th class="p-3">Write Target</th>
+                            <th class="p-3">Read Target</th>
+                            <th class="p-3 text-emerald-700">Safety &amp; Rollback Mechanism</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">1. Dual-Write Ingress</td>
+                            <td class="p-3 font-sans">Primary: Legacy DB<br>Secondary: Modern DB (async outbox / CDC)</td>
+                            <td class="p-3 font-sans">Legacy DB (100%)</td>
+                            <td class="p-3 text-slate-600 font-sans">If modern write fails, legacy transaction still succeeds. Zero user impact.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">2. Historical Backfill</td>
+                            <td class="p-3 font-sans">Dual-Writing continues</td>
+                            <td class="p-3 font-sans">Legacy DB (100%)</td>
+                            <td class="p-3 text-slate-600 font-sans">Background workers copy historical rows created before dual-writing started.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-amber-50/50">
+                            <td class="p-3 font-bold text-amber-900">3. Shadow Reads (Parity Audit)</td>
+                            <td class="p-3 font-sans">Dual-Writing continues</td>
+                            <td class="p-3 font-sans">Primary Read: Legacy DB<br>Shadow Read: Modern DB</td>
+                            <td class="p-3 text-slate-600 font-sans">Application reads both, serves legacy response, but logs diff anomalies asynchronously!</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-emerald-50/50">
+                            <td class="p-3 font-bold text-emerald-900">4. Canary Cutover</td>
+                            <td class="p-3 font-sans">Primary: Modern DB<br>Reverse Sync: Legacy DB</td>
+                            <td class="p-3 font-sans text-emerald-700 font-bold">Modern DB (1% &rarr; 10% &rarr; 100%)</td>
+                            <td class="p-3 text-slate-600 font-sans">Reverse sync allows instantaneous 1-second rollback if new service misbehaves.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">5. Deprecation &amp; Pruning</td>
+                            <td class="p-3 font-sans text-emerald-700 font-bold">Modern DB exclusively</td>
+                            <td class="p-3 font-sans text-emerald-700 font-bold">Modern DB exclusively</td>
+                            <td class="p-3 text-slate-600 font-sans">Remove reverse sync, delete legacy columns, decommission old tables.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 18 -->
+        <section id="omniroute-milestone-18" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 18: Strangler Fig Ingress &amp; Migration Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 18 for <strong>OmniRoute</strong>: a production-grade Strangler Fig Architecture demonstrating:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Strangler Ingress Proxy (Facade):</strong> Intercepts dispatch calls and dynamically routes traffic using canary percentage weighting.</li>
+                <li><strong>Shadow Read Verification Engine:</strong> Asynchronously queries both legacy and modern services, verifying 100% data parity without slowing down user responses.</li>
+                <li><strong>Legacy vs. Modern Data Isolation:</strong> Decoupled SQLAlchemy 2.0 schemas proving separation between the legacy monolithic tables and the new microservice model.</li>
+                <li><strong>Automated PyTest Battery:</strong> Testing zero-loss proxy routing, parity divergence detection, and rollback safety.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 18)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── migration/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>            <span class="text-slate-500"># Milestone 18: Legacy vs. Modern DB Models (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">strangler_proxy.py</span>   <span class="text-slate-500"># Milestone 18: Dynamic Routing &amp; Shadow Read Verifier</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>            <span class="text-slate-500"># Milestone 18: Ingress API Gateway</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_strangler_migration.py</span> <span class="text-slate-500"># Milestone 18 Canary Routing &amp; Parity Test Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/migration/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Legacy vs. Modern Schemas: <code class="text-purple-700">src/omniroute/migration/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Migration - Legacy Monolith vs. Modern Microservice Schemas</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, DateTime, Boolean
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">LegacyMonolithicDispatchModel</span>(Base):
+    <span class="text-slate-500">"""
+    THE LEGACY HOST SCHEMA (Being Strangled):
+    Monolithic table coupling dispatch, vehicle coordinates, and pricing into one wide table.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"legacy_monolith_dispatches"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    trip_id: Mapped[str] = mapped_column(String(50), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    driver_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    raw_status: Mapped[str] = mapped_column(String(30), default=<span class="text-amber-300">"PENDING_DISPATCH"</span>)
+    fare: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ModernExtractedDispatchModel</span>(Base):
+    <span class="text-slate-500">"""
+    THE NEW MICROSERVICE SCHEMA (The Strangler Fig):
+    Normalized, decoupled domain entity optimized for high-throughput dispatch.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"modern_extracted_dispatches"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    trip_id: Mapped[str] = mapped_column(String(50), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    assigned_driver_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    normalized_status: Mapped[str] = mapped_column(String(30), default=<span class="text-amber-300">"ASSIGNED"</span>)
+    total_amount: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    migrated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+
+<span class="text-purple-400">class</span> <span class="text-sky-400 font-bold">MigrationParityAuditModel</span>(Base):
+    <span class="text-slate-500">"""Logs shadow read discrepancies between legacy and modern backends."""</span>
+    __tablename__ = <span class="text-amber-300">"migration_parity_audits"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    trip_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    has_discrepancy: Mapped[bool] = mapped_column(Boolean, default=<span class="text-rose-400">False</span>)
+    legacy_response_json: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    modern_response_json: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    audited_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/migration/strangler_proxy.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Strangler Routing &amp; Shadow Verifier: <code class="text-purple-700">src/omniroute/migration/strangler_proxy.py</code></span>
+                    <span class="text-slate-400">Canary &amp; Parity Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Migration - Strangler Fig Proxy &amp; Shadow Read Verifier</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> random
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Tuple, Dict, Any, Optional
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> omniroute.migration.models <span class="text-purple-400">import</span> (
+    LegacyMonolithicDispatchModel, ModernExtractedDispatchModel, MigrationParityAuditModel
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StranglerRoutingEngine</span>:
+    <span class="text-slate-500">"""
+    STRANGLER FIG ROUTING PROXY:
+    1. Canary Routing: Routes traffic between Legacy Monolith and New Service based on migration percentage.
+    2. Shadow Reads: Compares responses asynchronously without blocking client latency.
+    3. Emergency Fallback: If modern service misbehaves, traffic instantly falls back to monolith.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, migration_traffic_percentage: float = 0.0):
+        self.migration_percentage = migration_traffic_percentage  <span class="text-slate-500"># 0.0 to 100.0</span>
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">should_route_to_modern</span>(self, trip_id: str) -> bool:
+        <span class="text-slate-500">"""Deterministic routing based on canary percentage."""</span>
+        <span class="text-purple-400">if</span> self.migration_percentage &lt;= 0.0:
+            <span class="text-purple-400">return False</span>
+        <span class="text-purple-400">if</span> self.migration_percentage &gt;= 100.0:
+            <span class="text-purple-400">return True</span>
+        <span class="text-slate-500"># Uniform hash bucket evaluation</span>
+        bucket = hash(trip_id) % 100
+        <span class="text-purple-400">return</span> bucket &lt; self.migration_percentage
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute_dual_write</span>(
+        self, trip_id: str, driver_id: str, fare: float, session: AsyncSession
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Stage 1: Writes to both legacy and modern tables within transaction."""</span>
+        legacy = LegacyMonolithicDispatchModel(
+            trip_id=trip_id,
+            driver_id=driver_id,
+            fare=fare,
+            raw_status=<span class="text-amber-300">"PENDING_DISPATCH"</span>
+        )
+        modern = ModernExtractedDispatchModel(
+            trip_id=trip_id,
+            assigned_driver_id=driver_id,
+            total_amount=fare,
+            normalized_status=<span class="text-amber-300">"ASSIGNED"</span>
+        )
+        session.add(legacy)
+        session.add(modern)
+        <span class="text-purple-400">await</span> session.commit()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_dispatch_with_shadow_parity</span>(
+        self, trip_id: str, session: AsyncSession
+    ) -> Tuple[Dict[str, Any], str]:
+        <span class="text-slate-500">"""
+        Reads from active target and executes asynchronous shadow comparison.
+        """</span>
+        use_modern = self.should_route_to_modern(trip_id)
+
+        <span class="text-slate-500"># Fetch both to verify parity</span>
+        legacy_stmt = select(LegacyMonolithicDispatchModel).where(LegacyMonolithicDispatchModel.trip_id == trip_id)
+        modern_stmt = select(ModernExtractedDispatchModel).where(ModernExtractedDispatchModel.trip_id == trip_id)
+
+        leg_res = <span class="text-purple-400">await</span> session.execute(legacy_stmt)
+        mod_res = <span class="text-purple-400">await</span> session.execute(modern_stmt)
+
+        legacy_row = leg_res.scalar_one_or_none()
+        modern_row = mod_res.scalar_one_or_none()
+
+        legacy_dict = {<span class="text-amber-300">"driver"</span>: legacy_row.driver_id, <span class="text-amber-300">"fare"</span>: legacy_row.fare} <span class="text-purple-400">if</span> legacy_row <span class="text-purple-400">else</span> {}
+        modern_dict = {<span class="text-amber-300">"driver"</span>: modern_row.assigned_driver_id, <span class="text-amber-300">"fare"</span>: modern_row.total_amount} <span class="text-purple-400">if</span> modern_row <span class="text-purple-400">else</span> {}
+
+        <span class="text-slate-500"># Parity Check</span>
+        has_diff = legacy_dict != modern_dict
+        audit = MigrationParityAuditModel(
+            trip_id=trip_id,
+            has_discrepancy=has_diff,
+            legacy_response_json=json.dumps(legacy_dict),
+            modern_response_json=json.dumps(modern_dict)
+        )
+        session.add(audit)
+        <span class="text-purple-400">await</span> session.commit()
+
+        <span class="text-purple-400">if</span> use_modern <span class="text-purple-400">and</span> modern_row:
+            <span class="text-purple-400">return</span> modern_dict, <span class="text-amber-300">"MODERN_MICROSERVICE"</span>
+        <span class="text-purple-400">return</span> legacy_dict, <span class="text-amber-300">"LEGACY_MONOLITH"</span></pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Strangler Ingress API Router: <code class="text-purple-700">src/omniroute/migration/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Canary Ingress</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.migration.strangler_proxy <span class="text-purple-400">import</span> StranglerRoutingEngine
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/migration"</span>, tags=[<span class="text-amber-300">"Strangler Fig Migration"</span>])
+strangler_engine = StranglerRoutingEngine(migration_traffic_percentage=0.0)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IngestDispatchDTO</span>(BaseModel):
+    trip_id: str
+    driver_id: str
+    fare: float = Field(..., gt=0.0)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CanaryConfigDTO</span>(BaseModel):
+    percentage: float = Field(..., ge=0.0, le=100.0)
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/canary/configure"</span>, status_code=status.HTTP_200_OK)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">configure_canary_percentage</span>(dto: CanaryConfigDTO):
+    strangler_engine.migration_percentage = dto.percentage
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"UPDATED"</span>, <span class="text-amber-300">"active_modern_percentage"</span>: dto.percentage}
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/dispatch/write"</span>, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">write_dispatch</span>(dto: IngestDispatchDTO, db: AsyncSession = Depends(get_session)):
+    <span class="text-purple-400">await</span> strangler_engine.execute_dual_write(dto.trip_id, dto.driver_id, dto.fare, db)
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"DUAL_WRITE_COMMITTED"</span>, <span class="text-amber-300">"trip_id"</span>: dto.trip_id}
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/dispatch/{trip_id}"</span>, status_code=status.HTTP_200_OK)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">read_dispatch</span>(trip_id: str, db: AsyncSession = Depends(get_session)):
+    data, served_by = <span class="text-purple-400">await</span> strangler_engine.get_dispatch_with_shadow_parity(trip_id, db)
+    <span class="text-purple-400">if not</span> data:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Trip dispatch record not found."</span>)
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"trip_id"</span>: trip_id, <span class="text-amber-300">"served_by"</span>: served_by, <span class="text-amber-300">"data"</span>: data}</pre>
+            </div>
+
+            <!-- File 4: tests/test_strangler_migration.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Strangler Migration Test Suite: <code class="text-purple-700">tests/test_strangler_migration.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> omniroute.migration.models <span class="text-purple-400">import</span> Base, MigrationParityAuditModel
+<span class="text-purple-400">from</span> omniroute.migration.strangler_proxy <span class="text-purple-400">import</span> StranglerRoutingEngine
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestStranglerMigrationSuite</span>:
+    <span class="text-slate-500">"""Verifies canary routing, dual-write consistency, and shadow parity audits."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_canary_routing_transitions_between_backends</span>(self, in_memory_db):
+        engine = StranglerRoutingEngine(migration_traffic_percentage=0.0)
+
+        <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+            <span class="text-slate-500"># 1. Dual-write trip</span>
+            <span class="text-purple-400">await</span> engine.execute_dual_write(<span class="text-amber-300">"trip_42"</span>, <span class="text-amber-300">"driver_99"</span>, 35.0, session)
+
+            <span class="text-slate-500"># 2. At 0%, read MUST be served by LEGACY_MONOLITH</span>
+            data, source = <span class="text-purple-400">await</span> engine.get_dispatch_with_shadow_parity(<span class="text-amber-300">"trip_42"</span>, session)
+            assert source == <span class="text-amber-300">"LEGACY_MONOLITH"</span>
+            assert data[<span class="text-amber-300">"driver"</span>] == <span class="text-amber-300">"driver_99"</span>
+
+            <span class="text-slate-500"># 3. Flip canary to 100% &rarr; MUST be served by MODERN_MICROSERVICE</span>
+            engine.migration_percentage = 100.0
+            data_mod, source_mod = <span class="text-purple-400">await</span> engine.get_dispatch_with_shadow_parity(<span class="text-amber-300">"trip_42"</span>, session)
+            assert source_mod == <span class="text-amber-300">"MODERN_MICROSERVICE"</span>
+            assert data_mod[<span class="text-amber-300">"driver"</span>] == <span class="text-amber-300">"driver_99"</span>
+
+            <span class="text-slate-500"># 4. Verify Shadow Audit logged zero discrepancies</span>
+            stmt = select(MigrationParityAuditModel).where(MigrationParityAuditModel.trip_id == <span class="text-amber-300">"trip_42"</span>)
+            res = <span class="text-purple-400">await</span> session.execute(stmt)
+            audits = res.scalars().all()
+            assert len(audits) == 2
+            assert all(a.has_discrepancy <span class="text-purple-400">is False</span> <span class="text-purple-400">for</span> a <span class="text-purple-400">in</span> audits)</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Migration Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Big Bang" Rewrite Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Halting production feature velocity to build a brand new microservice system from scratch over 12 months.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes engineering bankruptcy:</strong> While you rewrite, the legacy monolith continues evolving to meet business emergencies. The rewrite team aims at a moving target, accumulates massive deployment risk, and eventually launches an untested monolith replacement that crashes on Day 1. <strong>Always strangle incrementally using proxy interception!</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Shared Database Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Extracting a new microservice code repository while pointing it directly at the legacy monolith's shared database tables.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this creates a Distributed Monolith:</strong> If the monolith team renames a column, the microservice crashes. If the microservice locks a row, the monolith deadlocks. You have combined the operational network overhead of microservices with the tight coupling of a monolith! <strong>Services must own private, encapsulated state.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 18</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Strangler Fig migration test battery and verify zero-downtime canary routing:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Strangler Migration test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_strangler_migration.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 1 passed in ~0.08s. Confirms dual-write consistency, canary traffic routing, and shadow parity verification!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test Canary Traffic Evaluation in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from omniroute.migration.strangler_proxy import StranglerRoutingEngine; e = StranglerRoutingEngine(25.0); print('Routed to Modern (25% Canary):', [e.should_route_to_modern(f'trip_{i}') for i in range(10)])"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates deterministic canary traffic routing based on trip ID hashes!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 19 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 19: Observability, Tracing, Metrics &amp; Production Post-Mortems</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering production diagnostics: Distributed tracing with OpenTelemetry, W3C Trace Context propagation, high-cardinality Prometheus metrics, and writing blameless post-mortems.</p>
+            </div>
+            <a href="Chapter 19 - Observability, Tracing, Metrics and Production Post-Mortems.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 19 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

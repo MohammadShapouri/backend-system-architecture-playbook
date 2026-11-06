@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Relationship Loading &amp; Defeating the N+1 Problem</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 06 - Relationship Loading &amp; Statements)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Query Optimization &amp; Relationship Mechanics
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Relationship Loading &amp; Defeating the N+1 Problem
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                High-performance relational querying: Why naive lazy loading collapses under API traffic, mastering the 2.0 loader strategies (<code class="font-mono text-emerald-400">selectinload</code> vs. <code class="font-mono text-emerald-400">joinedload</code>), avoiding Cartesian explosions, using <code class="font-mono text-emerald-400">raiseload</code> as a defensive compiler guard, and building LedgerCore's bulk portfolio statement generator.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 06: Zero-Leak Statements</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        A financial platform must generate comprehensive monthly account statements and multi-account portfolio exports. If an organization holds 50 accounts with 1,000 transactions, generating a statement can accidentally emit 51 sequential SQL queries, bringing database connection pools to their knees. In Milestone 06, we upgrade LedgerCore with optimized eager loading, explicit cascades, and defensive loader guards that mathematically cap query counts at 2 queries regardless of data volume.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The N+1 latency amplification disaster</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">selectinload</code> for 1-to-N collections</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">joinedload</code> for N-to-1 relationships</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Cartesian Product trap &amp; pagination</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defensive lockouts with <code class="text-purple-300">raiseload("*")</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> High-speed portfolio statement export API</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of the N+1 Query Problem -->
+        <section id="cs-n-plus-one" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The N+1 Query Problem &amp; Network Latency</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                By default, relationship attributes in SQLAlchemy use <strong>Lazy Loading</strong> (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">lazy="select"</code>). When an entity is queried, its foreign-key-related collections are not populated. Instead, SQLAlchemy emits a new SQL query behind the scenes the exact instant your Python code evaluates the relationship attribute.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When iterating over a list of $N$ parent objects and accessing a child collection on each, the application emits <strong>1 initial query</strong> to fetch the parents, followed by <strong>$N$ separate queries</strong> to fetch the children of each parent.
+            </p>
+
+            <!-- N+1 Waterfall Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">The N+1 Query Network Waterfall Disaster</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Fetching 50 Accounts &amp; Their Ledger Entries (Assuming 4ms Network Round-Trip Time)</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Left: N+1 Lazy Execution -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Naive Lazy Loading (51 Queries)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Latency: ~208ms</span>
+                        </div>
+                        <div class="space-y-1.5 text-[10px] text-slate-300 font-sans">
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-sky-300">
+                                Query 1: SELECT * FROM accounts LIMIT 50; [4ms]
+                            </div>
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-rose-300">
+                                Query 2: SELECT * FROM transactions WHERE account_id = 1; [4ms]
+                            </div>
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-rose-300">
+                                Query 3: SELECT * FROM transactions WHERE account_id = 2; [4ms]
+                            </div>
+                            <div class="text-center text-slate-500 font-mono">... 47 More Sequential Queries ...</div>
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-rose-300">
+                                Query 51: SELECT * FROM transactions WHERE account_id = 50; [4ms]
+                            </div>
+                            <p class="text-rose-400 font-sans pt-1">
+                                &cross; 51 socket round-trips! Consumes 51 pool checkouts, causes connection pool starvation, and blocks worker threads.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Right: selectinload Execution -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. selectinload Batching (2 Queries)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Latency: ~8ms</span>
+                        </div>
+                        <div class="space-y-1.5 text-[10px] text-slate-300 font-sans">
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-sky-300">
+                                Query 1: SELECT * FROM accounts LIMIT 50; [4ms]
+                            </div>
+                            <div class="p-2 bg-slate-950 rounded border border-slate-800 font-mono text-emerald-300 leading-relaxed">
+                                Query 2: SELECT * FROM transactions <br>WHERE account_id IN (1, 2, 3, ... 50); [4ms]
+                            </div>
+                            <div class="p-3 bg-emerald-950 rounded border border-emerald-700 text-emerald-200 mt-6 text-xs">
+                                &check; Exactly 2 queries! All 50 account collections populated simultaneously in-memory via the Identity Map. <strong>26x faster execution!</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Mathematical Impact of Latency:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If your web server and database have a standard cloud cross-availability-zone latency of <strong>2.5ms</strong>, an N+1 query loading 200 rows incurs $201 \times 2.5\text{ms} = \mathbf{502.5\text{ms}}$ of pure network idle waiting time, completely independent of how fast your database hardware is!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The 2.0 Loader Strategy Arsenal -->
+        <section id="loader-strategies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The SQLAlchemy 2.0 Loader Strategy Arsenal</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                SQLAlchemy 2.0 provides multiple explicit loader options passed to <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">select().options(...)</code>. Selecting the wrong strategy can trigger memory bloat, duplicate rows, or pagination bugs:
+            </p>
+
+            <!-- Strategy Grid -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- selectinload -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-700 text-sm">selectinload()</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Best for 1-to-N Collections</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Emits an immediate second query using an <code class="font-mono text-slate-800">IN (...)</code> clause containing the primary keys loaded in the first query.
+                    </p>
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        stmt = select(Account).options(selectinload(Account.transactions))
+                    </div>
+                    <ul class="text-[11px] text-slate-600 space-y-1 font-sans list-disc pl-4">
+                        <li><strong>Safe with Pagination:</strong> Does not interfere with <code class="font-mono">limit()</code> or <code class="font-mono">offset()</code> on the primary query.</li>
+                        <li><strong>Zero Duplication:</strong> Does not create Cartesian product multiplication.</li>
+                    </ul>
+                </div>
+
+                <!-- joinedload -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">joinedload()</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Best for N-to-1 / 1-to-1</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Emits a single query using a SQL <code class="font-mono text-slate-800">LEFT OUTER JOIN</code> to fetch both parent and child data in one round-trip.
+                    </p>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        stmt = select(Transaction).options(joinedload(Transaction.account))
+                    </div>
+                    <ul class="text-[11px] text-slate-600 space-y-1 font-sans list-disc pl-4">
+                        <li><strong>Zero Latency:</strong> 1 single query over the wire.</li>
+                        <li><strong>Danger on Collections:</strong> Joining 1 parent to 100 children duplicates parent data across 100 rows over the wire!</li>
+                    </ul>
+                </div>
+
+                <!-- contains_eager -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-purple-700 text-sm">contains_eager()</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Filtered Joins</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Used when you explicitly call <code class="font-mono text-slate-800">.join()</code> to filter parent rows by child criteria, and want SQLAlchemy to populate the relationship directly from that join without emitting another query.
+                    </p>
+                    <div class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        stmt = (<br>
+                        &nbsp;&nbsp;select(Account)<br>
+                        &nbsp;&nbsp;.join(Account.transactions)<br>
+                        &nbsp;&nbsp;.where(Transaction.amount &gt; 1000)<br>
+                        &nbsp;&nbsp;.options(contains_eager(Account.transactions))<br>
+                        )
+                    </div>
+                </div>
+
+                <!-- raiseload -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-rose-700 text-sm">raiseload()</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">Defensive Compiler Guard</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Immediately raises an exception if any unexpected lazy load is triggered. Acts as a unit-test shield to mathematically ensure no N+1 queries leak into production.
+                    </p>
+                    <div class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        stmt = select(Account).options(raiseload(<span class="text-amber-300">"*"</span>))
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        If a serializer attempts to access an unloaded relation, Python immediately throws <code class="font-mono text-rose-700">InvalidRequestError</code> instead of silently executing a query.
+                    </p>
+                </div>
+            </div>
+
+            <!-- The Cartesian Product Trap Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-amber-400">The Cartesian Product Trap</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">What happens when you apply joinedload() across multiple 1-to-Many collections</p>
+                </div>
+
+                <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 font-sans text-xs text-slate-300 leading-relaxed">
+                    <p>
+                        Suppose an <code class="font-mono text-emerald-300">Account</code> has <strong>50 Transactions</strong> and <strong>20 Cards</strong>.
+                    </p>
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 font-mono text-rose-300 text-[11px]">
+                        # ANTI-PATTERN: Multiple joinedloads on collections<br>
+                        stmt = select(Account).options(joinedload(Account.transactions), joinedload(Account.cards))
+                    </div>
+                    <p>
+                        The database executes: <code class="font-mono text-amber-300">FROM accounts LEFT OUTER JOIN transactions LEFT OUTER JOIN cards</code>.
+                    </p>
+                    <div class="bg-rose-950/60 p-3 rounded-lg border border-rose-800 font-mono text-rose-200 text-[11px]">
+                        Total Result Rows Transferred Over Network = 1 Account &times; 50 Transactions &times; 20 Cards = 1,000 Rows!<br>
+                        The entire account data payload is transmitted over the wire 1,000 times!
+                    </div>
+                    <p class="text-emerald-400 font-bold">
+                        &check; Golden Rule: Never use joinedload() for multiple 1-to-Many collections. Always use selectinload() for collections!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Relationship Architecture: Cascades & Passive Deletes -->
+        <section id="relationship-cascades" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Relationship Architecture: Cascades &amp; Passive Deletes</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When configuring bidirectional relationships in SQLAlchemy 2.0, understanding the difference between <strong>ORM-level cascades</strong> and <strong>Database-level foreign key cascades</strong> is critical to preventing silent orphan data leaks or unexpected bulk query performance penalties.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- ORM Level Cascade -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900">1. ORM-Level Cascades</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Configured directly inside <code class="font-mono text-purple-700 font-bold">relationship(cascade="...")</code>:
+                    </p>
+                    <div class="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        transactions: Mapped[list["Transaction"]] = relationship(<br>
+                        &nbsp;&nbsp;back_populates="account",<br>
+                        &nbsp;&nbsp;<span class="text-emerald-400">cascade="all, delete-orphan"</span><br>
+                        )
+                    </div>
+                    <ul class="text-[11px] text-slate-600 space-y-1 font-sans list-disc pl-4">
+                        <li><strong>delete-orphan:</strong> If an item is removed from the Python list (<code class="font-mono">account.transactions.remove(tx)</code>), SQLAlchemy marks the detached child for deletion on the next flush.</li>
+                        <li><strong>Performance Penalty:</strong> When an Account is deleted, SQLAlchemy first queries and loads all child transactions into memory, and then emits individual <code class="font-mono">DELETE</code> statements for each row!</li>
+                    </ul>
+                </div>
+
+                <!-- Database Level Cascade -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900">2. Database-Level Cascades + passive_deletes</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Configured in the foreign key DDL, coupled with <code class="font-mono text-purple-700 font-bold">passive_deletes=True</code>:
+                    </p>
+                    <div class="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        # Child Foreign Key Definition:<br>
+                        account_id = mapped_column(ForeignKey("accounts.id", <span class="text-amber-300">ondelete="CASCADE"</span>))<br><br>
+                        # Parent Relationship Definition:<br>
+                        transactions = relationship(..., <span class="text-emerald-400">passive_deletes=True</span>)
+                    </div>
+                    <ul class="text-[11px] text-slate-600 space-y-1 font-sans list-disc pl-4">
+                        <li><strong>High-Speed DB Deletion:</strong> SQLAlchemy emits a single <code class="font-mono text-slate-900">DELETE FROM accounts WHERE id = 1</code>.</li>
+                        <li><strong>passive_deletes=True:</strong> Informs SQLAlchemy that PostgreSQL will automatically delete all child transaction rows via foreign key cascades, so the ORM does not waste memory pre-fetching children!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: LedgerCore Milestone 06 -->
+        <section id="ledgercore-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 06: High-Speed Statement Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 06. We implement a portfolio statement export endpoint in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code> that fetches multiple accounts and their entire transaction history using <code class="font-mono text-purple-700 font-bold">selectinload()</code>, coupled with defensive <code class="font-mono text-purple-700 font-bold">raiseload("*")</code> guards.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── models.py                  <span class="text-slate-500"># passive_deletes &amp; bidirectional relationships</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">schemas.py</span>                 <span class="text-slate-500"># Adds Statement &amp; Portfolio Export schemas</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># Statement API using selectinload &amp; raiseload</span></div>
+            </div>
+
+            <!-- File 1: app/schemas.py Statement additions -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Statement Schemas: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">Nested Response Contracts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/schemas.py: Statement schemas</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StatementItem</span>(BaseModel):
+    uuid: UUID
+    amount: Decimal
+    transaction_type: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=<span class="text-rose-400">True</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountStatementResponse</span>(BaseModel):
+    uuid: UUID
+    account_number: str
+    owner_name: str
+    balance: Decimal
+    transactions: list[StatementItem]  <span class="text-slate-500"># Nested relationship serialized automatically</span>
+    model_config = ConfigDict(from_attributes=<span class="text-rose-400">True</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PortfolioExportResponse</span>(BaseModel):
+    total_accounts: int
+    portfolio_total_balance: Decimal
+    accounts: list[AccountStatementResponse]</pre>
+            </div>
+
+            <!-- File 2: app/main.py Statement Engine with selectinload & raiseload -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Statement Endpoint: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">selectinload &amp; raiseload Integration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: High-speed statement export endpoint</span>
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> selectinload, joinedload, raiseload
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> PortfolioExportResponse, AccountStatementResponse
+
+<span class="text-purple-400">@app.get</span>(
+    <span class="text-amber-300">"/api/v1/portfolio/statements"</span>,
+    response_model=PortfolioExportResponse,
+    tags=[<span class="text-amber-300">"Portfolio"</span>],
+    summary=<span class="text-amber-300">"Generate Full Portfolio Statement (Defeats N+1 Queries)"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_portfolio_statements</span>(session: Session = Depends(get_db_session)):
+    <span class="text-slate-500">"""
+    HIGH-PERFORMANCE STATEMENT GENERATION:
+    1. selectinload(Account.transactions): Loads all transactions across all accounts in exactly 1 batch query.
+    2. raiseload("*"): Mathematical guarantee against accidental N+1 queries.
+    """</span>
+    stmt = (
+        select(Account)
+        .where(Account.status == AccountStatus.ACTIVE)
+        .<span class="text-emerald-400 font-bold">options</span>(
+            <span class="text-slate-500"># BATCH EAGER LOAD: Emits exactly 1 secondary query with WHERE account_id IN (...)</span>
+            selectinload(Account.transactions)
+        )
+        .<span class="text-rose-400 font-bold">options</span>(
+            <span class="text-slate-500"># DEFENSIVE COMPILER GUARD: If any serializer attempts an un-loaded relationship, fail immediately!</span>
+            raiseload(<span class="text-amber-300">"*"</span>)
+        )
+    )
+    accounts = session.scalars(stmt).all()
+
+    total_balance = sum((acc.balance <span class="text-purple-400">for</span> acc <span class="text-purple-400">in</span> accounts), Decimal(<span class="text-amber-300">"0.0000"</span>))
+
+    <span class="text-purple-400">return</span> PortfolioExportResponse(
+        total_accounts=<span class="text-purple-400">len</span>(accounts),
+        portfolio_total_balance=total_balance,
+        accounts=accounts  <span class="text-slate-500"># Pydantic serializes nested transactions with zero additional queries!</span>
+    )
+
+
+<span class="text-purple-400">@app.get</span>(
+    <span class="text-amber-300">"/api/v1/transactions/recent"</span>,
+    tags=[<span class="text-amber-300">"Transactions"</span>],
+    summary=<span class="text-amber-300">"Audit Feed using joinedload (Many-to-One Optimization)"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_recent_transactions_feed</span>(session: Session = Depends(get_db_session)):
+    <span class="text-slate-500">"""
+    MANY-TO-ONE OPTIMIZATION:
+    Fetching transactions along with their owning Account using joinedload().
+    Emits a single SQL LEFT OUTER JOIN over the wire with zero latency overhead.
+    """</span>
+    stmt = (
+        select(Transaction)
+        .order_by(Transaction.created_at.desc())
+        .limit(20)
+        .<span class="text-emerald-400 font-bold">options</span>(joinedload(Transaction.account))
+        .<span class="text-rose-400 font-bold">options</span>(raiseload(<span class="text-amber-300">"*"</span>))
+    )
+    records = session.scalars(stmt).all()
+
+    <span class="text-purple-400">return</span> [
+        {
+            <span class="text-amber-300">"tx_uuid"</span>: str(tx.uuid),
+            <span class="text-amber-300">"amount"</span>: str(tx.amount),
+            <span class="text-amber-300">"type"</span>: tx.transaction_type,
+            <span class="text-amber-300">"account_number"</span>: tx.account.account_number,
+            <span class="text-amber-300">"owner_name"</span>: tx.account.owner_name
+        }
+        <span class="text-purple-400">for</span> tx <span class="text-purple-400">in</span> records
+    ]</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Pagination with joinedload() on Collections</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">select(Account).options(joinedload(Account.transactions)).limit(10)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes severe memory &amp; SQL issues:</strong> Joining 1 account with 5 transactions produces 5 SQL rows. If you pass <code class="font-mono">LIMIT 10</code>, SQL stops after 10 rows—which might only represent 2 accounts! To prevent this, SQLAlchemy is forced to emit a complex, memory-heavy window subquery, logging a <code class="font-mono text-rose-950 font-bold">SAWarning: memory-heavy subquery applied</code>. 
+                        <strong>Fix:</strong> Always use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">selectinload()</code> when paginating collections!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Hardcoding lazy="joined" on Model Classes</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">relationship(..., lazy="joined")</code> globally in the model definition.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> Every single query touching that model (even an ultra-fast query like checking an account's status) will automatically emit an outer join to the related table, bloating memory and eliminating your ability to optimize queries per endpoint.
+                        <strong>Rule:</strong> Keep relationships default (<code class="font-mono">lazy="select"</code>) and specify eager loading dynamically in the query via <code class="font-mono font-bold">.options()</code>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your server with SQL echoing enabled (<code class="font-mono text-emerald-400">DB_ECHO_SQL=True</code>) and verify that statement generation strictly executes exactly 2 SQL queries:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start LedgerCore API with SQL echo logging enabled:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        DB_ECHO_SQL=True uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Query Statement API -->
+                <div>
+                    <span class="text-slate-500"># 2. Query the portfolio statement endpoint:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/portfolio/statements
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Inspect the terminal log output: exactly TWO queries are emitted (Query 1: SELECT accounts, Query 2: SELECT transactions WHERE account_id IN (...)). Zero N+1 leakage!
+                    </span>
+                </div>
+
+                <!-- Step 3: Query Recent Feed -->
+                <div>
+                    <span class="text-slate-500"># 3. Query the audit feed using joinedload:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/transactions/recent
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Inspect terminal logs: exactly ONE query is emitted via LEFT OUTER JOIN.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's portfolio statement endpoints in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 7 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Advanced Core Queries, CTEs &amp; Bulk Operations</h4>
+                <p class="text-xs text-slate-500 font-sans">Analytical reporting and massive throughput: Writing Common Table Expressions (<code class="font-mono">cte()</code>), running balance Window functions (<code class="font-mono">over()</code>), and ingesting 10,000 transaction batches with zero ORM overhead.</p>
+            </div>
+            <a href="Chapter 07 - Advanced Core Queries, CTEs and Bulk Operations.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 7 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

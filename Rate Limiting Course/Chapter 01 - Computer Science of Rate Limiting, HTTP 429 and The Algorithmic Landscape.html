@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Computer Science of Rate Limiting, HTTP 429 &amp; The Algorithmic Landscape</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 01 - HTTP 429 Specifications &amp; Algorithmic Foundations)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Protocols, RFC Standards &amp; Algorithmic Core
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Computer Science of Rate Limiting, HTTP 429 &amp; The Algorithmic Landscape
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing traffic control from mathematical models to wire protocols: Understanding RFC 6585 <code class="font-mono text-emerald-400">HTTP 429</code> and IETF standard headers, analyzing time/space trade-offs across 8 production throttling algorithms, dissecting the Fixed Window boundary burst flaw, and establishing the pure algorithmic core of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "SentinelFlow" Milestone 01</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In enterprise web architecture, an unprotected API is an outage waiting to happen. Throughout this series, we build <strong>SentinelFlow</strong>: a distributed, multi-tenant rate limiting and traffic-shaping engine designed for high-concurrency microservice ecosystems. In Milestone 01, we implement the core data models, formalize RFC 6585 status handling, construct an exhaustive algorithmic comparison matrix, and build pure Python implementations of the <strong>Fixed Window Counter</strong> and the exact <strong>Sliding Window Log</strong> to benchmark boundary burst behaviors.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> RFC 6585 &amp; IETF RateLimit Header Specs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 8-Algorithm Production Comparison Matrix</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Fixed Window $2\times$ Boundary Burst Flaw</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Monotonic vs. Wall-Clock Precision Math</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pure Python Fixed Window &amp; Sliding Log Models</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Verification Test Suite &amp; Boundary Assertion</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Rate Limiting: Standards & RFCs -->
+        <section id="cs-protocols" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Wire Protocols, RFC 6585 &amp; IETF Standards</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Rate limiting is fundamentally an agreement between a service provider and a consumer. Without clear communication over HTTP headers, clients cannot differentiate between a server failure, an authentication lockout, or a temporary rate throttle.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In modern systems engineering, rate limiting is governed by two formal specifications:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- RFC 6585 Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">RFC 6585: HTTP 429</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Standard</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Defines <code class="font-bold text-slate-900">429 Too Many Requests</code>: indicates that the user has sent too many requests in a given amount of time ("rate limiting"). RFC 7231 specifies that responses SHOULD include a <code class="text-purple-700 font-bold">Retry-After</code> header indicating how long to wait before making a new request.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-rose-300 text-[10px] space-y-0.5">
+                        <div>HTTP/1.1 429 Too Many Requests</div>
+                        <div>Retry-After: 30</div>
+                        <div>Content-Type: application/json</div>
+                    </div>
+                </div>
+
+                <!-- IETF Draft Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">IETF RateLimit Headers</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Modern Draft</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The modern standard adopted by GitHub, Stripe, and Cloudflare. Stamped on <strong>every HTTP response</strong> (both 200 OK and 429) to allow clients to self-throttle dynamically:
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-emerald-300 text-[10px] space-y-0.5">
+                        <div>RateLimit-Limit: 100</div>
+                        <div>RateLimit-Remaining: 42</div>
+                        <div>RateLimit-Reset: 1772635200</div>
+                        <div>RateLimit-Policy: 100;w=60</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wire Diagram of Rate Limit Headers (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The IETF Header Telemetry Sequence</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">How Clients Proactively Avoid 429 Lockouts</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <!-- Request 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Early Window</span>
+                        <div class="text-[10px] text-slate-400">HTTP 200 OK</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-[10px] text-emerald-300">
+                            Limit: 100<br>Remaining: 99<br>Reset: 60s
+                        </div>
+                    </div>
+
+                    <!-- Request 50 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-amber-300 font-bold block">2. High Load</span>
+                        <div class="text-[10px] text-slate-400">HTTP 200 OK</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-[10px] text-amber-300">
+                            Limit: 100<br>Remaining: 5<br>Reset: 12s
+                        </div>
+                    </div>
+
+                    <!-- Request 101 -->
+                    <div class="p-3 bg-slate-950 border border-rose-800 rounded-xl space-y-1">
+                        <span class="text-rose-400 font-bold block">3. Exhaustion</span>
+                        <div class="text-[10px] text-rose-400 font-bold">HTTP 429 Too Many Requests</div>
+                        <div class="bg-slate-900 p-1.5 rounded text-[10px] text-rose-300">
+                            Limit: 100<br>Remaining: 0<br>Retry-After: 8
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Why Every Response Needs Headers:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If a service returns rate-limit headers <em>only when a request fails with 429</em>, clients must hit the wall blind. By sending remaining quotas on every successful 200 OK response, robust clients use the telemetry to pace their outbound requests, preventing 429 errors from occurring in the first place.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Algorithmic Landscape: The 8-Algorithm Comparison Matrix -->
+        <section id="algorithmic-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Algorithmic Landscape: Comprehensive Comparison Matrix</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Choosing the wrong rate-limiting algorithm can silently degrade system reliability. Below is the complete systems engineering benchmark comparing memory, complexity, burst tolerance, and production suitability across all 8 major algorithms:
+            </p>
+
+            <!-- Algorithm Matrix Table -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Algorithm</th>
+                            <th class="p-3.5">Complexity (Time/Space)</th>
+                            <th class="p-3.5">Bursts?</th>
+                            <th class="p-3.5">Pros</th>
+                            <th class="p-3.5">Cons</th>
+                            <th class="p-3.5">Best Production Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-sky-700">Fixed Window Counter</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: O(1)</td>
+                            <td class="p-3.5 text-rose-600 font-bold">&cross; Flawed</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Atomic Redis <code>INCR</code>; simple logic; zero complex state.</td>
+                            <td class="p-3.5 text-rose-700 font-sans">Allows $2\times$ limit at window boundaries (100 req at 00:59 + 100 req at 01:00).</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Low-risk internal prototypes, basic logging.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-indigo-700">Sliding Window Log</td>
+                            <td class="p-3.5">Time: O(log M)<br>Space: <strong class="text-rose-600">O(N)</strong></td>
+                            <td class="p-3.5 text-emerald-600 font-bold">&check; Exact</td>
+                            <td class="p-3.5 text-slate-600 font-sans">100% mathematical precision; zero boundary burst bugs.</td>
+                            <td class="p-3.5 text-rose-700 font-sans">High memory consumption; storing timestamps in Redis Sorted Sets explodes RAM.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Low-volume financial actions, high-security login endpoints.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-purple-700">Token Bucket</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: O(1)</td>
+                            <td class="p-3.5 text-emerald-600 font-bold">&check; Controlled</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Supports bursts up to bucket capacity; smooth continuous refill via &Delta;t.</td>
+                            <td class="p-3.5 text-amber-700 font-sans">Requires tracking 2 fields (tokens + timestamp); prone to race conditions without Lua.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">General public REST APIs (Stripe, GitHub, AWS API Gateway).</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-amber-700">Leaky Bucket (Queue)</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: O(Q)</td>
+                            <td class="p-3.5 text-rose-600 font-bold">&cross; Smooths</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Shapes bursty traffic into a constant, uniform output flow; eliminates spikes.</td>
+                            <td class="p-3.5 text-amber-700 font-sans">Adds queue latency; bursts are delayed rather than executed immediately.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Outbound calls to third-party bank APIs or SMS gateways.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-emerald-700">Sliding Window Counter</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: <strong>O(1) 2 ints</strong></td>
+                            <td class="p-3.5 text-slate-500 font-sans">Smooth</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Near-zero memory (stores only 2 numbers); ~99.95% accuracy; prevents boundary bursts.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Approximation algorithm (minor interpolation error under extreme edge bursts).</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Massive-scale distributed microservices (Cloudflare, Kong).</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-teal-700">GCRA (Virtual Scheduling)</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: <strong>O(1) 1 TS</strong></td>
+                            <td class="p-3.5 text-emerald-600 font-bold">&check; Controlled</td>
+                            <td class="p-3.5 text-slate-600 font-sans">50% less Redis memory than Token Bucket; zero float refill math; atomic single key.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Less intuitive mental model (operates on arrival time rather than token counts).</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Ultra-high-throughput systems (redis-cell, Envoy, Rust limiters).</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-rose-700">Concurrency Semaphore</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: O(1)</td>
+                            <td class="p-3.5 text-slate-500 font-sans">In-flight</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Protects CPU and database connection pools from slow-running concurrent queries.</td>
+                            <td class="p-3.5 text-rose-700 font-sans">Requires lease expiration timeouts to prevent deadlocks if a container crashes.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Heavy SQL exports, LLM inference, video encoding endpoints.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-sky-800">Adaptive Throttling (AIMD)</td>
+                            <td class="p-3.5">Time: O(1)<br>Space: O(1)</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Dynamic</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Self-healing; automatically throttles before degraded downstream databases collapse.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Requires continuous monitoring of latency and error-rate feedback loops.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Google SRE resilience, microservice circuit breakers.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Deep Dive Diagram: The Fixed Window Boundary Spike Flaw -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Fixed Window Counter Boundary Spike Vulnerability
+                </div>
+                <div class="text-slate-400 text-center font-sans text-[11px]">
+                    Configured Limit: 100 requests per 1-minute window
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4 pt-2">
+                    <!-- Window 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <div class="flex justify-between text-slate-400 border-b border-slate-800 pb-1 text-[10px]">
+                            <span>Window 1 [00:00 - 01:00]</span>
+                            <span class="text-emerald-400 font-bold">100 req allowed</span>
+                        </div>
+                        <div class="h-10 bg-slate-900 rounded flex items-center justify-end pr-2 text-slate-500 text-[10px]">
+                            Idle (00:00 - 00:59)
+                            <span class="ml-2 bg-rose-600 text-white font-bold px-2 py-1 rounded">100 req at 00:59!</span>
+                        </div>
+                    </div>
+
+                    <!-- Window 2 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <div class="flex justify-between text-slate-400 border-b border-slate-800 pb-1 text-[10px]">
+                            <span>Window 2 [01:00 - 02:00]</span>
+                            <span class="text-emerald-400 font-bold">100 req allowed</span>
+                        </div>
+                        <div class="h-10 bg-slate-900 rounded flex items-center justify-start pl-2 text-slate-500 text-[10px]">
+                            <span class="mr-2 bg-rose-600 text-white font-bold px-2 py-1 rounded">100 req at 01:00!</span>
+                            Idle (01:01 - 02:00)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-rose-950/60 p-3 rounded-xl border border-rose-800 text-rose-200 text-[11px] font-sans text-center">
+                    <strong>&cross; The 2-Second Server Outage:</strong> Between 00:59 and 01:01 (a 2-second span), the server permitted <strong>200 total requests</strong>! The downstream database is overwhelmed because the fixed counter reset at 01:00.
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Monotonic Clocks vs. Wall-Clock Precision -->
+        <section id="monotonic-clocks" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Mathematical Precision: Monotonic Clocks vs. Wall-Clock Time</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In rate-limiting calculations, calculating elapsed time ($\Delta t = t_{\text{now}} - t_{\text{previous}}$) is fundamental. A common architectural flaw is relying on Python's standard <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">time.time()</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <code class="font-mono text-xs">time.time()</code> returns the system wall-clock time. In production cloud clusters, the Network Time Protocol (NTP) service frequently adjusts system clocks to sync with reference time. If NTP syncs backwards by a few hundred milliseconds, $\Delta t$ becomes <strong>negative</strong>, resulting in negative token calculations, state corruption, or deadlock bugs.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
+                    <span class="text-rose-700 font-bold block text-sm">&cross; time.time() [Unsafe for Math]</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Measures human calendar time. Vulnerable to leap seconds, manual admin changes, and NTP synchronization step-jumps. Use strictly for <em>output formatting</em> (e.g. generating Unix timestamps for HTTP headers).
+                    </p>
+                </div>
+                <div class="p-4 bg-white border border-emerald-300 rounded-xl space-y-2 ring-1 ring-emerald-300">
+                    <span class="text-emerald-700 font-bold block text-sm">&check; time.monotonic() [Enforced for Math]</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        A strictly non-decreasing clock with fractional nanosecond resolution. Cannot jump backwards under any circumstance. Mandatory for all rate limit elapsed time and refill computations.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: SentinelFlow Milestone 01 -->
+        <section id="sentinelflow-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 01: Core Models &amp; Boundary Implementations</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 01 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/models.py</code>: defining the strongly typed <code class="font-mono text-purple-700 font-bold">RateLimitResult</code> and standardized IETF header generator.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/algorithms/fixed_window.py</code>: pure Python Fixed Window Counter.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/algorithms/sliding_log.py</code>: pure Python Sliding Window Log.</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_algorithms.py</code>: proving the $2\times$ boundary burst flaw in Fixed Window while verifying the mathematical precision of Sliding Log.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// SentinelFlow Project Layout (Milestone 01)</div>
+                <div>sentinelflow/</div>
+                <div>├── pyproject.toml</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">models.py</span>               <span class="text-slate-500"># Typed RateLimitResult &amp; Header mapping</span></div>
+                <div>│           └── algorithms/</div>
+                <div>│               ├── __init__.py</div>
+                <div>│               ├── <span class="text-emerald-300 font-bold">fixed_window.py</span>     <span class="text-slate-500"># Milestone 01 Fixed Window Counter</span></div>
+                <div>│               └── <span class="text-emerald-300 font-bold">sliding_log.py</span>       <span class="text-slate-500"># Milestone 01 Sliding Window Log</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    └── unit/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_algorithms.py</span>         <span class="text-slate-500"># Boundary Spike &amp; Algorithmic Tests</span></div>
+            </div>
+
+            <!-- File 1: pyproject.toml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Project Configuration: <code class="text-purple-700">pyproject.toml</code></span>
+                    <span class="text-slate-400">Environment &amp; Tooling</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+[build-system]
+requires = [<span class="text-amber-300">"setuptools&gt;=61.0"</span>]
+build-backend = <span class="text-amber-300">"setuptools.build_meta"</span>
+
+[project]
+name = <span class="text-amber-300">"sentinelflow"</span>
+version = <span class="text-amber-300">"0.1.0"</span>
+description = <span class="text-amber-300">"Enterprise Distributed Rate Limiter &amp; Traffic Shaping Engine"</span>
+authors = [{ name = <span class="text-amber-300">"SentinelFlow Core Architecture Team"</span> }]
+dependencies = [
+    <span class="text-amber-300">"pydantic&gt;=2.6.0"</span>,
+]
+
+[project.optional-dependencies]
+test = [
+    <span class="text-amber-300">"pytest&gt;=8.0.0"</span>,
+]
+
+[tool.pytest.ini_options]
+minversion = <span class="text-amber-300">"8.0"</span>
+addopts = <span class="text-amber-300">"-ra -q --strict-markers"</span>
+testpaths = [<span class="text-amber-300">"tests"</span>]
+pythonpath = [<span class="text-amber-300">"src"</span>]</pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/core/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Core Domain Models: <code class="text-purple-700">src/sentinelflow/core/models.py</code></span>
+                    <span class="text-slate-400">Typed Contracts &amp; Header Serialization</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Core - Domain Result Models &amp; RFC Headers (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict
+<span class="text-purple-400">import</span> math
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>, slots=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RateLimitResult</span>:
+    <span class="text-slate-500">"""
+    IMMUTABLE EVALUATION RESULT:
+    Encapsulates the decision and telemetry produced by any rate limit algorithm.
+    """</span>
+    allowed: bool
+    limit: int
+    remaining: int
+    reset_after_seconds: float
+    reset_epoch_seconds: int
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">to_headers</span>(self) -> Dict[str, str]:
+        <span class="text-slate-500">"""
+        Serializes rate limit state into standard IETF &amp; RFC 6585 HTTP headers.
+        Always returned on BOTH 200 OK and 429 Too Many Requests responses.
+        """</span>
+        retry_after = max(1, math.ceil(self.reset_after_seconds))
+        headers = {
+            <span class="text-slate-500"># IETF Draft Standard RateLimit headers</span>
+            <span class="text-amber-300">"RateLimit-Limit"</span>: str(self.limit),
+            <span class="text-amber-300">"RateLimit-Remaining"</span>: str(max(0, self.remaining)),
+            <span class="text-amber-300">"RateLimit-Reset"</span>: str(self.reset_epoch_seconds),
+        }
+        <span class="text-purple-400">if not</span> self.allowed:
+            <span class="text-slate-500"># RFC 6585 / RFC 7231 mandatory retry interval for 429 states</span>
+            headers[<span class="text-amber-300">"Retry-After"</span>] = str(retry_after)
+
+        <span class="text-purple-400">return</span> headers</pre>
+            </div>
+
+            <!-- File 3: src/sentinelflow/core/algorithms/fixed_window.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Fixed Window Implementation: <code class="text-purple-700">src/sentinelflow/core/algorithms/fixed_window.py</code></span>
+                    <span class="text-slate-400">The Classical Baseline</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - In-Memory Fixed Window Counter (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Tuple
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FixedWindowCounter</span>:
+    <span class="text-slate-500">"""
+    FIXED WINDOW COUNTER ALGORITHM:
+    Divides time into static discrete windows of size `window_seconds`.
+    Demonstrates O(1) memory complexity but exhibits the 2x Boundary Burst flaw.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, limit: int, window_seconds: int):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        <span class="text-slate-500"># Map: key -&gt; (window_index, request_count)</span>
+        self._windows: Dict[str, Tuple[int, int]] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">acquire</span>(self, key: str, cost: int = 1) -> RateLimitResult:
+        now_wall = time.time()
+        current_window_index = int(now_wall // self.window_seconds)
+        window_start_epoch = current_window_index * self.window_seconds
+        window_reset_epoch = window_start_epoch + self.window_seconds
+        reset_after_seconds = max(0.0, window_reset_epoch - now_wall)
+
+        stored_index, count = self._windows.get(key, (current_window_index, 0))
+
+        <span class="text-slate-500"># If time entered a new window block, reset counter</span>
+        <span class="text-purple-400">if</span> stored_index != current_window_index:
+            stored_index = current_window_index
+            count = 0
+
+        <span class="text-purple-400">if</span> count + cost &lt;= self.limit:
+            count += cost
+            self._windows[key] = (stored_index, count)
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=self.limit,
+                remaining=self.limit - count,
+                reset_after_seconds=reset_after_seconds,
+                reset_epoch_seconds=window_reset_epoch
+            )
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=self.limit,
+            remaining=self.limit - count,
+            reset_after_seconds=reset_after_seconds,
+            reset_epoch_seconds=window_reset_epoch
+        )</pre>
+            </div>
+
+            <!-- File 4: src/sentinelflow/core/algorithms/sliding_log.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Sliding Window Log Implementation: <code class="text-purple-700">src/sentinelflow/core/algorithms/sliding_log.py</code></span>
+                    <span class="text-slate-400">100% Precise Timestamp Log</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - In-Memory Sliding Window Log (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> collections <span class="text-purple-400">import</span> deque
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Deque
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SlidingWindowLog</span>:
+    <span class="text-slate-500">"""
+    SLIDING WINDOW LOG ALGORITHM:
+    Maintains a rolling timestamp history per key.
+    Provides 100% accuracy with zero boundary burst flaws, but suffers from O(N) memory complexity.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, limit: int, window_seconds: float):
+        self.limit = limit
+        self.window_seconds = window_seconds
+        <span class="text-slate-500"># Map: key -&gt; deque[monotonic_timestamp]</span>
+        self._logs: Dict[str, Deque[float]] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">acquire</span>(self, key: str, cost: int = 1) -> RateLimitResult:
+        now_mono = time.monotonic()
+        now_wall = int(time.time())
+        boundary_mono = now_mono - self.window_seconds
+
+        log = self._logs.setdefault(key, deque())
+
+        <span class="text-slate-500"># 1. Prune expired entries outside rolling window: O(expired)</span>
+        <span class="text-purple-400">while</span> log <span class="text-purple-400">and</span> log[0] &lt;= boundary_mono:
+            log.popleft()
+
+        <span class="text-slate-500"># Calculate time until the oldest item expires</span>
+        <span class="text-purple-400">if</span> log:
+            oldest_ts = log[0]
+            reset_after = max(0.0, self.window_seconds - (now_mono - oldest_ts))
+        <span class="text-purple-400">else</span>:
+            reset_after = 0.0
+
+        reset_epoch = now_wall + int(reset_after)
+
+        <span class="text-slate-500"># 2. Check capacity</span>
+        <span class="text-purple-400">if len</span>(log) + cost &lt;= self.limit:
+            <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(cost):
+                log.append(now_mono)
+
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=self.limit,
+                remaining=self.limit - len(log),
+                reset_after_seconds=reset_after,
+                reset_epoch_seconds=reset_epoch
+            )
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=self.limit,
+            remaining=self.limit - len(log),
+            reset_after_seconds=reset_after,
+            reset_epoch_seconds=reset_epoch
+        )</pre>
+            </div>
+
+            <!-- File 5: tests/unit/test_algorithms.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Algorithmic Test Battery: <code class="text-purple-700">tests/unit/test_algorithms.py</code></span>
+                    <span class="text-slate-400">Boundary Verification Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Test Suite - Boundary Burst &amp; Algorithm Verification (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> sentinelflow.core.algorithms.fixed_window <span class="text-purple-400">import</span> FixedWindowCounter
+<span class="text-purple-400">from</span> sentinelflow.core.algorithms.sliding_log <span class="text-purple-400">import</span> SlidingWindowLog
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestAlgorithmFoundations</span>:
+    <span class="text-slate-500">"""Verifies mathematical rate limiting accuracy and proves boundary flaws."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_sliding_log_enforces_exact_limit</span>(self):
+        limiter = SlidingWindowLog(limit=5, window_seconds=10.0)
+        
+        <span class="text-slate-500"># First 5 calls pass</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(5):
+            res = limiter.acquire(<span class="text-amber-300">"user_101"</span>)
+            assert res.allowed <span class="text-purple-400">is True</span>
+            assert res.remaining == 4 - i
+
+        <span class="text-slate-500"># 6th call is rejected</span>
+        blocked = limiter.acquire(<span class="text-amber-300">"user_101"</span>)
+        assert blocked.allowed <span class="text-purple-400">is False</span>
+        assert blocked.remaining == 0
+        
+        <span class="text-slate-500"># Verify headers serialize properly</span>
+        headers = blocked.to_headers()
+        assert headers[<span class="text-amber-300">"RateLimit-Limit"</span>] == <span class="text-amber-300">"5"</span>
+        assert headers[<span class="text-amber-300">"RateLimit-Remaining"</span>] == <span class="text-amber-300">"0"</span>
+        assert <span class="text-amber-300">"Retry-After"</span> <span class="text-purple-400">in</span> headers
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_fixed_window_boundary_burst_demonstration</span>(self, mocker):
+        <span class="text-slate-500">"""
+        PROVING THE 2X BOUNDARY BURST FLAW:
+        Configured Limit: 10 requests per 60-second window.
+        A malicious client sends 10 requests at 00:59, and 10 requests at 01:00.
+        Fixed Window allows 20 requests in 2 seconds!
+        """</span>
+        limiter = FixedWindowCounter(limit=10, window_seconds=60)
+        
+        <span class="text-slate-500"># 1. Simulate Time at 00:59 (Second 59 of Window 1)</span>
+        mock_time = mocker.patch(<span class="text-amber-300">"time.time"</span>)
+        mock_time.return_value = 59.0
+
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(10):
+            res = limiter.acquire(<span class="text-amber-300">"attacker"</span>)
+            assert res.allowed <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># Window 1 is now fully exhausted</span>
+        assert limiter.acquire(<span class="text-amber-300">"attacker"</span>).allowed <span class="text-purple-400">is False</span>
+
+        <span class="text-slate-500"># 2. Advance Time by only 2 SECONDS (Second 01 of Window 2 = 61.0)</span>
+        mock_time.return_value = 61.0
+
+        <span class="text-slate-500"># THE FLAW: Counter resets because window_index advanced!</span>
+        allowed_count = 0
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(10):
+            <span class="text-purple-400">if</span> limiter.acquire(<span class="text-amber-300">"attacker"</span>).allowed:
+                allowed_count += 1
+
+        <span class="text-slate-500"># Proves that 20 requests passed across a 2-second interval!</span>
+        assert allowed_count == 10</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Returning 403 Forbidden Instead of 429</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Returning <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">HTTP 403 Forbidden</code> when a client sends too many requests.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes client outages:</strong> <code class="font-mono">403 Forbidden</code> means: <em>"You do not have permission; retrying will never succeed."</em> When automated SDKs or API integrations see 403, they abort execution and alert engineers. Returning standard <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">429 Too Many Requests</code> informs SDKs to back off and retry automatically using the <code class="font-mono text-rose-900">Retry-After</code> window!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The O(N) Sliding Log Memory Explosion</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Deploying Sliding Window Log across millions of active public API users.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this exhausts server RAM:</strong> Sliding Window Log stores an individual timestamp for <em>every single request</em>. If 500,000 active users send 1,000 requests per minute, your storage layer must hold <strong>500 million timestamp objects in RAM</strong>! Always use $O(1)$ memory algorithms (Sliding Window Counter, Token Bucket, or GCRA) for high-scale public endpoints.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, install dependencies, and execute the algorithm boundary test suite:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Environment -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize environment and install dependencies:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest pytest-mock pydantic
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Run the algorithmic test battery (proves boundary burst flaw in Fixed Window):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_algorithms.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.03s. Confirms IETF header mappings and reveals the 2x burst exploit!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Declarative Configuration: YAML-Based Policy Engines &amp; Dynamic Hot-Reloading</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving beyond hardcoded decorators: Building an enterprise YAML rule engine with Pydantic v2 validation, route-level regex matching, multi-tier quotas, and zero-downtime hot-reloading in FastAPI.</p>
+            </div>
+            <a href="Chapter 02 - Declarative Configuration - YAML-Based Policy Engines and Dynamic Hot-Reloading.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

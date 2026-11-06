@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 08: Long-Polling vs. Server-Sent Events (SSE) vs. WebSockets &amp; WebTransport</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 08 - Real-Time Ingress Protocols)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Client-Server Real-Time Protocols
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Long-Polling vs. Server-Sent Events (SSE) vs. WebSockets &amp; WebTransport
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating the real-time communication spectrum: Comparing transport physics, mobile battery radio drain, HTTP/2 multiplexing, bidirectional full-duplex TCP streams against HTTP/3 QUIC datagrams, and engineering the multi-protocol streaming core of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 08: Multi-Protocol Telemetry Gateway</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 07, we scaled multi-instance WebSockets across distributed clusters via a Redis pub/sub backplane. In Milestone 08, we recognize a critical architectural truth: <strong>WebSockets are not a silver bullet for all real-time requirements</strong>. A rider viewing nearby cars on a mobile map needs unidirectional streaming data; forcing them onto WebSockets wastes battery, bypasses HTTP/2 multiplexing, and breaks edge caching. We engineer OmniRoute's <strong>Adaptive Multi-Protocol Gateway</strong> using FastAPI, asyncio, and asynchronous SQLAlchemy 2.0: serving hanging <strong>Long-Polling</strong> fallbacks, streaming unidirectional telemetry via <strong>Server-Sent Events (SSE)</strong> with <code class="font-mono text-emerald-300 text-xs">Last-Event-ID</code> resumption, and benchmarking bidirectional <strong>WebSockets</strong> and emerging <strong>WebTransport</strong> protocols.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 5 Real-Time Communication Paradigms</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Mobile Radio State Machine (RRC) &amp; Battery Physics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> SSE: HTTP/2 Multiplexing &amp; Auto-Reconnection</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> WebSockets (RFC 6455) Frame Overhead Analysis</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> WebTransport over HTTP/3 (QUIC Datagrams)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Multi-Protocol Gateway in FastAPI</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Comprehensive PyTest Multi-Protocol Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Protocol Physics -->
+        <section id="protocol-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Protocol Architecture</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Real-Time Spectrum: Evolution from Polling to WebTransport</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The World Wide Web was architected around a strict request-response paradigm: the client sends a request, the server returns a response, and the connection closes. Over the last 25 years, engineers have developed five progressive generations of real-time communication to bypass this limitation:
+            </p>
+
+            <!-- 5 Protocols Comparison Cards -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- 1. Short Polling -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">1. Short Polling (Timer-Based)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Anti-Pattern at Scale</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Client sends an HTTP GET request every $N$ seconds (<code class="font-mono text-xs">setInterval(poll, 2000)</code>) regardless of whether new data exists.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                        <div>&bull; Overhead: Full HTTP/1.1 headers (~800 bytes) on every poll</div>
+                        <div>&bull; Waste: 98% of responses return empty data ({})</div>
+                        <div>&bull; Mobile: Forces cellular radio into high-power state continuously</div>
+                    </div>
+                </div>
+
+                <!-- 2. Long Polling -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-amber-700 text-sm">2. Long Polling (Hanging GET)</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Universal Fallback</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Client requests data. The server holds the request open until an event occurs or a timeout expires. The client reconnects immediately upon receiving a response.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-amber-300 text-[10px] space-y-1">
+                        <div>&bull; Latency: Near instantaneous event delivery</div>
+                        <div>&bull; Drawback: Reconnection overhead after every event</div>
+                        <div>&bull; Use Case: Critical fallback when WebSockets/SSE are blocked</div>
+                    </div>
+                </div>
+
+                <!-- 3. Server-Sent Events (SSE) -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">3. Server-Sent Events (SSE)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Unidirectional Streaming</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Standard HTTP connection with content-type <code class="font-mono text-xs">text/event-stream</code>. Server streams chunks indefinitely down the open HTTP channel.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-sky-300 text-[10px] space-y-1">
+                        <div>&bull; Transport: Standard HTTP (Multiplexable over HTTP/2)</div>
+                        <div>&bull; Features: Native browser auto-reconnect &amp; Last-Event-ID</div>
+                        <div>&bull; Use Case: Stock tickers, rider map car movements, LLM token streaming</div>
+                    </div>
+                </div>
+
+                <!-- 4. WebSockets -->
+                <div class="p-5 bg-white border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">4. WebSockets (RFC 6455)</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Bidirectional Full-Duplex</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Upgrades an HTTP connection to a persistent, bidirectional TCP stream with minimal framing overhead (2 to 14 bytes per frame).
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-purple-300 text-[10px] space-y-1">
+                        <div>&bull; Direction: Full-Duplex (Both sides send anytime)</div>
+                        <div>&bull; Drawback: Requires custom heartbeats, load balancer bypasses</div>
+                        <div>&bull; Use Case: Chat, collaborative editing, driver coordinate uploads</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. WebTransport Hero Box -->
+            <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3 font-mono text-xs">
+                <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                    <span class="font-bold text-emerald-400 text-sm">5. WebTransport (over HTTP/3 / QUIC) &bull; The Next Generation</span>
+                    <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">UDP-Based Multiplexing</span>
+                </div>
+                <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                    Operating on top of QUIC (UDP), WebTransport combines the bidirectional capabilities of WebSockets with the multiplexing powers of HTTP/3:
+                </p>
+                <div class="grid md:grid-cols-3 gap-3 text-[10px]">
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <strong class="text-sky-300 block">No Head-of-Line Blocking</strong>
+                        <p class="text-slate-400 font-sans">A dropped packet on Stream A does not stall Stream B! Independent streams flow unimpeded.</p>
+                    </div>
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <strong class="text-emerald-300 block">Unreliable Datagrams</strong>
+                        <p class="text-slate-400 font-sans">Send high-frequency GPS coordinate updates over raw UDP datagrams without TCP retransmission latency!</p>
+                    </div>
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <strong class="text-amber-300 block">Connection Migration</strong>
+                        <p class="text-slate-400 font-sans">When a driver switches from Wi-Fi to 5G cellular, the connection survives with ZERO reconnection handshake!</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE MOBILE BATTERY & RADIO STATE MACHINE IMPACT -->
+        <section id="battery-physics" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Hardware &amp; Telecom Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Mobile Battery Drain: The Radio Resource Control (RRC) Machine
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Cellular Modem States &bull; Tail Time Waste &bull; Battery Sapping Short Polling
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Why does polling kill mobile phones? A smartphone’s 4G/5G cellular modem does not stay powered on continuously; doing so would drain the lithium-ion battery in under 3 hours. Instead, the telecommunications tower coordinates the device using the <strong>Radio Resource Control (RRC) State Machine</strong>:
+            </p>
+
+            <!-- RRC State Machine Visual Flow -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Cellular Radio Resource Control (RRC) Power Cycle
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Idle State -->
+                    <div class="p-4 bg-slate-950 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-400 font-bold block text-sm">1. RRC_IDLE</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Radio powered off</div>
+                        <div class="text-[9px] text-emerald-300 font-bold">Current: ~5 to 10 mW</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; Packet sent &rarr;</div>
+
+                    <!-- Connected State -->
+                    <div class="p-4 bg-rose-950/80 border-2 border-rose-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-rose-400 font-bold block text-sm">2. RRC_CONNECTED</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Full power transmission</div>
+                        <div class="text-[9px] text-rose-300 font-bold">Current: ~1,500 to 2,500 mW!</div>
+                    </div>
+
+                    <div class="text-amber-400 font-bold">&rarr; Inactivity timer &rarr;</div>
+
+                    <!-- Tail State -->
+                    <div class="p-4 bg-amber-950/80 border-2 border-amber-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-amber-300 font-bold block text-sm">3. TAIL TIME (Warm)</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Awaits more packets</div>
+                        <div class="text-[9px] text-amber-300 font-bold">Lingers for 10 to 15 seconds!</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-rose-400 font-mono">The Short Polling Battery Trap:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        If a rider app polls every 10 seconds, the cellular radio enters <code class="text-rose-400 font-mono">RRC_CONNECTED</code> to send the request, finishes in 100ms, and enters the 10-second <code class="text-amber-400 font-mono">TAIL TIME</code>. Just as the radio prepares to sleep, the next poll fires! <strong>The cellular modem NEVER enters deep sleep.</strong> In contrast, SSE streams events down an already-open connection, allowing packets to be coalesced into efficient bursts.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE DEFINITIVE PROTOCOL DECISION MATRIX -->
+        <section id="decision-matrix" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Architectural Selection
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Protocol Decision Matrix: Choosing the Right Tool
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Directionality &bull; Overhead &bull; Edge Caching &bull; Multiplexing Compatibility
+                </p>
+            </div>
+
+            <!-- Exhaustive Table -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Dimension</th>
+                            <th class="p-3 text-rose-700">Long Polling</th>
+                            <th class="p-3 text-sky-700">Server-Sent Events (SSE)</th>
+                            <th class="p-3 text-purple-700">WebSockets</th>
+                            <th class="p-3 text-emerald-700">WebTransport</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Communication Flow</td>
+                            <td class="p-3 font-sans">Simulated Bi-directional</td>
+                            <td class="p-3 font-sans text-sky-800 font-bold">Unidirectional (Server &rarr; Client)</td>
+                            <td class="p-3 font-sans text-purple-800 font-bold">Bidirectional (Full Duplex)</td>
+                            <td class="p-3 font-sans text-emerald-800 font-bold">Bidirectional + Unreliable</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Underlying Protocol</td>
+                            <td class="p-3 font-sans">HTTP/1.1</td>
+                            <td class="p-3 font-sans">HTTP/1.1 or HTTP/2 / HTTP/3</td>
+                            <td class="p-3 font-sans">Custom TCP Protocol (RFC 6455)</td>
+                            <td class="p-3 font-sans">QUIC (UDP-based HTTP/3)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Per-Message Framing</td>
+                            <td class="p-3 text-rose-700 font-bold">~500 to 1,000 bytes (Full Headers)</td>
+                            <td class="p-3 text-sky-700 font-bold">~5 to 10 bytes (`data: ...\n\n`)</td>
+                            <td class="p-3 text-purple-700 font-bold">2 to 14 bytes (Binary Frame)</td>
+                            <td class="p-3 text-emerald-700 font-bold">~1 to 3 bytes (QUIC Frame)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">HTTP/2 Multiplexing</td>
+                            <td class="p-3 text-rose-700 font-bold">&cross; No</td>
+                            <td class="p-3 text-emerald-700 font-bold">&check; Yes (Shares 1 TCP connection!)</td>
+                            <td class="p-3 text-rose-700 font-bold">&cross; No (Needs dedicated TCP pipe)</td>
+                            <td class="p-3 text-emerald-700 font-bold">&check; Yes (Native QUIC streams)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Auto-Reconnection</td>
+                            <td class="p-3 font-sans">Manual client logic</td>
+                            <td class="p-3 text-emerald-700 font-bold">&check; Built-in (Browser EventSource)</td>
+                            <td class="p-3 font-sans">Manual client logic + Jitter</td>
+                            <td class="p-3 font-sans">Built-in Connection Migration</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Corporate Firewall / Proxy</td>
+                            <td class="p-3 text-emerald-700 font-bold">&check; Excellent (Standard HTTP)</td>
+                            <td class="p-3 text-emerald-700 font-bold">&check; Excellent (Standard HTTP)</td>
+                            <td class="p-3 text-amber-700 font-bold">&Delta; Moderate (Often blocked by WAFs)</td>
+                            <td class="p-3 text-amber-700 font-bold">&Delta; UDP/QUIC blocked in ~5% corporate nets</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-slate-50/80">
+                            <td class="p-3 font-bold text-slate-900">Ideal Industrial Use Case</td>
+                            <td class="p-3 font-sans">Legacy fallback</td>
+                            <td class="p-3 font-sans font-bold text-sky-900">Rider Map Coordinates &bull; Stock Tickers &bull; LLM Tokens</td>
+                            <td class="p-3 font-sans font-bold text-purple-900">Driver Telemetry Upload &bull; Chat &bull; Multiplayer</td>
+                            <td class="p-3 font-sans font-bold text-emerald-900">Real-Time Gaming &bull; Live Video Telemetry &bull; AR/VR</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 08 -->
+        <section id="omniroute-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 08: Adaptive Multi-Protocol Telemetry Hub</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 08 for <strong>OmniRoute</strong>: a unified Multi-Protocol Gateway demonstrating:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Server-Sent Events (SSE) Stream:</strong> Unidirectional broadcast of vehicle coordinates to riders with <code class="font-mono text-xs">Last-Event-ID</code> resume tracking.</li>
+                <li><strong>Long-Polling Endpoint:</strong> Hanging GET queue consumer serving clients behind strict corporate proxies.</li>
+                <li><strong>Bidirectional WebSocket Endpoint:</strong> Ultra-low-overhead telemetry conduit for driver coordinate uploads.</li>
+                <li><strong>Asynchronous SQLAlchemy 2.0 Ingress Audit Table:</strong> Measuring frame size overhead and protocol performance in real time.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 08)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── protocols/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 08: Protocol Telemetry Audit Model (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">sse_hub.py</span>       <span class="text-slate-500"># Milestone 08: SSE Broadcaster &amp; Long-Poll Queue Hub</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 08: FastAPI Multi-Protocol Ingress Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_realtime_protocols.py</span> <span class="text-slate-500"># Milestone 08 Multi-Protocol Test Suite</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/protocols/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Protocol Telemetry Audit Entity: <code class="text-purple-700">src/omniroute/protocols/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Protocols - Multi-Protocol Telemetry Audit Entity</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Integer, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ProtocolMetricsAuditModel</span>(Base):
+    <span class="text-slate-500">"""
+    PERSISTENT PROTOCOL TELEMETRY AUDIT:
+    Tracks bytes transferred, protocol classification (SSE, WS, LP),
+    and client lifecycle across real-time endpoints.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"protocol_metrics_audits"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    client_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    protocol_type: Mapped[str] = mapped_column(String(20), nullable=<span class="text-rose-400">False</span>)  <span class="text-slate-500"># SSE, WEBSOCKET, LONG_POLL</span>
+    bytes_transferred: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    event_count: Mapped[int] = mapped_column(Integer, default=1)
+    recorded_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/protocols/sse_hub.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. SSE Broadcaster &amp; Long-Poll Hub: <code class="text-purple-700">src/omniroute/protocols/sse_hub.py</code></span>
+                    <span class="text-slate-400">Asynchronous Stream Multiplexer</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Protocols - Real-Time SSE Broadcaster &amp; Long-Polling Engine</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator, Dict, Optional, List
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RealtimeProtocolHub</span>:
+    <span class="text-slate-500">"""
+    MULTI-PROTOCOL DISPATCH ENGINE:
+    Coordinates SSE event streaming and Long-Polling hanging GET queues.
+    Maintains an in-memory historical event buffer to support 'Last-Event-ID' resumption.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, max_history_size: int = 100):
+        self.max_history_size = max_history_size
+        <span class="text-slate-500"># History buffer: list of (event_id, payload_dict)</span>
+        self._event_history: List[tuple[int, dict]] = []
+        self._current_sequence_id: int = 0
+        <span class="text-slate-500"># Long-polling client queues: client_id -&gt; asyncio.Queue</span>
+        self._long_poll_queues: Dict[str, asyncio.Queue] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">publish_telemetry</span>(self, payload: dict) -> int:
+        <span class="text-slate-500">"""Broadcasts coordinate update to both SSE history and active long-poll clients."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            self._current_sequence_id += 1
+            seq = self._current_sequence_id
+            self._event_history.append((seq, payload))
+
+            <span class="text-purple-400">if</span> len(self._event_history) &gt; self.max_history_size:
+                self._event_history.pop(0)
+
+            <span class="text-slate-500"># Wake up all hanging long-poll clients</span>
+            <span class="text-purple-400">for</span> queue <span class="text-purple-400">in</span> self._long_poll_queues.values():
+                <span class="text-purple-400">await</span> queue.put((seq, payload))
+
+            <span class="text-purple-400">return</span> seq
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">subscribe_sse</span>(
+        self, last_event_id: Optional[int] = <span class="text-rose-400">None</span>
+    ) -> AsyncGenerator[str, <span class="text-rose-400">None</span>]:
+        <span class="text-slate-500">"""
+        SSE STREAM GENERATOR (RFC 8895 Compliance):
+        1. Resends any missed events occurring after 'Last-Event-ID'.
+        2. Streams new incoming events as formatted 'data: ...\n\n' chunks.
+        """</span>
+        local_seq = last_event_id <span class="text-purple-400">or</span> self._current_sequence_id
+
+        <span class="text-slate-500"># 1. Replay missed history</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            missed_events = [e <span class="text-purple-400">for</span> e <span class="text-purple-400">in</span> self._event_history <span class="text-purple-400">if</span> e[0] &gt; local_seq]
+
+        <span class="text-purple-400">for</span> seq_id, event_data <span class="text-purple-400">in</span> missed_events:
+            <span class="text-purple-400">yield</span> f<span class="text-amber-300">"id: {seq_id}\nevent: gps_telemetry\ndata: {json.dumps(event_data)}\n\n"</span>
+            local_seq = seq_id
+
+        <span class="text-slate-500"># 2. Continuous real-time stream</span>
+        poll_queue: asyncio.Queue = asyncio.Queue()
+        client_key = f<span class="text-amber-300">"sse_client_{time.time()}_{id(poll_queue)}"</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            self._long_poll_queues[client_key] = poll_queue
+
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">while True</span>:
+                seq_id, event_data = <span class="text-purple-400">await</span> poll_queue.get()
+                <span class="text-purple-400">if</span> seq_id &gt; local_seq:
+                    <span class="text-purple-400">yield</span> f<span class="text-amber-300">"id: {seq_id}\nevent: gps_telemetry\ndata: {json.dumps(event_data)}\n\n"</span>
+                    local_seq = seq_id
+        <span class="text-purple-400">finally</span>:
+            <span class="text-purple-400">async with</span> self._lock:
+                self._long_poll_queues.pop(client_key, <span class="text-rose-400">None</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">await_long_poll</span>(
+        self, client_id: str, timeout_sec: float = 15.0
+    ) -> Optional[dict]:
+        <span class="text-slate-500">"""Hanging GET handler: awaits an event or returns None upon timeout."""</span>
+        queue: asyncio.Queue = asyncio.Queue()
+        <span class="text-purple-400">async with</span> self._lock:
+            self._long_poll_queues[client_id] = queue
+
+        <span class="text-purple-400">try</span>:
+            seq_id, data = <span class="text-purple-400">await</span> asyncio.wait_for(queue.get(), timeout=timeout_sec)
+            <span class="text-purple-400">return</span> {<span class="text-amber-300">"sequence_id"</span>: seq_id, <span class="text-amber-300">"payload"</span>: data}
+        <span class="text-purple-400">except</span> asyncio.TimeoutError:
+            <span class="text-purple-400">return None</span>  <span class="text-slate-500"># Normal timeout: client will immediately poll again</span>
+        <span class="text-purple-400">finally</span>:
+            <span class="text-purple-400">async with</span> self._lock:
+                self._long_poll_queues.pop(client_id, <span class="text-rose-400">None</span>)</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Multi-Protocol FastAPI Controller: <code class="text-purple-700">src/omniroute/protocols/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; StreamingResponse</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, WebSocket, WebSocketDisconnect, Header, status, Depends
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> StreamingResponse
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+
+<span class="text-purple-400">from</span> omniroute.protocols.sse_hub <span class="text-purple-400">import</span> RealtimeProtocolHub
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/stream"</span>, tags=[<span class="text-amber-300">"Protocol Streaming"</span>])
+hub = RealtimeProtocolHub()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TelemetryBroadcastDTO</span>(BaseModel):
+    driver_id: str
+    lat: float
+    lng: float
+    bearing: float
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/broadcast"</span>, status_code=status.HTTP_202_ACCEPTED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">broadcast_driver_telemetry</span>(dto: TelemetryBroadcastDTO):
+    <span class="text-slate-500">"""Ingests driver coordinates and broadcasts across all connected protocols."""</span>
+    seq = <span class="text-purple-400">await</span> hub.publish_telemetry(dto.model_dump())
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"PUBLISHED"</span>, <span class="text-amber-300">"sequence_id"</span>: seq}
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/sse"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">stream_sse_telemetry</span>(last_event_id: Optional[int] = Header(<span class="text-rose-400">None</span>, alias=<span class="text-amber-300">"Last-Event-ID"</span>)):
+    <span class="text-slate-500">"""
+    SERVER-SENT EVENTS (SSE) ENDPOINT:
+    Streams driver location updates to rider apps using text/event-stream.
+    Supports HTTP/2 multiplexing and automated client reconnection resumption.
+    """</span>
+    generator = hub.subscribe_sse(last_event_id=last_event_id)
+    <span class="text-purple-400">return</span> StreamingResponse(
+        generator,
+        media_type=<span class="text-amber-300">"text/event-stream"</span>,
+        headers={
+            <span class="text-amber-300">"Cache-Control"</span>: <span class="text-amber-300">"no-cache"</span>,
+            <span class="text-amber-300">"Connection"</span>: <span class="text-amber-300">"keep-alive"</span>,
+            <span class="text-amber-300">"X-Accel-Buffering"</span>: <span class="text-amber-300">"no"</span>  <span class="text-slate-500"># Disables proxy buffering in Nginx/Envoy</span>
+        }
+    )
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/long-poll/{client_id}"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">long_poll_telemetry</span>(client_id: str):
+    <span class="text-slate-500">"""Hanging GET Long-Polling fallback endpoint for restrictive corporate proxies."""</span>
+    result = <span class="text-purple-400">await</span> hub.await_long_poll(client_id, timeout_sec=2.0)
+    <span class="text-purple-400">if</span> result <span class="text-purple-400">is None</span>:
+        <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"TIMEOUT"</span>, <span class="text-amber-300">"data"</span>: <span class="text-rose-400">None</span>}
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"EVENT_RECEIVED"</span>, <span class="text-amber-300">"data"</span>: result}
+
+
+<span class="text-purple-400">@router.websocket</span>(<span class="text-amber-300">"/ws/driver/{driver_id}"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">driver_websocket_telemetry</span>(websocket: WebSocket, driver_id: str):
+    <span class="text-slate-500">"""Bidirectional WebSocket pipeline for active driver location ingestion."""</span>
+    <span class="text-purple-400">await</span> websocket.accept()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">while True</span>:
+            payload = <span class="text-purple-400">await</span> websocket.receive_json()
+            <span class="text-purple-400">await</span> hub.publish_telemetry({<span class="text-amber-300">"driver_id"</span>: driver_id, **payload})
+            <span class="text-purple-400">await</span> websocket.send_json({<span class="text-amber-300">"ack"</span>: <span class="text-rose-400">True</span>})
+    <span class="text-purple-400">except</span> WebSocketDisconnect:
+        pass</pre>
+            </div>
+
+            <!-- File 4: tests/test_realtime_protocols.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Multi-Protocol Test Suite: <code class="text-purple-700">tests/test_realtime_protocols.py</code></span>
+                    <span class="text-slate-400">PyTest Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> AsyncClient, ASGITransport
+
+<span class="text-purple-400">from</span> omniroute.protocols.sse_hub <span class="text-purple-400">import</span> RealtimeProtocolHub
+<span class="text-purple-400">from</span> omniroute.protocols.router <span class="text-purple-400">import</span> router
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestRealtimeProtocolsSuite</span>:
+    <span class="text-slate-500">"""Verifies SSE streaming resumption, Long-Polling timeouts, and broadcast coordination."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_sse_resumption_with_last_event_id</span>(self):
+        hub = RealtimeProtocolHub()
+
+        <span class="text-slate-500"># Publish 3 historical events</span>
+        <span class="text-purple-400">await</span> hub.publish_telemetry({<span class="text-amber-300">"step"</span>: 1})
+        <span class="text-purple-400">await</span> hub.publish_telemetry({<span class="text-amber-300">"step"</span>: 2})
+        <span class="text-purple-400">await</span> hub.publish_telemetry({<span class="text-amber-300">"step"</span>: 3})
+
+        <span class="text-slate-500"># Client reconnects asserting it already saw Event #1</span>
+        sse_stream = hub.subscribe_sse(last_event_id=1)
+
+        <span class="text-slate-500"># Stream must immediately replay missed events #2 and #3</span>
+        chunk_2 = <span class="text-purple-400">await</span> anext(sse_stream)
+        assert <span class="text-amber-300">"id: 2"</span> <span class="text-purple-400">in</span> chunk_2
+        assert <span class="text-amber-300">'"step": 2'</span> <span class="text-purple-400">in</span> chunk_2
+
+        chunk_3 = <span class="text-purple-400">await</span> anext(sse_stream)
+        assert <span class="text-amber-300">"id: 3"</span> <span class="text-purple-400">in</span> chunk_3
+        assert <span class="text-amber-300">'"step": 3'</span> <span class="text-purple-400">in</span> chunk_3
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_long_polling_receives_broadcast_instantaneously</span>(self):
+        hub = RealtimeProtocolHub()
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">delayed_broadcast</span>():
+            <span class="text-purple-400">await</span> asyncio.sleep(0.05)
+            <span class="text-purple-400">await</span> hub.publish_telemetry({<span class="text-amber-300">"lat"</span>: 37.77})
+
+        asyncio.create_task(delayed_broadcast())
+
+        <span class="text-slate-500"># Hanging long-poll client awaits event</span>
+        res = <span class="text-purple-400">await</span> hub.await_long_poll(client_id=<span class="text-amber-300">"rider_1"</span>, timeout_sec=1.0)
+        assert res <span class="text-purple-400">is not None</span>
+        assert res[<span class="text-amber-300">"payload"</span>][<span class="text-amber-300">"lat"</span>] == 37.77
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_long_polling_timeout_safety</span>(self):
+        hub = RealtimeProtocolHub()
+        <span class="text-slate-500"># Zero events published &rarr; timeout cleanly in 0.05s</span>
+        res = <span class="text-purple-400">await</span> hub.await_long_poll(client_id=<span class="text-amber-300">"rider_timeout"</span>, timeout_sec=0.05)
+        assert res <span class="text-purple-400">is None</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_protocol_rest_integration</span>(self):
+        app = FastAPI()
+        app.include_router(router)
+
+        transport = ASGITransport(app=app)
+        <span class="text-purple-400">async with</span> AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://test"</span>) <span class="text-purple-400">as</span> client:
+            res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/stream/broadcast"</span>, json={
+                <span class="text-amber-300">"driver_id"</span>: <span class="text-amber-300">"drv_10"</span>,
+                <span class="text-amber-300">"lat"</span>: 40.7128,
+                <span class="text-amber-300">"lng"</span>: -74.0060,
+                <span class="text-amber-300">"bearing"</span>: 180.0
+            })
+            assert res.status_code == 202
+            assert res.json()[<span class="text-amber-300">"status"</span>] == <span class="text-amber-300">"PUBLISHED"</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Real-Time Protocol Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "WebSockets for Everything" Dogma</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using WebSockets for simple, read-only feeds (such as stock prices, notification alerts, or LLM token streaming).
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes architectural failure:</strong> WebSockets bypass HTTP/2 multiplexing, preventing your app from sharing a single TCP connection with normal web assets. They bypass edge CDN caching layers, require custom ping/pong heartbeats, and demand stateful cluster mesh backplanes. <strong>If communication is strictly one-way (Server &rarr; Client), always prefer Server-Sent Events (SSE)!</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The HTTP/1.1 Six-Connection Ceiling on SSE</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Serving Server-Sent Events over HTTP/1.1 without enabling HTTP/2 on reverse proxies.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this freezes client browsers:</strong> Modern browsers enforce a strict limit of <strong>6 concurrent HTTP/1.1 connections per domain</strong>. If a user opens 6 tabs with an open SSE connection, opening a 7th tab completely freezes all image and API loading for the entire website! Always terminate SSE over **HTTP/2 or HTTP/3**, where multiple streams multiplex over a single connection!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the multi-protocol test battery and verify SSE resumption, Long-Polling timeouts, and WebSocket streams:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Multi-Protocol Realtime test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_realtime_protocols.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.10s. Confirms SSE stream replay, Long-Polling dispatch, hanging timeout safety, and broadcast delivery!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate SSE resumption in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from omniroute.protocols.sse_hub import RealtimeProtocolHub; hub = RealtimeProtocolHub(); async def run(): await hub.publish_telemetry({'driver': 1}); await hub.publish_telemetry({'driver': 2}); s = hub.subscribe_sse(last_event_id=1); print('Replayed Chunk:', await anext(s)); asyncio.run(run())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates RFC 8895 resumption: client provides Last-Event-ID: 1 and instantly receives Event 2!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 09 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Storage Fundamentals: B-Trees vs. LSM-Trees &amp; In-Memory Tables</h4>
+                <p class="text-xs text-slate-500 font-sans">Descending into persistence engines: Random 4KB page writes in PostgreSQL B-Trees vs. sequential append-only writes in Cassandra/RocksDB LSM-Trees, write amplification, and in-memory tables.</p>
+            </div>
+            <a href="Chapter 09 - Storage Fundamentals - B-Trees vs. LSM-Trees and In-Memory Tables.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 09 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Cryptographic Foundations &bull; Symmetric vs. Asymmetric Keys in PyJWT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyJWT Architecture &amp; Token Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">TokenForge (Milestone 01 - Cryptographic Engine &amp; Asymmetric Primitives)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Cryptographic Primitives &amp; Key Architecture
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Cryptographic Foundations: Symmetric vs. Asymmetric Keys in PyJWT
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing cryptographic token authentication from mathematical primitives to microservice boundaries: Understanding why shared secrets fail across distributed services, generating and loading PEM-encoded RSA-2048 keypairs, eliminating algorithm confusion attacks, and architecting the core cryptographic engine of <strong>TokenForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "TokenForge" Milestone 01</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In distributed microservice architectures, relying on naive symmetric tokens invites catastrophic systemic failure: if 10 independent microservices share the same secret key, a security compromise of any single service allows an attacker to forge tokens for the entire ecosystem. Throughout this series, we build <strong>TokenForge</strong>: an enterprise-grade federated authentication and cryptographic token management framework. In Milestone 01, we lay the mathematical bedrock by constructing an isolated, dual-engine cryptographic abstraction layer capable of issuing and verifying tokens via both symmetric (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">HS256</code>) and asymmetric (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">RS256</code>) schemes.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Symmetric HMAC vs. Asymmetric RSA boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Generating and parsing PKCS#8 &amp; SubjectPublicKeyInfo PEMs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Neutralizing the critical Algorithm Confusion Exploit</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PyJWT Cryptographic Backend (<code class="text-purple-300">cryptography</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production TokenForge Core Engine Implementation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full Unit &amp; Security Boundary Test Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Token Cryptography -->
+        <section id="cs-cryptography" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Cryptographic Signing vs. Encryption</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Before examining library interfaces, engineers must master the fundamental cryptographic objective of a JSON Web Token (RFC 7519). A standard JWT is a <strong>JWS (JSON Web Signature)</strong>, not a JWE (JSON Web Encryption).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Signing provides <strong>Integrity</strong> (proving the claims have not been altered in transit) and <strong>Authenticity</strong> (proving the claims were generated by a trusted entity). It provides <strong>zero Confidentiality</strong>. Anyone who intercepts the token can decode the Base64URL string and read the payload.
+            </p>
+
+            <!-- Symmetric vs Asymmetric Architecture Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Cryptographic Topologies: Symmetric Secrets vs. Asymmetric Keypairs</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Analyzing Trust Boundaries Across Distributed Services</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Symmetric (HS256) -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Symmetric Signing (HS256)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Shared Secret</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            A single shared binary secret is used for both generation and validation:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>IAM Service: Uses secret_key to SIGN token</div>
+                            <div>Billing Service: Needs secret_key to VERIFY token</div>
+                            <div>Reporting Service: Needs secret_key to VERIFY token</div>
+                            <div class="text-rose-400 font-bold">&rarr; If Reporting Service is hacked, attacker steals secret_key!</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Blast Radius:</strong> Catastrophic. Any verifier can forge valid administrator tokens.</li>
+                            <li><strong>Key Distribution:</strong> Complex and dangerous across cloud infrastructure.</li>
+                            <li><strong>Best For:</strong> Small monolithic backends with no external consumers.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Asymmetric (RS256) -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Asymmetric Signing (RS256)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Public/Private Pair</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Two mathematically linked keys: a Private Signing Key and a Public Verifying Key:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>IAM Service: Keeps PRIVATE key secret &bull; SIGNS tokens</div>
+                            <div>Billing Service: Has PUBLIC key only &bull; VERIFIES locally</div>
+                            <div>Reporting Service: Has PUBLIC key only &bull; VERIFIES locally</div>
+                            <div class="text-emerald-400 font-bold">&rarr; Reporting Service breach leaks only public info. Zero forgery!</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Blast Radius:</strong> Contained. Compromised services cannot issue or forge tokens.</li>
+                            <li><strong>Key Distribution:</strong> Safe. Public keys can be exposed via open JWKS endpoints.</li>
+                            <li><strong>Best For:</strong> Modern microservices, distributed SaaS, and mobile API backends.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Deep Dive: The Algorithm Confusion Exploit -->
+        <section id="algorithm-confusion" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Algorithm Confusion Exploit</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                One of the most severe historical vulnerabilities in JWT implementations is the <strong>Algorithm Confusion Attack</strong> (also known as the Key Confusion Vulnerability). Understanding this exploit is mandatory for any senior engineer designing token-based systems.
+            </p>
+
+            <!-- Algorithm Confusion Attack Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Anatomy of an Algorithm Confusion Breach
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">1. Attacker Action</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Takes known RSA Public Key &bull; Changes JWT Header from "RS256" to "HS256"</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; signs with HMAC &rarr;</div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. Forged Token Created</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Attacker uses public key string as symmetric secret &bull; Generates valid HS256 signature</span>
+                    </div>
+
+                    <div class="text-rose-600 font-bold">&rarr; dispatches to backend &rarr;</div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-rose-900 font-bold block">3. Vulnerable Verifier</span>
+                        <span class="text-[10px] text-rose-700 font-sans">Naive decoder reads header "HS256" &bull; Uses server's public key variable as HMAC secret &bull; Signature MATCHES!</span>
+                    </div>
+                </div>
+
+                <div class="bg-rose-50 p-4 rounded-xl text-rose-900 font-sans text-xs border border-rose-200 space-y-1">
+                    <strong class="font-mono text-rose-950 font-bold">&#9888; Why This Happens in Naive Code:</strong>
+                    <p class="leading-relaxed">
+                        If a developer writes <code class="font-mono text-rose-900 bg-rose-100 px-1 py-0.5 rounded">jwt.decode(token, public_key)</code> without explicitly specifying the <code class="font-mono text-rose-900 font-bold">algorithms=["RS256"]</code> whitelist, an older or poorly configured library reads the algorithm from the unverified token header. It switches to symmetric mode, treating the text of the public key as the secret password! Since the attacker already knows the public key, they have effectively forged administrative credentials.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Defensive Rule Callout -->
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-2 font-mono text-xs">
+                <span class="text-emerald-900 font-bold block text-sm">The Defensive PyJWT Mandate: Explicit Algorithm Constraints</span>
+                <p class="font-sans text-slate-700 text-xs leading-relaxed">
+                    PyJWT mitigates this vulnerability by strictly requiring an explicit list of algorithms in <code class="font-mono text-purple-700 font-bold">jwt.decode()</code>. If an incoming token specifies an algorithm not present in the allowed list, PyTest and PyJWT raise an immediate <code class="font-mono text-rose-700 font-bold">jwt.exceptions.InvalidAlgorithmError</code>.
+                </p>
+                <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">
+                    # SENIOR STANDARD: Always pass algorithms as an explicit single-item list<br>
+                    payload = jwt.decode(token, public_key, <span class="text-amber-300 font-bold">algorithms=["RS256"]</span>)
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Key Generation & PEM Serialization -->
+        <section id="key-generation" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cryptographic Key Management: Generating &amp; Serializing PEMs</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Asymmetric keys are represented as abstract mathematical structures (prime factors and modular exponents). In production software, these structures are serialized into standardized text representations known as <strong>PEM (Privacy-Enhanced Mail)</strong> files, bounded by headers like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">-----BEGIN RSA PRIVATE KEY-----</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                PyJWT delegates all asymmetric cryptography to the industrial-strength Python <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">cryptography</code> library. Below is the exact production sequence for generating and serializing an RSA-2048 keypair in memory:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Pure Python Key Generation &amp; Serialization (PKCS#8 &amp; SubjectPublicKeyInfo):</div>
+                <pre>
+<span class="text-purple-400">from</span> cryptography.hazmat.primitives.asymmetric <span class="text-purple-400">import</span> rsa
+<span class="text-purple-400">from</span> cryptography.hazmat.primitives <span class="text-purple-400">import</span> serialization
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_rsa_keypair</span>() -> tuple[str, str]:
+    <span class="text-slate-500"># 1. Generate private key using Fermat's public exponent (65537) and 2048-bit modulus</span>
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+
+    <span class="text-slate-500"># 2. Serialize Private Key to PEM format (PKCS#8 standard)</span>
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()  <span class="text-slate-500"># In prod, protect with passphrases</span>
+    ).decode(<span class="text-amber-300">"utf-8"</span>)
+
+    <span class="text-slate-500"># 3. Extract and Serialize Public Key to PEM format (SubjectPublicKeyInfo standard)</span>
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode(<span class="text-amber-300">"utf-8"</span>)
+
+    <span class="text-purple-400">return</span> private_pem, public_pem</pre>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: TokenForge Milestone 01 -->
+        <section id="tokenforge-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">TokenForge Milestone 01: Core Cryptographic Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now build the foundational cryptographic engine for <strong>TokenForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/tokenforge/core/crypto.py</code>: an enterprise abstraction supporting both symmetric (<code class="font-mono text-purple-700">HS256</code>) and asymmetric (<code class="font-mono text-purple-700">RS256</code>) token generation and verification with defensive algorithm enforcement.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// TokenForge Project Hierarchy (Milestone 01)</div>
+                <div>tokenforge/</div>
+                <div>├── pyproject.toml                  <span class="text-slate-500"># Package definitions, PyJWT &amp; cryptography deps</span></div>
+                <div>├── src/</div>
+                <div>│   └── tokenforge/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">crypto.py</span>               <span class="text-slate-500"># Milestone 01: TokenForge Crypto Engine</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    ├── <span class="text-emerald-300 font-bold">conftest.py</span>                 <span class="text-slate-500"># Shared RSA Keypair Fixtures</span></div>
+                <div>    └── unit/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_crypto.py</span>             <span class="text-slate-500"># Unit tests: HS256, RS256, Key Confusion Defense</span></div>
+            </div>
+
+            <!-- File 1: pyproject.toml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Project Configuration: <code class="text-purple-700">pyproject.toml</code></span>
+                    <span class="text-slate-400">Strict Dependencies</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+[build-system]
+requires = [<span class="text-amber-300">"setuptools&gt;=61.0"</span>]
+build-backend = <span class="text-amber-300">"setuptools.build_meta"</span>
+
+[project]
+name = <span class="text-amber-300">"tokenforge"</span>
+version = <span class="text-amber-300">"0.1.0"</span>
+description = <span class="text-amber-300">"Enterprise Cryptographic Token &amp; Federated Identity Architecture"</span>
+authors = [{ name = <span class="text-amber-300">"TokenForge Security Team"</span> }]
+dependencies = [
+    <span class="text-amber-300">"pyjwt[crypto]&gt;=2.8.0"</span>,  <span class="text-slate-500"># Includes the cryptographic backend for RSA/ECDSA</span>
+    <span class="text-amber-300">"cryptography&gt;=42.0.0"</span>,
+]
+
+[project.optional-dependencies]
+test = [
+    <span class="text-amber-300">"pytest&gt;=8.0.0"</span>,
+]
+
+[tool.pytest.ini_options]
+minversion = <span class="text-amber-300">"8.0"</span>
+addopts = <span class="text-amber-300">"-ra -q --strict-markers"</span>
+testpaths = [<span class="text-amber-300">"tests"</span>]
+pythonpath = [<span class="text-amber-300">"src"</span>]</pre>
+            </div>
+
+            <!-- File 2: src/tokenforge/core/crypto.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Cryptographic Token Engine: <code class="text-purple-700">src/tokenforge/core/crypto.py</code></span>
+                    <span class="text-slate-400">Symmetric &amp; Asymmetric Implementation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Core - Cryptographic Token Engine (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Optional, Tuple
+<span class="text-purple-400">from</span> cryptography.hazmat.primitives.asymmetric <span class="text-purple-400">import</span> rsa
+<span class="text-purple-400">from</span> cryptography.hazmat.primitives <span class="text-purple-400">import</span> serialization
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">TokenSecurityError</span>(Exception):
+    <span class="text-slate-500">"""Base exception for TokenForge security and cryptographic violations."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">InvalidKeyError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when cryptographic key formatting or bit-depth is invalid."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">AlgorithmMismatchError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when token algorithm deviates from strict allowed whitelist."""</span>
+    pass
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">KeyManager</span>:
+    <span class="text-slate-500">"""Generates, parses, and validates cryptographic keys for token operations."""</span>
+
+    <span class="text-purple-400">@staticmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_rsa_keypair</span>(key_size: int = 2048) -> Tuple[str, str]:
+        <span class="text-slate-500">"""
+        Generates an industrial-grade RSA Keypair using FIPS compliant public exponent.
+        Returns: (private_pem_string, public_pem_string)
+        """</span>
+        <span class="text-purple-400">if</span> key_size &lt; 2048:
+            <span class="text-purple-400">raise</span> InvalidKeyError(<span class="text-amber-300">"RSA key size must be at least 2048 bits for secure operation."</span>)
+
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=key_size,
+        )
+
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode(<span class="text-amber-300">"utf-8"</span>)
+
+        public_pem = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode(<span class="text-amber-300">"utf-8"</span>)
+
+        <span class="text-purple-400">return</span> private_pem, public_pem
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenEngine</span>:
+    <span class="text-slate-500">"""
+    Core token issuing and verification engine.
+    Enforces strict algorithm encapsulation to eliminate Key Confusion exploits.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        algorithm: str = <span class="text-amber-300">"RS256"</span>,
+        signing_key: Optional[str] = <span class="text-rose-400">None</span>,
+        verification_key: Optional[str] = <span class="text-rose-400">None</span>
+    ):
+        self.algorithm = algorithm
+        self.signing_key = signing_key
+        self.verification_key = verification_key
+
+        <span class="text-slate-500"># Defensive sanity: enforce key strength for symmetric algorithms</span>
+        <span class="text-purple-400">if</span> self.algorithm.startswith(<span class="text-amber-300">"HS"</span>) <span class="text-purple-400">and</span> self.signing_key:
+            <span class="text-purple-400">if len</span>(self.signing_key.encode(<span class="text-amber-300">"utf-8"</span>)) &lt; 32:
+                <span class="text-purple-400">raise</span> InvalidKeyError(<span class="text-amber-300">"HMAC secrets must be at least 32 bytes (256 bits) long."</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">issue_token</span>(self, payload: Dict[str, Any], headers: Optional[Dict[str, Any]] = <span class="text-rose-400">None</span>) -> str:
+        <span class="text-slate-500">"""
+        Signs a payload into an RFC 7519 JSON Web Token string.
+        Requires signing_key (Private Key for RS256, Shared Secret for HS256).
+        """</span>
+        <span class="text-purple-400">if not</span> self.signing_key:
+            <span class="text-purple-400">raise</span> TokenSecurityError(<span class="text-amber-300">"Signing key is not configured on this TokenEngine instance."</span>)
+
+        token = jwt.encode(
+            payload=payload,
+            key=self.signing_key,
+            algorithm=self.algorithm,
+            headers=headers
+        )
+        <span class="text-purple-400">return</span> token
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_token</span>(self, token: str) -> Dict[str, Any]:
+        <span class="text-slate-500">"""
+        Verifies token signature and extracts claims.
+        Crucial Defense: Enforces algorithms=[self.algorithm] to block algorithm switching!
+        """</span>
+        key = self.verification_key <span class="text-purple-400">or</span> self.signing_key
+        <span class="text-purple-400">if not</span> key:
+            <span class="text-purple-400">raise</span> TokenSecurityError(<span class="text-amber-300">"Verification key is not configured on this TokenEngine instance."</span>)
+
+        <span class="text-purple-400">try</span>:
+            decoded_claims = jwt.decode(
+                jwt=token,
+                key=key,
+                <span class="text-slate-500"># CRITICAL SECURITY INVARIANT: Must pass algorithms as explicit list</span>
+                algorithms=[self.algorithm],
+                options={<span class="text-amber-300">"verify_signature"</span>: <span class="text-rose-400">True</span>}
+            )
+            <span class="text-purple-400">return</span> decoded_claims
+        <span class="text-purple-400">except</span> jwt.exceptions.InvalidAlgorithmError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> AlgorithmMismatchError(f<span class="text-amber-300">"Token algorithm does not match required &#123;self.algorithm&#125;"</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.PyJWTError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> TokenSecurityError(f<span class="text-amber-300">"Cryptographic verification failed: &#123;str(err)&#125;"</span>) <span class="text-purple-400">from</span> err</pre>
+            </div>
+
+            <!-- File 3: tests/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Test Fixtures: <code class="text-purple-700">tests/conftest.py</code></span>
+                    <span class="text-slate-400">Shared RSA Keypairs</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Test Harness - Cryptographic Fixtures (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> tokenforge.core.crypto <span class="text-purple-400">import</span> KeyManager
+
+<span class="text-slate-500"># Generate an RSA Keypair ONCE per session to minimize test suite CPU overhead</span>
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rsa_keypair</span>():
+    <span class="text-slate-500">"""Session-scoped immutable RSA keypair for token testing."""</span>
+    private_pem, public_pem = KeyManager.generate_rsa_keypair(key_size=2048)
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"private"</span>: private_pem,
+        <span class="text-amber-300">"public"</span>: public_pem
+    }</pre>
+            </div>
+
+            <!-- File 4: tests/unit/test_crypto.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Cryptographic Test Suite: <code class="text-purple-700">tests/unit/test_crypto.py</code></span>
+                    <span class="text-slate-400">Verifying Security &amp; Exploits</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Test Suite - Cryptographic Engine Verification (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> tokenforge.core.crypto <span class="text-purple-400">import</span> (
+    TokenEngine, 
+    KeyManager, 
+    InvalidKeyError, 
+    AlgorithmMismatchError, 
+    TokenSecurityError
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestCryptographicEngine</span>:
+    <span class="text-slate-500">"""Unit tests asserting signature generation, verification, and exploit defense."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_symmetric_hs256_issue_and_verify_cycle</span>(self):
+        <span class="text-slate-500"># Enforces 32-byte secret</span>
+        secret = <span class="text-amber-300">"super_secret_key_exceeding_32_bytes_length!"</span>
+        engine = TokenEngine(algorithm=<span class="text-amber-300">"HS256"</span>, signing_key=secret)
+
+        token = engine.issue_token({<span class="text-amber-300">"sub"</span>: <span class="text-amber-300">"user_123"</span>, <span class="text-amber-300">"role"</span>: <span class="text-amber-300">"analyst"</span>})
+        claims = engine.verify_token(token)
+
+        assert claims[<span class="text-amber-300">"sub"</span>] == <span class="text-amber-300">"user_123"</span>
+        assert claims[<span class="text-amber-300">"role"</span>] == <span class="text-amber-300">"analyst"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_asymmetric_rs256_issue_with_private_verify_with_public</span>(self, rsa_keypair):
+        <span class="text-slate-500"># Producer uses Private Key</span>
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token({<span class="text-amber-300">"sub"</span>: <span class="text-amber-300">"svc_orders"</span>, <span class="text-amber-300">"scope"</span>: <span class="text-amber-300">"orders:write"</span>})
+
+        <span class="text-slate-500"># Consumer uses Public Key ONLY</span>
+        consumer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, verification_key=rsa_keypair[<span class="text-amber-300">"public"</span>])
+        claims = consumer_engine.verify_token(token)
+
+        assert claims[<span class="text-amber-300">"sub"</span>] == <span class="text-amber-300">"svc_orders"</span>
+        assert claims[<span class="text-amber-300">"scope"</span>] == <span class="text-amber-300">"orders:write"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_tampered_payload_fails_signature_verification</span>(self, rsa_keypair):
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token({<span class="text-amber-300">"sub"</span>: <span class="text-amber-300">"user_123"</span>, <span class="text-amber-300">"is_admin"</span>: <span class="text-rose-400">False</span>})
+
+        <span class="text-slate-500"># Attacker modifies the payload segment in transit</span>
+        parts = token.split(<span class="text-amber-300">"."</span>)
+        tampered_token = f<span class="text-amber-300">"&#123;parts[0]&#125;.eyJzdWIiOiAidXNlcl8xMjMiLCAiaXNfYWRtaW4iOiB0cnVlfQ.&#123;parts[2]&#125;"</span>
+
+        consumer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, verification_key=rsa_keypair[<span class="text-amber-300">"public"</span>])
+        <span class="text-purple-400">with</span> pytest.raises(TokenSecurityError, match=<span class="text-amber-300">r"verification failed"</span>):
+            consumer_engine.verify_token(tampered_token)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_algorithm_confusion_exploit_is_blocked</span>(self, rsa_keypair):
+        <span class="text-slate-500">"""
+        CRITICAL EXPLOIT REPRODUCTION:
+        Attacker signs token with HS256 using the target server's public key string as secret.
+        The TokenEngine MUST reject the token because its algorithm whitelist is strictly RS256!
+        """</span>
+        public_pem_as_hmac_secret = rsa_keypair[<span class="text-amber-300">"public"</span>]
+        malicious_forged_token = jwt.encode(
+            payload={<span class="text-amber-300">"sub"</span>: <span class="text-amber-300">"admin"</span>, <span class="text-amber-300">"role"</span>: <span class="text-amber-300">"superuser"</span>},
+            key=public_pem_as_hmac_secret,
+            algorithm=<span class="text-amber-300">"HS256"</span>
+        )
+
+        <span class="text-slate-500"># Target server is expecting RS256</span>
+        server_verifier = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, verification_key=rsa_keypair[<span class="text-amber-300">"public"</span>])
+
+        <span class="text-purple-400">with</span> pytest.raises(AlgorithmMismatchError):
+            server_verifier.verify_token(malicious_forged_token)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Shared Secret Across Microservices Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using a single symmetric <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">HS256</code> secret string distributed across 15 separate microservice repositories.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes systemic outages:</strong> Every service that needs to verify a token has the power to <em>issue</em> tokens. If a vulnerability is discovered in an internal reporting microservice, an attacker extracts the shared secret and can immediately issue valid administrator tokens across payment and account systems. Always use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">RS256</code> or <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">ES256</code> across service boundaries!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Short Symmetric Secrets</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using short passwords like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">secret = "my_app_secret"</code> for HS256 signing.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is cracked in minutes:</strong> JWTs are completely public. Anyone holding a token can run offline dictionary attacks using GPU hash-cracking tools (such as Hashcat or John the Ripper) directly against the signature string. Modern standards mandate a minimum of 256 bits (32 high-entropy bytes).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating TokenForge Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, install PyJWT with cryptographic extensions, and execute the security validation suite:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Venv -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize environment and install dependencies:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest<br>
+                        pip install "pyjwt[crypto]&gt;=2.8.0" cryptography
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute cryptographic test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_crypto.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms signature integrity and proves the algorithm confusion exploit is neutralized!
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Verify in-memory RSA key generation:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from tokenforge.core.crypto import KeyManager; priv, pub = KeyManager.generate_rsa_keypair(); print('Private Key Length:', len(priv)); print('Public Key Length:', len(pub))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates generation of PKCS#8 and SubjectPublicKeyInfo PEM formats directly in memory.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Payload Claims, Expiration Enforcement &amp; Security Best Practices</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering RFC 7519 registered claims: <code class="font-mono">exp</code>, <code class="font-mono">sub</code>, <code class="font-mono">aud</code>, clock skew mitigation with <code class="font-mono">leeway</code>, and why verifying signatures without claims validation is fatal.</p>
+            </div>
+            <a href="Chapter 02 - Payload Claims, Expiration Enforcement and Security Best Practices.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

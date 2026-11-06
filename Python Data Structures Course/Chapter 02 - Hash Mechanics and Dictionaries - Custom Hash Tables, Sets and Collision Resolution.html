@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Hash Mechanics &amp; Dictionaries - Custom Hash Tables, Sets &amp; Collision Resolution</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 02 - Primary Key Index &amp; Custom Hash Tables)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Constant-Time Associative Mappings
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 02: Hash Mechanics &amp; Dictionaries - Custom Hash Tables, Sets &amp; Collision Resolution
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering constant-time associative lookup: Deconstructing SipHash-13 collision resistance, the Python <code class="font-mono text-emerald-400">__hash__</code> and <code class="font-mono text-emerald-400">__eq__</code> contractual invariants, CPython's revolutionary compact dictionary layout, open addressing with pseudo-random perturbation probing, tombstones on deletion, and engineering a resilient custom hash table for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 1 Bedrock</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 02: Primary Key Indexing Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we built MemForge's physical storage layer: a zero-copy contiguous binary buffer (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">ContiguousBuffer</code>) and a typed numeric index (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">FixedRecordArray</code>). In Milestone 02, we connect this raw binary storage to a high-speed primary key associative lookup engine. We construct a <strong>custom open-addressing hash table from scratch</strong> implementing CPython's perturbation probing sequence, tombstone markers, and dynamic 2/3 load factor threshold resizing.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> SipHash-13 &amp; Denial-of-Service Defense</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">__hash__</code> and <code class="text-purple-300">__eq__</code> Contract</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython Compact Dictionary Memory Model</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Open Addressing with Perturbation Probing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Tombstone Management &amp; Probe Continuity</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">CustomHashMap</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Hashing & CPython Internals -->
+        <section id="hashing-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Hash Functions, SipHash-13 &amp; The Hash Contract</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                At its mathematical core, a <strong>Hash Function</strong> maps arbitrary-sized data (such as a string, tuple, or binary payload) to a fixed-size integer. In Python on 64-bit systems, this is a signed 64-bit integer between $-2^{63}$ and $2^{63}-1$.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                By the <strong>Pigeonhole Principle</strong>, because the domain of possible keys is infinitely larger than the finite set of 64-bit integers, collisions are mathematically inevitable ($h(k_1) = h(k_2)$ where $k_1 \neq k_2$). The performance of a hash table depends on two distinct factors: the quality of the hash function and the collision resolution strategy.
+            </p>
+
+            <!-- SipHash-13 & Security Box -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Security Architecture: SipHash-13 &amp; Hash Flooding Defense</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Python randomizes string hashing across process restarts</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-rose-400 font-bold text-sm block">1. The Hash Flooding Exploit (DoS)</span>
+                        <p class="text-slate-300 font-sans text-xs leading-relaxed">
+                            If an attacker knows the exact mathematical hash algorithm used by a server, they can craft thousands of distinct HTTP parameter keys that all hash to the <em>exact same bucket slot</em>. When inserted into a dictionary, every operation degenerates from $O(1)$ to a disastrous $O(n)$ linear scan, spiking CPU utilization to 100% and taking the backend offline.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-emerald-400 font-bold text-sm block">2. Python's SipHash-13 Solution</span>
+                        <p class="text-slate-300 font-sans text-xs leading-relaxed">
+                            Since Python 3.4 (PEP 456), CPython hashes strings, bytes, and memoryviews using <strong>SipHash-13</strong>, initialized with a cryptographically secure 128-bit secret seed randomly generated when the Python interpreter process boots. An attacker cannot predict collisions across processes, completely neutralizing algorithmic complexity attacks.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs">The Python Hashability Contract:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        For an object to be usable as a dictionary key or set element, it must be <strong>hashable</strong>:
+                    </p>
+                    <ol class="list-decimal pl-5 space-y-1 text-slate-400 font-mono text-[10px]">
+                        <li>It must implement <code class="text-purple-300">__hash__()</code> returning an integer that never changes during the object's lifetime.</li>
+                        <li>It must implement <code class="text-purple-300">__eq__()</code> to verify equality with other objects.</li>
+                        <li><strong>The Invariant:</strong> If <code class="text-emerald-300">a == b</code> is True, then <code class="text-emerald-300">hash(a) == hash(b)</code> <strong>MUST be True</strong>. (The converse is not required due to collisions).</li>
+                        <li>Mutable containers (such as <code class="text-rose-400">list</code>, <code class="text-rose-400">dict</code>, <code class="text-rose-400">set</code>) are unhashable because their contents mutate, which would displace them from their bucket position and corrupt the table.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- 2. Legacy vs Compact Dict Layout Diagram -->
+            <div class="space-y-4">
+                <h3 class="text-2xl font-bold text-slate-900">CPython Internals: The Compact Dictionary Architecture</h3>
+                <p class="text-slate-700 leading-relaxed">
+                    Prior to Python 3.6, CPython used a classic <strong>Sparse Table Layout</strong>. Every hash table was a large array of 24-byte structs (<code class="font-mono text-xs text-purple-700">me_hash</code>, <code class="font-mono text-xs text-purple-700">me_key</code>, <code class="font-mono text-xs text-purple-700">me_value</code>). Because a dictionary must maintain a load factor under $\approx 2/3$ to prevent collisions, at least one-third of this large table remained empty, wasting substantial memory and disrupting memory cache locality.
+                </p>
+                <p class="text-slate-700 leading-relaxed">
+                    Python 3.6 introduced the <strong>Compact Dictionary Layout</strong> (proposed by Raymond Hettinger and adapted from PyPy). This architecture separates the lookup indices from the storage entries, slashing memory usage by 20% to 25% and providing a celebrated side effect: <strong>dictionaries preserve insertion order by default</strong>.
+                </p>
+
+                <!-- Visual Comparison Diagram -->
+                <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-6 shadow-xl">
+                    <div class="text-center font-bold text-emerald-400 text-xs uppercase tracking-wider">
+                        Memory Layout: Legacy Sparse Array vs. Modern Compact Dict
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <!-- Legacy Layout -->
+                        <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                            <span class="text-rose-400 font-bold block text-sm border-b border-slate-800 pb-1">Legacy Layout (&le; Python 3.5)</span>
+                            <p class="text-[10px] text-slate-400 font-sans">Single large sparse array of 24-byte entries. Wastes memory on empty slots.</p>
+                            <div class="space-y-1 text-[10px]">
+                                <div class="bg-slate-800 p-1.5 rounded flex justify-between"><span class="text-slate-500">[0]</span> <span class="text-rose-300">-- EMPTY (24 bytes wasted) --</span></div>
+                                <div class="bg-slate-900 border border-slate-700 p-1.5 rounded flex justify-between"><span class="text-slate-400">[1]</span> <span class="text-emerald-400">hash | "user_id" | 991</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded flex justify-between"><span class="text-slate-500">[2]</span> <span class="text-rose-300">-- EMPTY (24 bytes wasted) --</span></div>
+                                <div class="bg-slate-900 border border-slate-700 p-1.5 rounded flex justify-between"><span class="text-slate-400">[3]</span> <span class="text-emerald-400">hash | "role" | "admin"</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded flex justify-between"><span class="text-slate-500">[4]</span> <span class="text-rose-300">-- EMPTY (24 bytes wasted) --</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Modern Compact Layout -->
+                        <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                            <span class="text-emerald-400 font-bold block text-sm border-b border-slate-800 pb-1">Modern Compact Layout (Python 3.6+)</span>
+                            <p class="text-[10px] text-slate-400 font-sans">Dense packed entries array + tiny sparse indices array (1 byte per slot).</p>
+                            
+                            <!-- Sparse Indices -->
+                            <div class="space-y-1 text-[10px]">
+                                <span class="text-[9px] text-purple-300 block font-bold">// 1. Sparse Indices Array (int8: -1 means empty)</span>
+                                <div class="grid grid-cols-5 gap-1 text-center font-bold">
+                                    <div class="bg-slate-800 text-slate-500 p-1 rounded">-1</div>
+                                    <div class="bg-purple-950 text-purple-300 p-1 rounded border border-purple-800">0</div>
+                                    <div class="bg-slate-800 text-slate-500 p-1 rounded">-1</div>
+                                    <div class="bg-purple-950 text-purple-300 p-1 rounded border border-purple-800">1</div>
+                                    <div class="bg-slate-800 text-slate-500 p-1 rounded">-1</div>
+                                </div>
+                            </div>
+
+                            <!-- Dense Entries -->
+                            <div class="space-y-1 text-[10px] pt-1">
+                                <span class="text-[9px] text-emerald-300 block font-bold">// 2. Dense Entries Array (Packed in arrival order)</span>
+                                <div class="bg-slate-900 border border-slate-700 p-1.5 rounded flex justify-between">
+                                    <span class="text-purple-300 font-bold">[Index 0]</span>
+                                    <span class="text-emerald-300">hash | "user_id" | 991</span>
+                                </div>
+                                <div class="bg-slate-900 border border-slate-700 p-1.5 rounded flex justify-between">
+                                    <span class="text-purple-300 font-bold">[Index 1]</span>
+                                    <span class="text-emerald-300">hash | "role" | "admin"</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                        <strong>Why Insertion Order is Preserved:</strong> Because items are appended sequentially to the end of the <code class="font-mono text-emerald-300">entries</code> array, iterating over keys, values, or items simply scans the dense <code class="font-mono text-emerald-300">entries</code> table linearly from 0 to $N-1$.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Collision Resolution: Open Addressing vs Separate Chaining -->
+        <section id="collision-resolution" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Open Addressing, Perturbation &amp; Tombstones</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When two distinct keys produce the same initial index slot ($i = \text{hash}(k) \pmod{\text{size}}$), how does the table resolve the conflict? Two major paradigms exist in computer science:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Chaining -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">Separate Chaining</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">Java HashMap</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Every bucket in the table stores a linked list (or balanced binary tree) of entries that collided on that slot.
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>Advantage:</strong> The table never fills up; deletions are simple linked-list pointer updates.</li>
+                        <li><strong>Disadvantage:</strong> Terrible cache locality. Allocates separate node objects on the heap, thrashing CPU cache lines with pointer chasing.</li>
+                    </ul>
+                </div>
+
+                <!-- Open Addressing -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">Open Addressing</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">CPython Dict</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        All entries reside directly within the array. When a collision occurs, the algorithm checks another slot in the table following a deterministic probe sequence.
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>Advantage:</strong> Exceptional cache locality. No linked-list pointer overhead.</li>
+                        <li><strong>Disadvantage:</strong> Requires careful deletion handling (tombstones) and dynamic resizing when load factor exceeds 2/3.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Perturbation Formula Callout -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <span class="text-emerald-400 font-bold block text-sm uppercase tracking-wider">// CPython's Perturbation Probing Sequence</span>
+                <p class="text-slate-300 font-sans text-xs leading-relaxed">
+                    Simple linear probing ($i = (i + 1) \pmod{\text{size}}$) suffers from <em>primary clustering</em>: contiguous blocks of occupied slots build up, causing long search times. To prevent this, CPython uses a recurrence relation that incorporates unconsumed bits of the key's full 64-bit hash code:
+                </p>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-sky-300 text-[11px]">
+                    <div>i = (hash) &amp; mask</div>
+                    <div>perturb = hash</div>
+                    <div class="text-emerald-400 font-bold">while bucket is occupied and key != target:</div>
+                    <div class="pl-4">i = (5 * i + 1 + perturb) &amp; mask</div>
+                    <div class="pl-4">perturb &gt;&gt;= 5</div>
+                </div>
+                <p class="text-slate-400 font-sans text-[11px] leading-relaxed">
+                    The factor <code class="font-mono text-purple-300">5 * i + 1</code> is mathematically guaranteed to visit every slot in any power-of-two table size. Shifting <code class="font-mono text-purple-300">perturb &gt;&gt;= 5</code> systematically injects all bits of the original 64-bit hash, scattering search probes across disparate table regions.
+                </p>
+            </div>
+
+            <!-- The Tombstone Invariant -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                <span class="font-mono text-xs font-bold text-rose-700 uppercase tracking-widest block">The Probe Continuity Invariant</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">Why Deletions Require Tombstones</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    In an open-addressing hash table, search stops when it encounters an <strong>EMPTY</strong> slot. Suppose Key $A$ and Key $B$ both hash to bucket 2. Key $A$ is placed at bucket 2; Key $B$ collides and probes forward to bucket 5.
+                </p>
+                <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs font-mono space-y-1">
+                    <div>1. Insert A &rarr; Bucket 2</div>
+                    <div>2. Insert B &rarr; Bucket 2 (Collision!) &rarr; Probes to Bucket 5</div>
+                    <div>3. Delete A &rarr; If Bucket 2 is marked completely EMPTY:</div>
+                    <div class="text-rose-700 font-bold">4. Query for B &rarr; Checks Bucket 2 &rarr; Sees EMPTY &rarr; Fails with KeyError! (B is lost!)</div>
+                </div>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    To preserve probe chain continuity, deleted entries must be replaced with a special sentinel marker: a <strong>Tombstone</strong> (e.g. <code class="font-mono text-slate-800">&lt;DUMMY&gt;</code>). A search probe treats a tombstone as occupied and continues searching, whereas an insertion probe can reuse the tombstone slot to store a new key!
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Exhaustive Native API & Method Reference -->
+        <section id="native-api" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Exhaustive Native Function Reference: dict &amp; set</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Python provides two core built-in hash-based structures: <code class="font-mono text-purple-700 font-bold">dict</code> (mapping keys to values) and <code class="font-mono text-purple-700 font-bold">set</code> / <code class="font-mono text-purple-700 font-bold">frozenset</code> (storing unique keys without values).
+            </p>
+
+            <div class="space-y-6 font-mono text-xs">
+                
+                <!-- 1. dict API -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 font-mono">1. Python dict Native API</h3>
+                            <p class="text-xs text-slate-500">Associative key-value mapping with O(1) average-time complexity</p>
+                        </div>
+                        <span class="bg-sky-50 text-sky-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-sky-200">Built-in Mapping</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                    <th class="py-2 px-2 font-bold">Method Signature</th>
+                                    <th class="py-2 px-2 font-bold">Average / Worst</th>
+                                    <th class="py-2 px-2 font-bold">Mutation / Return</th>
+                                    <th class="py-2 px-2 font-bold">CPython Mechanism &amp; Failure Modes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">d[key] / __getitem__</td>
+                                    <td class="py-2.5 px-2 font-bold"><span class="text-emerald-700">O(1)</span> / <span class="text-rose-700">O(n)</span></td>
+                                    <td class="py-2.5 px-2">Read-only &bull; Returns value</td>
+                                    <td class="py-2.5 px-2 font-sans">Executes perturbation search. Raises <code class="font-mono text-rose-600">KeyError</code> if key is absent.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">d[key] = val / __setitem__</td>
+                                    <td class="py-2.5 px-2 font-bold"><span class="text-emerald-700">O(1)</span> / <span class="text-rose-700">O(n)</span></td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Inserts or updates entry. If load factor &gt; 2/3, triggers table resize (doubling or quadrupling).</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.get(key, [default])</td>
+                                    <td class="py-2.5 px-2 font-bold"><span class="text-emerald-700">O(1)</span> / <span class="text-rose-700">O(n)</span></td>
+                                    <td class="py-2.5 px-2">Read-only &bull; Returns val/default</td>
+                                    <td class="py-2.5 px-2 font-sans">Defensive query. Returns <code class="font-mono">None</code> (or default parameter) without raising <code class="font-mono">KeyError</code>.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.setdefault(key, [default])</td>
+                                    <td class="py-2.5 px-2 font-bold"><span class="text-emerald-700">O(1)</span> / <span class="text-rose-700">O(n)</span></td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns existing/new</td>
+                                    <td class="py-2.5 px-2 font-sans">If key present, returns value. If absent, inserts <code class="font-mono">(key, default)</code> and returns default.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.pop(key, [default])</td>
+                                    <td class="py-2.5 px-2 font-bold"><span class="text-emerald-700">O(1)</span> / <span class="text-rose-700">O(n)</span></td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns value</td>
+                                    <td class="py-2.5 px-2 font-sans">Removes key and returns value. Replaces index with dummy tombstone. Raises <code class="font-mono text-rose-600">KeyError</code> if missing and no default provided.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.popitem()</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(1)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns (k, v)</td>
+                                    <td class="py-2.5 px-2 font-sans">Removes and returns the <strong>last inserted</strong> key-value pair (LIFO). Raises <code class="font-mono text-rose-600">KeyError</code> if empty.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.update([other])</td>
+                                    <td class="py-2.5 px-2 font-bold">O(k)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Overwrites matching keys and inserts new ones from iterable or mapping $k = \text{len}(other)$.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.keys() / .values() / .items()</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(1)</td>
+                                    <td class="py-2.5 px-2">Dictionary View Objects</td>
+                                    <td class="py-2.5 px-2 font-sans">Zero copying. Returns dynamic views reflecting real-time mutations to underlying table.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. set API -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 font-mono">2. Python set &amp; frozenset Native API</h3>
+                            <p class="text-xs text-slate-500">Unordered collections of unique hashable elements</p>
+                        </div>
+                        <span class="bg-purple-50 text-purple-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-purple-200">Set Algebra</span>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4 text-xs font-sans">
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                            <span class="font-bold text-slate-900 font-mono block text-sm">Fundamental Operations</span>
+                            <ul class="space-y-1.5 text-slate-600 text-[11px]">
+                                <li><code class="font-mono text-purple-700 font-bold">s.add(elem)</code>: $O(1)$ amortized insertion of hashable element.</li>
+                                <li><code class="font-mono text-purple-700 font-bold">s.remove(elem)</code>: $O(1)$ deletion. Raises <code class="font-mono text-rose-600">KeyError</code> if absent.</li>
+                                <li><code class="font-mono text-purple-700 font-bold">s.discard(elem)</code>: $O(1)$ silent deletion. Never raises errors.</li>
+                                <li><code class="font-mono text-purple-700 font-bold">s.pop()</code>: $O(1)$ removes arbitrary element. Raises <code class="font-mono text-rose-600">KeyError</code> if empty.</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                            <span class="font-bold text-slate-900 font-mono block text-sm">Mathematical Set Algebra</span>
+                            <ul class="space-y-1.5 text-slate-600 text-[11px]">
+                                <li><code class="font-mono text-emerald-700 font-bold">s1 | s2 (union)</code>: $O(len(s1) + len(s2))$ elements in either set.</li>
+                                <li><code class="font-mono text-emerald-700 font-bold">s1 &amp; s2 (intersection)</code>: $O(\min(len(s1), len(s2)))$ elements in both sets.</li>
+                                <li><code class="font-mono text-emerald-700 font-bold">s1 - s2 (difference)</code>: $O(len(s1))$ elements in s1 but not s2.</li>
+                                <li><code class="font-mono text-emerald-700 font-bold">s1 ^ s2 (symmetric diff)</code>: $O(len(s1) + len(s2))$ elements in exactly one set.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 02 -->
+        <section id="memforge-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 02: Building a Custom Hash Table Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To power MemForge's primary key record lookups, we now construct <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/core/hash_map.py</code>: an open-addressing hash table written completely from scratch.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Our custom hash table features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Deterministic perturbation probing sequence identical to CPython ($i = (5i + 1 + \text{perturb}) \pmod{\text{size}}$).</li>
+                <li>Sentinel <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">&lt;DUMMY&gt;</code> tombstone handling to guarantee probe chain continuity across deletions.</li>
+                <li>Dynamic resizing (doubling capacity) when the load factor exceeds $\approx 0.66$ ($2/3$).</li>
+                <li>Full Python mapping protocol support: <code class="font-mono text-xs">__getitem__</code>, <code class="font-mono text-xs">__setitem__</code>, <code class="font-mono text-xs">__delitem__</code>, <code class="font-mono text-xs">__contains__</code>, and <code class="font-mono text-xs">__len__</code>.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 02)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">hash_map.py</span>               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_hash_map.py</span>          <span class="text-slate-500"># Milestone 02: Collisions, Tombstones &amp; Resizing</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/core/hash_map.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Custom Hash Table Engine: <code class="text-purple-700">src/memforge/core/hash_map.py</code></span>
+                    <span class="text-slate-400">Open-Addressing Implementation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Core - Custom Open-Addressing Hash Map (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Iterator, Optional, Tuple
+
+<span class="text-slate-500"># Sentinel token used to mark deleted bucket slots (Tombstones)</span>
+_DUMMY_TOMBSTONE = object()
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">HashEntry</span>:
+    <span class="text-slate-500">"""Discrete storage bucket containing cached hash code, key, and value."""</span>
+    hash_code: int
+    key: Any
+    value: Any
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MemForgeHashMap</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION OPEN-ADDRESSING HASH MAP:
+    Implements CPython's perturbation recurrence probe sequence:
+    i = (5*i + 1 + perturb) &amp; mask.
+    Enforces a strict 2/3 (0.66) load factor threshold before dynamic resizing.
+    """</span>
+    INITIAL_CAPACITY = 8  <span class="text-slate-500"># Power-of-two table capacity</span>
+    LOAD_FACTOR_THRESHOLD = 0.66
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, initial_capacity: int = INITIAL_CAPACITY):
+        <span class="text-slate-500"># Capacity must be a power of two to allow bitwise masking: (capacity - 1)</span>
+        self._capacity = initial_capacity
+        self._buckets: list[Optional[Any]] = [None] * self._capacity
+        self._active_count = 0     <span class="text-slate-500"># Count of real, active keys</span>
+        self._tombstone_count = 0  <span class="text-slate-500"># Count of dead tombstone entries</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total active key-value pairs stored in the table."""</span>
+        <span class="text-purple-400">return</span> self._active_count
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_lookup_slot</span>(self, key: Any, hash_code: int) -> Tuple[bool, int]:
+        <span class="text-slate-500">"""
+        Core probe search: Runs CPython perturbation sequence.
+        Returns: (found_flag: bool, target_slot_index: int)
+        """</span>
+        mask = self._capacity - 1
+        i = hash_code &amp; mask
+        perturb = hash_code
+        first_tombstone_idx: Optional[int] = None
+
+        <span class="text-purple-400">while</span> self._buckets[i] <span class="text-purple-400">is not</span> None:
+            bucket = self._buckets[i]
+            <span class="text-purple-400">if</span> bucket <span class="text-purple-400">is</span> _DUMMY_TOMBSTONE:
+                <span class="text-slate-500"># Record the first available tombstone slot for potential reuse</span>
+                <span class="text-purple-400">if</span> first_tombstone_idx <span class="text-purple-400">is</span> None:
+                    first_tombstone_idx = i
+            <span class="text-purple-400">elif</span> bucket.hash_code == hash_code <span class="text-purple-400">and</span> bucket.key == key:
+                <span class="text-slate-500"># Exact key match found!</span>
+                <span class="text-purple-400">return</span> (True, i)
+
+            <span class="text-slate-500"># CPython Perturbation Recurrence Probing</span>
+            i = (5 * i + 1 + perturb) &amp; mask
+            perturb &gt;&gt;= 5
+
+        <span class="text-slate-500"># Key absent. If a tombstone was passed, reuse it; else return empty slot.</span>
+        free_slot = first_tombstone_idx <span class="text-purple-400">if</span> first_tombstone_idx <span class="text-purple-400">is not</span> None <span class="text-purple-400">else</span> i
+        <span class="text-purple-400">return</span> (False, free_slot)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__setitem__</span>(self, key: Any, value: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Associates value with key, resizing table if load factor exceeded."""</span>
+        h = hash(key)
+        found, slot = self._lookup_slot(key, h)
+
+        <span class="text-purple-400">if</span> found:
+            <span class="text-slate-500"># In-place value update</span>
+            self._buckets[slot].value = value
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Slot is empty or tombstone</span>
+        <span class="text-purple-400">if</span> self._buckets[slot] <span class="text-purple-400">is</span> _DUMMY_TOMBSTONE:
+            self._tombstone_count -= 1
+
+        self._buckets[slot] = HashEntry(hash_code=h, key=key, value=value)
+        self._active_count += 1
+
+        <span class="text-slate-500"># Calculate total occupied slots (active + dead tombstones)</span>
+        total_occupied = self._active_count + self._tombstone_count
+        <span class="text-purple-400">if</span> (total_occupied / self._capacity) &gt;= self.LOAD_FACTOR_THRESHOLD:
+            self._resize(self._capacity * 2)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getitem__</span>(self, key: Any) -> Any:
+        <span class="text-slate-500">"""Retrieves value for key. Raises KeyError if key does not exist."""</span>
+        found, slot = self._lookup_slot(key, hash(key))
+        <span class="text-purple-400">if not</span> found:
+            <span class="text-purple-400">raise</span> KeyError(f<span class="text-amber-300">"Key '{key}' not found in MemForgeHashMap."</span>)
+        <span class="text-purple-400">return</span> self._buckets[slot].value
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__delitem__</span>(self, key: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Deletes key and replaces bucket with tombstone marker to preserve probe chain."""</span>
+        found, slot = self._lookup_slot(key, hash(key))
+        <span class="text-purple-400">if not</span> found:
+            <span class="text-purple-400">raise</span> KeyError(f<span class="text-amber-300">"Cannot delete nonexistent key '{key}'."</span>)
+
+        <span class="text-slate-500"># Replace entry with tombstone sentinel</span>
+        self._buckets[slot] = _DUMMY_TOMBSTONE
+        self._active_count -= 1
+        self._tombstone_count += 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__contains__</span>(self, key: Any) -> bool:
+        <span class="text-slate-500">"""Fast boolean membership test."""</span>
+        found, _ = self._lookup_slot(key, hash(key))
+        <span class="text-purple-400">return</span> found
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get</span>(self, key: Any, default: Any = <span class="text-rose-400">None</span>) -> Any:
+        <span class="text-slate-500">"""Safe query returning default value if key is missing."""</span>
+        found, slot = self._lookup_slot(key, hash(key))
+        <span class="text-purple-400">return</span> self._buckets[slot].value <span class="text-purple-400">if</span> found <span class="text-purple-400">else</span> default
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_resize</span>(self, new_capacity: int) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Allocates a larger table, purging dead tombstones and re-inserting all active entries."""</span>
+        old_buckets = self._buckets
+        self._capacity = new_capacity
+        self._buckets = [None] * new_capacity
+        self._active_count = 0
+        self._tombstone_count = 0
+
+        <span class="text-purple-400">for</span> bucket <span class="text-purple-400">in</span> old_buckets:
+            <span class="text-purple-400">if</span> bucket <span class="text-purple-400">is not</span> None <span class="text-purple-400">and</span> bucket <span class="text-purple-400">is not</span> _DUMMY_TOMBSTONE:
+                self[bucket.key] = bucket.value</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_hash_map.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Suite: <code class="text-purple-700">tests/unit/test_hash_map.py</code></span>
+                    <span class="text-slate-400">Collisions, Probing &amp; Tombstone Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Custom Hash Map Verification (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.core.hash_map <span class="text-purple-400">import</span> MemForgeHashMap
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CollisionKey</span>:
+    <span class="text-slate-500">"""Helper key fixture designed to force identical hash codes and test collisions."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, value: str, forced_hash: int = 42):
+        self.value = value
+        self.forced_hash = forced_hash
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__hash__</span>(self) -> int:
+        <span class="text-purple-400">return</span> self.forced_hash
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__eq__</span>(self, other: object) -> bool:
+        <span class="text-purple-400">return</span> isinstance(other, CollisionKey) <span class="text-purple-400">and</span> self.value == other.value
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestMemForgeHashMap</span>:
+    <span class="text-slate-500">"""Unit tests asserting insertion, collision probing, tombstones, and resizing."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_basic_crud_operations</span>(self):
+        hm = MemForgeHashMap()
+        hm[<span class="text-amber-300">"user_id"</span>] = 991
+        hm[<span class="text-amber-300">"role"</span>] = <span class="text-amber-300">"admin"</span>
+
+        assert len(hm) == 2
+        assert hm[<span class="text-amber-300">"user_id"</span>] == 991
+        assert hm[<span class="text-amber-300">"role"</span>] == <span class="text-amber-300">"admin"</span>
+        assert <span class="text-amber-300">"user_id"</span> <span class="text-purple-400">in</span> hm
+        assert <span class="text-amber-300">"missing"</span> <span class="text-purple-400">not in</span> hm
+
+        <span class="text-slate-500"># Update</span>
+        hm[<span class="text-amber-300">"role"</span>] = <span class="text-amber-300">"superuser"</span>
+        assert hm[<span class="text-amber-300">"role"</span>] == <span class="text-amber-300">"superuser"</span>
+        assert len(hm) == 2
+
+        <span class="text-slate-500"># Delete</span>
+        del hm[<span class="text-amber-300">"user_id"</span>]
+        assert len(hm) == 1
+        assert <span class="text-amber-300">"user_id"</span> <span class="text-purple-400">not in</span> hm
+        <span class="text-purple-400">with</span> pytest.raises(KeyError):
+            _ = hm[<span class="text-amber-300">"user_id"</span>]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_collision_resolution_and_probe_chain</span>(self):
+        hm = MemForgeHashMap(initial_capacity=8)
+        k1 = CollisionKey(<span class="text-amber-300">"key_A"</span>, forced_hash=10)
+        k2 = CollisionKey(<span class="text-amber-300">"key_B"</span>, forced_hash=10)
+        k3 = CollisionKey(<span class="text-amber-300">"key_C"</span>, forced_hash=10)
+
+        <span class="text-slate-500"># All keys hash to the same bucket (10 % 8 = 2). Probing must place all 3 cleanly.</span>
+        hm[k1] = <span class="text-amber-300">"val_A"</span>
+        hm[k2] = <span class="text-amber-300">"val_B"</span>
+        hm[k3] = <span class="text-amber-300">"val_C"</span>
+
+        assert len(hm) == 3
+        assert hm[k1] == <span class="text-amber-300">"val_A"</span>
+        assert hm[k2] == <span class="text-amber-300">"val_B"</span>
+        assert hm[k3] == <span class="text-amber-300">"val_C"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_tombstone_preserves_probe_continuity_on_deletion</span>(self):
+        hm = MemForgeHashMap(initial_capacity=8)
+        k1 = CollisionKey(<span class="text-amber-300">"key_A"</span>, forced_hash=10)
+        k2 = CollisionKey(<span class="text-amber-300">"key_B"</span>, forced_hash=10)
+        k3 = CollisionKey(<span class="text-amber-300">"key_C"</span>, forced_hash=10)
+
+        hm[k1] = <span class="text-amber-300">"val_A"</span>
+        hm[k2] = <span class="text-amber-300">"val_B"</span>
+        hm[k3] = <span class="text-amber-300">"val_C"</span>
+
+        <span class="text-slate-500"># Delete middle key k2 (replaces with tombstone)</span>
+        del hm[k2]
+        assert len(hm) == 2
+        assert k2 <span class="text-purple-400">not in</span> hm
+
+        <span class="text-slate-500"># CRITICAL PROBE TEST: k3 must STILL be found past the tombstone of k2!</span>
+        assert hm[k3] == <span class="text-amber-300">"val_C"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dynamic_resizing_on_exceeding_load_factor</span>(self):
+        hm = MemForgeHashMap(initial_capacity=8)
+        <span class="text-slate-500"># 8 * 0.66 = 5.28 &rarr; Inserting 6 items must trigger resize to capacity 16</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(6):
+            hm[f<span class="text-amber-300">"key_{i}"</span>] = i * 10
+
+        assert len(hm) == 6
+        assert hm._capacity == 16  <span class="text-slate-500"># Table doubled in size</span>
+
+        <span class="text-slate-500"># Ensure all previously inserted keys remain accessible after rehashing</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(6):
+            assert hm[f<span class="text-amber-300">"key_{i}"</span>] == i * 10</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Mutating a Dict/Set While Iterating</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">for k in d: if condition: del d[k]</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes:</strong> Modifying table entries or triggering a resize alters the internal iteration dictionary view pointer, immediately raising <code class="font-mono text-rose-950 font-bold">RuntimeError: dictionary changed size during iteration</code>.
+                        <strong>Fix:</strong> Iterate over a snapshot list: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">for k in list(d.keys()): del d[k]</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Redundant Double-Lookup Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">if "key" in d: val = d["key"]</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this hurts throughput:</strong> It hashes the key, traverses the probe sequence, and locates the slot <em>twice</em>.
+                        <strong>Fix:</strong> Execute a single lookup using <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">val = d.get("key", default)</code> or handle <code class="font-mono text-rose-900">KeyError</code> explicitly.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The setdefault() Eager Evaluation Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">d.setdefault(k, expensive_computation())</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this wastes CPU:</strong> Python evaluates arguments <em>before</em> calling the function. Even if <code class="font-mono">k</code> already exists in the dictionary, <code class="font-mono">expensive_computation()</code> is executed on every call anyway!
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">collections.defaultdict</code> or standard <code class="font-mono text-rose-900">if k not in d:</code> guard blocks.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Implementing __eq__ Without __hash__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Defining a custom domain class with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __eq__(self, other):</code> without an accompanying <code class="font-mono text-rose-900 font-bold">def __hash__(self):</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails silently:</strong> In Python 3, if a class defines <code class="font-mono">__eq__</code> but not <code class="font-mono">__hash__</code>, Python sets <code class="font-mono">__hash__ = None</code>, making the class immediately unhashable and raising <code class="font-mono text-rose-950 font-bold">TypeError: unhashable type</code> if added to a set or dict.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the custom hash map test suite and inspect collision dynamics:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge hash map unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_hash_map.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms collision chains, tombstone continuity, and dynamic resizing.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 and 02:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, fixed index arrays, and custom hash map tables with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify string hash randomization across Python interpreter processes:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "print('Run 1 Hash:', hash('memforge_primary_key'))"<br>
+                        python3 -c "print('Run 2 Hash:', hash('memforge_primary_key'))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice that the two hash values are completely different! This proves SipHash-13 seed randomization is active.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: Specialized Standard Library Mappings &amp; Counters - defaultdict, Counter &amp; OrderedDict</h4>
+                <p class="text-xs text-slate-500 font-sans">Taking associative structures to the enterprise tier: High-speed multisets with Counter, zero-check accumulator patterns with defaultdict, linked hash maps with OrderedDict, and hierarchical config cascading with ChainMap.</p>
+            </div>
+            <a href="Chapter 03 - Specialized Standard Library Mappings and Counters - defaultdict, Counter and OrderedDict.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

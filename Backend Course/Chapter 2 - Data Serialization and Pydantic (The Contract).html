@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 2: Data Serialization &amp; Pydantic v2 (The API Contract)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 02 - Schema Layer)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Data Serialization &amp; Boundaries
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Data Serialization &amp; Pydantic v2: The Contract
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Building zero-trust API boundaries: Why input parsing is defensive security, how Pydantic v2's Rust-powered engine (`pydantic-core`) runs validation up to 50x faster, and how to structure NoteVault's request/response data contracts.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 02: The Contract Layer</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        In Chapter 1, our in-memory notes accepted arbitrary dictionary formats. In this chapter, we create <code class="font-mono text-emerald-300 bg-slate-950 px-1.5 py-0.5 rounded">app/schemas.py</code>, enforcing strict payload validation, tag sanitization, automatic payload conversion, and customized response filtering to keep sensitive internal data hidden from clients.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[250px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Isolate <code class="text-purple-300">app/schemas.py</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Rust core speed &amp; coercion</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Custom <code class="text-purple-300">@field_validator</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Asymmetric In/Out Schemas</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Serialization -->
+        <section id="cs-serialization" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Serialization, Deserialization, &amp; The Impedance Mismatch</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Modern software systems rarely operate in a single memory space. Your frontend client (JavaScript in V8/WebKit), your backend logic (Python bytecode running in CPython), and your storage engine (PostgreSQL or SQLite) all represent data with radically different memory layouts.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Deserialization -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-mono font-bold">1</span>
+                        Deserialization (Parsing &amp; Ingestion)
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Data arriving from the network arrives as unstructured, untrusted byte strings (<code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-700">b'{"title": "My Note"}'</code>). Deserialization is the high-risk operation of parsing those bytes into native, typed, memory-safe runtime objects.
+                    </p>
+                    <div class="bg-slate-100 p-3 rounded-lg text-xs font-mono text-slate-700 space-y-1">
+                        <div>Raw Network Bytes &rarr; UTF-8 String &rarr; JSON Tokens &rarr; Python Dict &rarr; Validated Class Instance</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 italic">
+                        <strong>Security Rule:</strong> All untrusted user data is assumed hostile. Deserialization is your primary defense against injection attacks, buffer overruns, and unexpected null exceptions.
+                    </p>
+                </div>
+
+                <!-- Serialization -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-mono font-bold">2</span>
+                        Serialization (Dumping &amp; Projection)
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Serialization transforms your internal rich Python structures (like <code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-slate-700">datetime</code> objects, UUIDs, or database ORM models) back into universally recognized byte-streams like JSON for the client.
+                    </p>
+                    <div class="bg-slate-100 p-3 rounded-lg text-xs font-mono text-slate-700 space-y-1">
+                        <div>Model Instance &rarr; Field Masking (Remove secrets) &rarr; ISO-8601 formatting &rarr; UTF-8 JSON Bytes</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 italic">
+                        <strong>Data Leak Warning:</strong> Never return raw database models directly to clients. If a database model contains a <code class="font-mono">password_hash</code>, failing to serialize through an explicit output schema will leak it to the public internet.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Full Architecture Pipeline Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs overflow-x-auto">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-xs">
+                    The Two-Way Data Pipeline in FastAPI &amp; Pydantic v2
+                </div>
+                
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl w-full md:w-44">
+                        <span class="text-sky-400 font-bold block">HTTP Request</span>
+                        <span class="text-[10px] text-slate-400">JSON Body over Wire</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; Deserialization &rarr;</div>
+                    <div class="p-3 bg-purple-950 border border-purple-700 rounded-xl w-full md:w-56">
+                        <span class="text-purple-300 font-bold block">pydantic-core (Rust)</span>
+                        <span class="text-[10px] text-purple-200">Validation, Coercion, Schema</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; Injection &rarr;</div>
+                    <div class="p-3 bg-emerald-950 border border-emerald-700 rounded-xl w-full md:w-44">
+                        <span class="text-emerald-300 font-bold block">Route Controller</span>
+                        <span class="text-[10px] text-emerald-200">Guaranteed Clean Object</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row-reverse items-center justify-between gap-3 text-center pt-4 border-t border-slate-800">
+                    <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl w-full md:w-44">
+                        <span class="text-sky-400 font-bold block">HTTP Response</span>
+                        <span class="text-[10px] text-slate-400">Clean 200/201 JSON</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&larr; Serialization &larr;</div>
+                    <div class="p-3 bg-purple-950 border border-purple-700 rounded-xl w-full md:w-56">
+                        <span class="text-purple-300 font-bold block">Response Schema</span>
+                        <span class="text-[10px] text-purple-200">Filters fields, formats dates</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&larr; Return &larr;</div>
+                    <div class="p-3 bg-emerald-950 border border-emerald-700 rounded-xl w-full md:w-44">
+                        <span class="text-emerald-300 font-bold block">Internal Models</span>
+                        <span class="text-[10px] text-emerald-200">DB Records / Python Dicts</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Pydantic v2 Engine & Official Documentation Insights -->
+        <section id="pydantic-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Inside the Pydantic v2 Engine: What the Docs Say</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many developers treat Pydantic as a simple type-checker. The official Pydantic documentation clarifies: <em>"Pydantic is primarily a parsing library, not just a validation library."</em> It guarantees the types and shape of an output model, not just the input.
+            </p>
+
+            <!-- Pydantic v1 vs v2 Breakdown -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-mono font-bold">Crucial Upgrade</span>
+                    The Rewrite: Why Pydantic v2 Matters
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    Prior to Pydantic v2, validation logic was written in pure Python. In modern systems, this became the primary CPU bottleneck under high load. Pydantic v2 split the library into two distinct packages:
+                </p>
+                <div class="grid md:grid-cols-2 gap-4 text-xs font-mono">
+                    <div class="p-4 bg-slate-900 text-slate-300 rounded-xl border border-slate-800 space-y-2">
+                        <div class="text-emerald-400 font-bold">pydantic-core (Rust Layer)</div>
+                        <p class="font-sans text-[11px] text-slate-400 leading-relaxed">
+                            Written in Rust. Generates a compiled C-compatible validator tree directly from your Python type hints upon model definition. Traverses and parses incoming JSON strings and Python dicts natively in compiled machine code.
+                        </p>
+                    </div>
+                    <div class="p-4 bg-slate-900 text-slate-300 rounded-xl border border-slate-800 space-y-2">
+                        <div class="text-purple-400 font-bold">pydantic (Python Layer)</div>
+                        <p class="font-sans text-[11px] text-slate-400 leading-relaxed">
+                            A clean, modern Python interface providing <code class="text-emerald-300">BaseModel</code>, decorators (<code class="text-emerald-300">@field_validator</code>, <code class="text-emerald-300">@model_validator</code>), and tight integration with standard library <code class="text-emerald-300">typing.Annotated</code>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coercion vs Strict Mode -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">Type Coercion vs. Strict Mode</h3>
+                <p class="text-sm text-slate-600">
+                    By default, Pydantic runs in <strong>lax mode</strong> (coercion enabled). If a client sends string <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">"42"</code> where an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">int</code> is required, Pydantic automatically casts it. If you need strict mathematical purity, Pydantic provides explicit strict types:
+                </p>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Client Input Payload</th>
+                                <th class="p-3">Field Type Hint</th>
+                                <th class="p-3">Lax Mode (Default)</th>
+                                <th class="p-3">Strict Mode (<code class="text-purple-700">strict=True</code>)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-slate-800 font-bold">{"age": "25"}</td>
+                                <td class="p-3">int</td>
+                                <td class="p-3 text-emerald-600 font-semibold">&check; Valid (Coerces to 25)</td>
+                                <td class="p-3 text-rose-600 font-semibold">&cross; 422 ValidationError</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-slate-800 font-bold">{"is_active": "yes"}</td>
+                                <td class="p-3">bool</td>
+                                <td class="p-3 text-emerald-600 font-semibold">&check; Valid (Coerces to True)</td>
+                                <td class="p-3 text-rose-600 font-semibold">&cross; 422 ValidationError</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-slate-800 font-bold">{"score": 9.99}</td>
+                                <td class="p-3">int</td>
+                                <td class="p-3 text-rose-600 font-semibold">&cross; 422 (Cannot truncate safely)</td>
+                                <td class="p-3 text-rose-600 font-semibold">&cross; 422 ValidationError</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Deconstructing Pydantic Tools: Field, Validators, & Custom Types -->
+        <section id="pydantic-tools" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Deep Dive: Field, Validators, &amp; Invariant Checks</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Simple type annotations (<code class="font-mono text-xs bg-slate-100 px-1 rounded text-purple-700">str</code>, <code class="font-mono text-xs bg-slate-100 px-1 rounded text-purple-700">int</code>) are only the first line of defense. Real business logic requires semantic boundaries: a note title cannot be empty whitespace, tags must be lowercase, and an archived note cannot have active reminder dates.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-start">
+                <!-- Field Details -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="font-mono text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Field(...)</span>
+                        Metadata &amp; Numeric/String Bounds
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The <code class="font-mono text-purple-700 font-bold">Field()</code> function attaches metadata directly to your schema attributes, serving two roles simultaneously:
+                    </p>
+                    <ul class="list-disc pl-5 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>Validation constraints:</strong> <code class="font-mono text-slate-800">min_length</code>, <code class="font-mono text-slate-800">max_length</code>, <code class="font-mono text-slate-800">ge</code> (greater than or equal), <code class="font-mono text-slate-800">le</code>, and regular expressions via <code class="font-mono text-slate-800">pattern</code>.</li>
+                        <li><strong>OpenAPI Schema Generation:</strong> Injects field descriptions, titles, and <code class="font-mono text-slate-800">examples</code> straight into the interactive documentation at <code class="font-mono text-slate-800">/docs</code>.</li>
+                    </ul>
+                </div>
+
+                <!-- Validators Details -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="font-mono text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">@field_validator vs @model_validator</span>
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Pydantic v2 replaced legacy v1 <code class="line-through text-slate-400">@validator</code> and <code class="line-through text-slate-400">@root_validator</code> decorators:
+                    </p>
+                    <ul class="list-disc pl-5 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>@field_validator:</strong> Runs on a specific field in isolation. Use it for data sanitization (e.g. converting a tag like <code class="font-mono">" Python "</code> to <code class="font-mono">"python"</code>).</li>
+                        <li><strong>@model_validator(mode="after"):</strong> Runs after all fields are individually verified. Used for cross-field invariant logic (e.g., "if <code class="font-mono">is_archived=True</code>, then <code class="font-mono">reminder_date</code> must be null").</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Annotated Pattern Callout -->
+            <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl border border-slate-700 shadow-md space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[11px] font-bold">Modern Python 3.10+ Pattern</span>
+                    <h4 class="font-bold text-sm">Reusable Field Types via typing.Annotated</h4>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed font-sans">
+                    Instead of copying <code class="font-mono text-emerald-300">Field(min_length=3, max_length=50)</code> across 10 different schemas, define custom semantic types once using Python's standard library <code class="font-mono text-purple-300">Annotated</code>:
+                </p>
+                <pre class="bg-slate-950 text-emerald-300 p-4 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Annotated
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> Field
+
+<span class="text-slate-500"># Reusable custom types defined once for your entire backend</span>
+NoteTitle = Annotated[str, Field(min_length=3, max_length=100, description=<span class="text-amber-300">"Non-empty title"</span>)]
+PriorityLevel = Annotated[int, Field(default=1, ge=1, le=5, description=<span class="text-amber-300">"Priority scale from 1 (Low) to 5 (Critical)"</span>)]</pre>
+            </div>
+        </section>
+
+        <!-- 4. Step-by-Step Code Expansion: app/schemas.py -->
+        <section id="notevault-schemas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 2: app/schemas.py</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Create a new file: <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/schemas.py</code>. We establish a clean inheritance hierarchy:
+                <code class="font-mono text-xs text-purple-700">NoteBase</code> &rarr; <code class="font-mono text-xs text-purple-700">NoteCreate</code>, <code class="font-mono text-xs text-purple-700">NoteUpdate</code>, and <code class="font-mono text-xs text-purple-700">NoteResponse</code>.
+            </p>
+
+            <div class="relative">
+                <div class="absolute top-3 right-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">app/schemas.py</div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Data Contracts &amp; Schemas (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field, field_validator, model_validator, ConfigDict
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteBase</span>(BaseModel):
+    <span class="text-slate-500">"""
+    Shared attributes: Common fields inherited across creation and retrieval models.
+    """</span>
+    title: str = Field(
+        ...,
+        min_length=3,
+        max_length=120,
+        description=<span class="text-amber-300">"Title of the note (minimum 3 characters)."</span>,
+        examples=[<span class="text-amber-300">"Database Indexing Strategies"</span>]
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=10000,
+        description=<span class="text-amber-300">"Markdown-supported content body."</span>,
+        examples=[<span class="text-amber-300">"B-Trees optimize range queries by maintaining balance..."</span>]
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description=<span class="text-amber-300">"List of categorization labels (Max 10 tags)."</span>,
+        examples=[[<span class="text-amber-300">"database"</span>, <span class="text-amber-300">"performance"</span>]]
+    )
+    priority: int = Field(
+        default=1,
+        ge=1,
+        le=5,
+        description=<span class="text-amber-300">"Priority rating from 1 (Low) to 5 (Critical)."</span>
+    )
+
+    <span class="text-slate-500"># --- Field Validator: Sanitize tags automatically ---</span>
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"tags"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">normalize_and_clean_tags</span>(cls, tags_list: List[str]) -> List[str]:
+        <span class="text-slate-500">"""
+        Sanitizes tags: strips whitespace, converts to lowercase, eliminates empties,
+        and prevents duplicate tags while preserving order.
+        """</span>
+        cleaned = []
+        <span class="text-purple-400">for</span> raw_tag <span class="text-purple-400">in</span> tags_list:
+            sanitized = raw_tag.strip().lower()
+            <span class="text-purple-400">if not</span> sanitized:
+                <span class="text-purple-400">continue</span>
+            <span class="text-purple-400">if</span> sanitized <span class="text-purple-400">not in</span> cleaned:
+                cleaned.append(sanitized)
+        <span class="text-purple-400">return</span> cleaned
+
+    <span class="text-slate-500"># --- Field Validator: Ensure title isn't only empty spaces ---</span>
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"title"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">ensure_title_not_blank</span>(cls, value: str) -> str:
+        trimmed = value.strip()
+        <span class="text-purple-400">if len</span>(trimmed) &lt; 3:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Title must contain at least 3 non-whitespace characters."</span>)
+        <span class="text-purple-400">return</span> trimmed
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteCreate</span>(NoteBase):
+    <span class="text-slate-500">"""
+    Schema used strictly for INCOMING creation payloads (POST).
+    Inherits all rules from NoteBase.
+    """</span>
+    pass
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteUpdate</span>(BaseModel):
+    <span class="text-slate-500">"""
+    Schema for PATCH requests: All fields are optional because the client
+    can choose to update only one field without providing the rest.
+    """</span>
+    title: Optional[str] = Field(<span class="text-rose-400">None</span>, min_length=3, max_length=120)
+    content: Optional[str] = Field(<span class="text-rose-400">None</span>, min_length=1, max_length=10000)
+    tags: Optional[List[str]] = Field(<span class="text-rose-400">None</span>, max_length=10)
+    priority: Optional[int] = Field(<span class="text-rose-400">None</span>, ge=1, le=5)
+    is_archived: Optional[bool] = <span class="text-rose-400">None</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteResponse</span>(NoteBase):
+    <span class="text-slate-500">"""
+    Schema used strictly for OUTGOING serializations (Response).
+    Guarantees client receives server-generated IDs, timestamps, and audit metadata.
+    """</span>
+    id: int = Field(..., description=<span class="text-amber-300">"Unique numerical database identifier."</span>)
+    is_archived: bool = Field(default=<span class="text-rose-400">False</span>)
+    created_at: datetime = Field(..., description=<span class="text-amber-300">"UTC creation timestamp."</span>)
+    updated_at: Optional[datetime] = Field(<span class="text-rose-400">None</span>, description=<span class="text-amber-300">"UTC last modification timestamp."</span>)
+
+    <span class="text-slate-500"># Pydantic v2 Model Configuration:</span>
+    <span class="text-slate-500"># from_attributes=True (formerly orm_mode=True in v1) allows Pydantic</span>
+    <span class="text-slate-500"># to read data directly from SQLAlchemy ORM class instances in Chapter 06!</span>
+    model_config = ConfigDict(
+        from_attributes=<span class="text-rose-400">True</span>,
+        json_encoders={datetime: <span class="text-purple-400">lambda</span> dt: dt.isoformat()}
+    )</pre>
+            </div>
+        </section>
+
+        <!-- 5. Step-by-Step Code Expansion: app/main.py Refactor -->
+        <section id="notevault-main" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Wiring the Contracts: Refactoring app/main.py</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Now replace <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/main.py</code>. Notice how the controller functions no longer need manual field checks. FastAPI passes an already-validated instance of <code class="font-mono text-xs text-purple-700 font-bold">NoteCreate</code> into our function, and uses <code class="font-mono text-xs text-emerald-700 font-bold">response_model=NoteResponse</code> to safely format outgoing data.
+            </p>
+
+            <div class="relative">
+                <div class="absolute top-3 right-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">app/main.py</div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Milestone 02 (Contract Integration)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> NoteCreate, NoteUpdate, NoteResponse
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=<span class="text-amber-300">"Production knowledge vault with strict Pydantic v2 data contracts."</span>,
+    version=<span class="text-amber-300">"1.1.0"</span>,
+    docs_url=<span class="text-amber-300">"/docs"</span> <span class="text-purple-400">if</span> settings.ENVIRONMENT == <span class="text-amber-300">"development"</span> <span class="text-purple-400">else</span> <span class="text-rose-400">None</span>,
+)
+
+<span class="text-slate-500"># Ephemeral In-Memory Store (Dict of raw dictionaries)</span>
+NOTE_DATABASE: dict[int, dict] = {
+    1: {
+        <span class="text-amber-300">"id"</span>: 1,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"FastAPI Architecture Rules"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Always validate input boundaries; keep business logic modular."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"backend"</span>, <span class="text-amber-300">"python"</span>],
+        <span class="text-amber-300">"priority"</span>: 2,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    }
+}
+
+<span class="text-slate-500"># Auto-incrementing primary key counter</span>
+NOTE_ID_COUNTER = 1
+
+
+<span class="text-purple-400">@app.post</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes"</span>,
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"Create a new note"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_note</span>(payload: NoteCreate):
+    <span class="text-slate-500">"""
+    Creates a new note. By the time this function executes,
+    Pydantic has completely parsed, validated, and normalized the payload.
+    """</span>
+    <span class="text-purple-400">global</span> NOTE_ID_COUNTER
+    NOTE_ID_COUNTER += 1
+
+    <span class="text-slate-500"># Convert validated Pydantic model into a native Python dictionary</span>
+    new_note = payload.model_dump()
+    new_note.update({
+        <span class="text-amber-300">"id"</span>: NOTE_ID_COUNTER,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+    })
+
+    NOTE_DATABASE[NOTE_ID_COUNTER] = new_note
+
+    <span class="text-slate-500"># FastAPI serializes new_note through NoteResponse before sending to client</span>
+    <span class="text-purple-400">return</span> new_note
+
+
+<span class="text-purple-400">@app.get</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes"</span>,
+    response_model=List[NoteResponse],
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"List all notes"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>, min_length=2, max_length=50),
+    include_archived: bool = Query(<span class="text-rose-400">False</span>),
+    limit: int = Query(10, ge=1, le=100)
+):
+    results = list(NOTE_DATABASE.values())
+    <span class="text-purple-400">if not</span> include_archived:
+        results = [n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> results <span class="text-purple-400">if not</span> n[<span class="text-amber-300">"is_archived"</span>]]
+
+    <span class="text-purple-400">if</span> search:
+        q = search.lower()
+        results = [
+            n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> results 
+            <span class="text-purple-400">if</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"content"</span>].lower()
+        ]
+    <span class="text-purple-400">return</span> results[:limit]
+
+
+<span class="text-purple-400">@app.get</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes/&#123;note_id&#125;"</span>,
+    response_model=NoteResponse,
+    tags=[<span class="text-amber-300">"Notes"</span>]
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_note</span>(note_id: int = Path(..., ge=1)):
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+    <span class="text-purple-400">return</span> NOTE_DATABASE[note_id]
+
+
+<span class="text-purple-400">@app.patch</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes/&#123;note_id&#125;"</span>,
+    response_model=NoteResponse,
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"Partially update a note"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">update_note</span>(
+    note_id: int = Path(..., ge=1),
+    payload: NoteUpdate = ...
+):
+    <span class="text-slate-500">"""
+    Demonstrates model_dump(exclude_unset=True):
+    Only updates keys the client explicitly provided in their HTTP payload.
+    """</span>
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+
+    existing_record = NOTE_DATABASE[note_id]
+    
+    <span class="text-slate-500"># CRUCIAL PYDANTIC v2 METHOD: exclude_unset=True ignores default None values</span>
+    update_data = payload.model_dump(exclude_unset=<span class="text-rose-400">True</span>)
+    
+    <span class="text-purple-400">for</span> key, value <span class="text-purple-400">in</span> update_data.items():
+        existing_record[key] = value
+
+    existing_record[<span class="text-amber-300">"updated_at"</span>] = datetime.now(timezone.utc)
+    NOTE_DATABASE[note_id] = existing_record
+    
+    <span class="text-purple-400">return</span> existing_record</pre>
+            </div>
+        </section>
+
+        <!-- 6. Essential Documentation Notes & Best Practices -->
+        <section id="official-notes" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Reference Architecture</span>
+                <h2 class="text-2xl font-bold mt-1">Important Technical Notes from Pydantic Documentation</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6 text-xs leading-relaxed font-sans">
+                <div class="space-y-2">
+                    <strong class="text-emerald-400 font-mono block text-sm">&bull; .model_dump() vs .model_dump_json()</strong>
+                    <p class="text-slate-300">
+                        In Pydantic v2, <code class="font-mono text-emerald-300">.dict()</code> is deprecated in favor of <code class="font-mono text-emerald-300">.model_dump()</code> (returns a Python dictionary). If you need an already-serialized JSON string, use <code class="font-mono text-emerald-300">.model_dump_json()</code>, which avoids intermediate Python dict overhead by running directly in Rust.
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <strong class="text-emerald-400 font-mono block text-sm">&bull; The exclude_unset=True Parameter</strong>
+                    <p class="text-slate-300">
+                        When handling PATCH requests, distinguish between a client sending <code class="font-mono text-amber-300">{"title": null}</code> and not sending <code class="font-mono text-amber-300">"title"</code> at all. Passing <code class="font-mono text-emerald-300">exclude_unset=True</code> ensures your dictionary only contains fields explicitly set by the caller.
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <strong class="text-emerald-400 font-mono block text-sm">&bull; from_attributes = True</strong>
+                    <p class="text-slate-300">
+                        In v1 this was called <code class="font-mono text-slate-400">orm_mode = True</code>. It instructs Pydantic to extract data using object attribute lookups (<code class="font-mono text-emerald-300">getattr(obj, "title")</code>) instead of dictionary key lookups (<code class="font-mono text-emerald-300">obj["title"]</code>). This is what enables seamless serialization of SQLAlchemy models.
+                    </p>
+                </div>
+                <div class="space-y-2">
+                    <strong class="text-emerald-400 font-mono block text-sm">&bull; EmailStr &amp; DNS Verification</strong>
+                    <p class="text-slate-300">
+                        Using <code class="font-mono text-emerald-300">EmailStr</code> requires <code class="font-mono text-emerald-300">pip install email-validator</code>. It validates syntax according to RFC 5322. If you need deliverability checks, the library can optionally check whether the domain's MX record actually exists on the network.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Reusing Request Schemas for Responses</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Never use <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">NoteCreate</code> as your <code class="font-mono text-rose-900">response_model</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is bad:</strong> Request schemas lack read-only server fields (<code class="font-mono">id</code>, <code class="font-mono">created_at</code>). If you unify them, either the client is allowed to forge their own ID during POST, or your documentation fails to reflect that the ID exists on retrieval. Always maintain distinct request and response contracts.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Using Default Mutable Values Without Field</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">tags: list[str] = []</code> inside a Pydantic model.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is bad:</strong> While Pydantic v2 handles this better than raw Python classes, the idiomatic and safe practice across all versions is <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">tags: list[str] = Field(default_factory=list)</code> to guarantee a fresh list instance for every parsed payload.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Restart your application and test the new validation layer via terminal:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Command 1: Valid Post -->
+                <div>
+                    <span class="text-slate-500"># 1. Create a note with dirty tags (checks normalization):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/notes \
+                        -H "Content-Type: application/json" \
+                        -d '{"title": "Pydantic Rules", "content": "Clean contracts", "tags": [" Backend ", "PYTHON", "backend"], "priority": 4}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected result: tags normalized to ["backend", "python"], unique and lowercase.</span>
+                </div>
+
+                <!-- Command 2: Trigger Validation Error -->
+                <div>
+                    <span class="text-slate-500"># 2. Trigger automated 422 error (title shorter than 3 characters, priority out of range):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-rose-300 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/notes \
+                        -H "Content-Type: application/json" \
+                        -d '{"title": "  ", "content": "Valid content", "priority": 99}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected result: HTTP 422 Unprocessable Entity with error breakdown.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 3 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: The MVC Controller Logic &amp; Jinja2 Templates</h4>
+                <p class="text-xs text-slate-500">Hydrating frontend HTML pages from our NoteVault database using template inheritance and server-side rendering.</p>
+            </div>
+            <a href="chapter3_mvc_templates.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 3 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

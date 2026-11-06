@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Memory Layout &amp; Sequence Primitives - Lists, Tuples &amp; Contiguous Arrays</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 01 - Memory Layout &amp; Sequence Buffers)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Foundations &amp; Memory Geometry
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 01: Memory Layout &amp; Sequence Primitives - Lists, Tuples &amp; Contiguous Arrays
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing Python sequences from raw byte layout to CPython internals: Understanding the overhead of pointer arrays, how dynamic resizing amortizes complexity, comparing mutable lists to immutable tuples, unlocking high-density buffers with <code class="font-mono text-emerald-400">array.array</code>, <code class="font-mono text-emerald-400">bytearray</code>, and zero-copy <code class="font-mono text-emerald-400">memoryview</code>, and constructing the core binary write-ahead buffer of <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 1 Bedrock</span>
+                    <h2 class="text-2xl font-extrabold">Introducing MemForge: In-Memory Storage Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        High-performance storage engines, caches, and analytical databases cannot afford naive memory management. In this master series, we engineer <strong>MemForge</strong>: a hybrid in-memory document store, multi-way search index, and graph relationship engine written from scratch. In Milestone 01, we build the low-level foundation: a ring-buffered <strong>Write-Ahead Log (WAL)</strong> and a typed <strong>Fixed-Record Index Offset Array</strong> using zero-copy byte buffers and contiguous memory arrays.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython <code class="text-purple-300">PyObject_VAR_HEAD</code> Anatomy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Referential Array vs. Contiguous Memory</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Dynamic Resizing &amp; Amortized Math</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Native Method Exhaustive Reference</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Copy Slicing with <code class="text-purple-300">memoryview</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">ContiguousBuffer</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Sequence Memory Layout -->
+        <section id="memory-anatomy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: CPython Memory Anatomy &amp; Sequence Primitives</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                To master data structures in Python, one must abandon the illusion that a <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">list</code> is a flat block of values. In CPython (the standard C implementation of Python), all objects exist as heap-allocated C structures. 
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                A Python <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">list</code> is technically a <strong>referential dynamic array</strong>. It does not store actual data inline; rather, it stores an array of 64-bit memory addresses (pointers) that reference other independent <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">PyObject</code> structures scattered throughout the heap.
+            </p>
+
+            <!-- Memory Anatomy Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Referential Array (list) vs. Contiguous Uniform Memory (array.array / bytearray)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing cache-line locality, pointer chasing, and physical hardware RAM layout</p>
+                </div>
+
+                <!-- Architectural Diagram Container -->
+                <div class="grid md:grid-cols-2 gap-8">
+                    <!-- Structure 1: Python list (Referential Array) -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Python list (Referential Pointer Array)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold">Pointer Indirection</span>
+                        </div>
+                        
+                        <!-- List Struct Box -->
+                        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-1">
+                            <span class="text-[10px] text-slate-400 block font-bold">// PyListObject (Heap Structure - 56 Bytes Overhead)</span>
+                            <div class="grid grid-cols-3 gap-1 text-[10px] text-center">
+                                <div class="bg-slate-800 p-1.5 rounded text-sky-300">ob_refcnt<br><span class="text-slate-500">8 Bytes</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded text-purple-300">ob_type*<br><span class="text-slate-500">8 Bytes</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded text-amber-300">ob_size<br><span class="text-slate-500">8 Bytes</span></div>
+                            </div>
+                            <div class="bg-slate-800 p-1.5 rounded text-center text-emerald-300 text-[10px] mt-1">
+                                **ob_item (Pointer to Contiguous Array of Object Addresses)
+                            </div>
+                        </div>
+
+                        <!-- Pointer Array Arrows to Heap -->
+                        <div class="space-y-2 text-[10px]">
+                            <div class="flex items-center justify-between bg-slate-900 p-2 rounded border border-slate-800">
+                                <span class="text-emerald-400">ob_item[0] &rarr; 0x7FFF1A</span>
+                                <span class="text-slate-400 font-sans">points to &rarr;</span>
+                                <span class="bg-rose-900/60 text-rose-200 px-2 py-0.5 rounded">PyLongObject (28 Bytes)</span>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 p-2 rounded border border-slate-800">
+                                <span class="text-emerald-400">ob_item[1] &rarr; 0x7FFF9F</span>
+                                <span class="text-slate-400 font-sans">points to &rarr;</span>
+                                <span class="bg-rose-900/60 text-rose-200 px-2 py-0.5 rounded">PyUnicodeObject (50+ Bytes)</span>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 p-2 rounded border border-slate-800">
+                                <span class="text-emerald-400">ob_item[2] &rarr; 0x7FFE04</span>
+                                <span class="text-slate-400 font-sans">points to &rarr;</span>
+                                <span class="bg-rose-900/60 text-rose-200 px-2 py-0.5 rounded">PyFloatObject (24 Bytes)</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            <strong>Hardware Consequence:</strong> CPU cache lines fetch adjacent RAM addresses. Because values are scattered at random heap addresses, traversing a generic list causes constant <em>CPU Cache Misses</em> ("pointer chasing").
+                        </p>
+                    </div>
+
+                    <!-- Structure 2: Contiguous Buffer (array.array / bytearray) -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Contiguous Memory (array.array / bytearray)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold">Raw Primitive Density</span>
+                        </div>
+
+                        <!-- Contiguous Struct Box -->
+                        <div class="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-1">
+                            <span class="text-[10px] text-slate-400 block font-bold">// PyByteArrayObject (Continuous Binary Buffer)</span>
+                            <div class="grid grid-cols-3 gap-1 text-[10px] text-center">
+                                <div class="bg-slate-800 p-1.5 rounded text-sky-300">ob_refcnt<br><span class="text-slate-500">8 Bytes</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded text-purple-300">ob_type*<br><span class="text-slate-500">8 Bytes</span></div>
+                                <div class="bg-slate-800 p-1.5 rounded text-amber-300">ob_size<br><span class="text-slate-500">8 Bytes</span></div>
+                            </div>
+                            <div class="bg-slate-800 p-1.5 rounded text-center text-emerald-300 text-[10px] mt-1">
+                                *ob_bytes (Direct Pointer to Contiguous Raw C-Bytes Buffer)
+                            </div>
+                        </div>
+
+                        <!-- Pure Compact Bytes -->
+                        <div class="p-2.5 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                            <span class="text-[10px] text-slate-400 block">// Physical Memory Layout in RAM (No pointer indirection)</span>
+                            <div class="grid grid-cols-4 gap-1 text-center font-bold text-[11px]">
+                                <div class="bg-emerald-950 text-emerald-400 p-2 rounded border border-emerald-800/80">0x00<br><span class="text-[9px] text-slate-400 font-normal">Byte 0</span></div>
+                                <div class="bg-emerald-950 text-emerald-400 p-2 rounded border border-emerald-800/80">0x7F<br><span class="text-[9px] text-slate-400 font-normal">Byte 1</span></div>
+                                <div class="bg-emerald-950 text-emerald-400 p-2 rounded border border-emerald-800/80">0x12<br><span class="text-[9px] text-slate-400 font-normal">Byte 2</span></div>
+                                <div class="bg-emerald-950 text-emerald-400 p-2 rounded border border-emerald-800/80">0xFF<br><span class="text-[9px] text-slate-400 font-normal">Byte 3</span></div>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            <strong>Hardware Advantage:</strong> Data is packed into consecutive physical memory cells. When the CPU fetches one element into the L1/L2 cache, the next elements arrive in the exact same cache line, enabling hardware pre-fetching and vectorized SIMD processing.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Over-allocation Mathematics Callout -->
+                <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3 font-sans">
+                    <span class="font-mono text-emerald-400 font-bold text-xs uppercase tracking-wider block">// CPython Internals: Dynamic Array Resizing Mathematics</span>
+                    <p class="text-slate-300 text-xs leading-relaxed">
+                        Why is appending to a Python list $O(1)$ amortized rather than $O(n)$? Because CPython does not allocate space for only one extra item on every append. When the underlying array is full, CPython invokes <code class="font-mono text-purple-300">list_resize()</code> in <code class="font-mono text-slate-300">Objects/listobject.c</code>. The over-allocation growth formula calculates:
+                    </p>
+                    <div class="bg-slate-900 p-3 rounded-xl font-mono text-[11px] text-amber-300 border border-slate-800 overflow-x-auto">
+                        new_allocated = ((size_t)newsize + (newsize &gt;&gt; 3) + (newsize &lt; 9 ? 3 : 6)) &amp; ~(size_t)3;
+                    </div>
+                    <p class="text-slate-400 text-xs leading-relaxed">
+                        This formula expands capacity in discrete jumps ($0, 4, 8, 16, 24, 32, 40, 52, 64, \dots$). The geometric factor roughly approximates an expansion ratio of $1.125$ ($+12.5\%$), striking a mathematical balance between avoiding runaway RAM waste and minimizing expensive memory reallocation syscalls (`realloc`).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Exhaustive Native API & Method Reference -->
+        <section id="native-api-reference" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Exhaustive Native Function Reference: Sequences &amp; Buffers</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Python provides four core sequence primitives across the language and standard library. Understanding every native function, mutation semantic, and mechanical failure mode is non-negotiable for writing production software.
+            </p>
+
+            <!-- Sequence Matrix Cards -->
+            <div class="space-y-6 font-mono text-xs">
+                
+                <!-- 1. list Methods -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 font-mono">1. Python list Native API (Mutable Referential Dynamic Array)</h3>
+                            <p class="text-xs text-slate-500">Built-in sequence storing heterogeneous object references</p>
+                        </div>
+                        <span class="bg-sky-50 text-sky-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-sky-200">Built-in</span>
+                    </div>
+
+                    <!-- Method Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                    <th class="py-2 px-2 font-bold">Method Signature</th>
+                                    <th class="py-2 px-2 font-bold">Time Complexity</th>
+                                    <th class="py-2 px-2 font-bold">Mutation / Return</th>
+                                    <th class="py-2 px-2 font-bold">CPython Mechanism &amp; Failure Modes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.append(object)</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(1) Amortized</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Appends pointer to slot. If <code class="font-mono">ob_size == allocated</code>, invokes <code class="font-mono">list_resize()</code>.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.extend(iterable)</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(k)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Calculates length of iterable (if available via <code class="font-mono">__len__</code>), reallocates buffer once, copies pointers.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-rose-700">.insert(index, object)</td>
+                                    <td class="py-2.5 px-2 text-rose-600 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Invokes <code class="font-mono">memmove()</code> to physically shift all pointers rightward by 1 from index onward.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.pop([index])</td>
+                                    <td class="py-2.5 px-2 font-bold">O(1) tail / O(n) head</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns object</td>
+                                    <td class="py-2.5 px-2 font-sans">Default index is -1 ($O(1)$). Popping index 0 forces $O(n)$ leftward memory shift. Raises <code class="font-mono text-rose-600">IndexError</code> if empty.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-rose-700">.remove(value)</td>
+                                    <td class="py-2.5 px-2 text-rose-600 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Performs linear scan testing equality (<code class="font-mono">==</code>). Shifts subsequent elements. Raises <code class="font-mono text-rose-600">ValueError</code> if missing.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.index(value, [start, stop])</td>
+                                    <td class="py-2.5 px-2 text-amber-700 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">Read-only &bull; Returns int</td>
+                                    <td class="py-2.5 px-2 font-sans">Scans range for first pointer matching target equality. Raises <code class="font-mono text-rose-600">ValueError</code> if item absent.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.count(value)</td>
+                                    <td class="py-2.5 px-2 text-amber-700 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">Read-only &bull; Returns int</td>
+                                    <td class="py-2.5 px-2 font-sans">Full array traversal counting total matches via <code class="font-mono">==</code> comparison.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.reverse()</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">In-place two-pointer swap from extremities inward. Zero auxiliary heap allocation.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.sort(key=None, reverse=False)</td>
+                                    <td class="py-2.5 px-2 text-amber-700 font-bold">O(n log n)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Uses adaptive <strong>Timsort</strong>. Operates directly on pointer table; elements never leave memory.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.copy()</td>
+                                    <td class="py-2.5 px-2 text-amber-700 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">New List Object</td>
+                                    <td class="py-2.5 px-2 font-sans"><strong>Shallow Copy:</strong> Creates new pointer array, but copied addresses point to identical instances.</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-2.5 px-2 font-bold text-purple-700">.clear()</td>
+                                    <td class="py-2.5 px-2 text-emerald-700 font-bold">O(n)</td>
+                                    <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                    <td class="py-2.5 px-2 font-sans">Decrements reference counts of all stored pointers and sets <code class="font-mono">ob_size = 0</code>.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. tuple Anatomy -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 font-mono">2. Python tuple Native API (Immutable Referential Array)</h3>
+                            <p class="text-xs text-slate-500">Fixed-size sequence with structural freelist caching and hashing guarantees</p>
+                        </div>
+                        <span class="bg-purple-50 text-purple-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-purple-200">Immutable</span>
+                    </div>
+
+                    <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                        Tuples lack mutating methods (<code class="font-mono text-slate-800">.append</code>, <code class="font-mono text-slate-800">.pop</code>, <code class="font-mono text-slate-800">.sort</code>). They possess only <code class="font-mono text-purple-700 font-bold">.count()</code> and <code class="font-mono text-purple-700 font-bold">.index()</code>. However, immutability provides three critical systems advantages:
+                    </p>
+                    <ul class="list-disc pl-5 text-xs text-slate-600 font-sans space-y-1">
+                        <li><strong>Zero Over-Allocation:</strong> Tuples allocate memory for the exact number of elements specified at instantiation. A 3-item list takes 80+ bytes; a 3-item tuple takes 64 bytes.</li>
+                        <li><strong>CPython Freelist Optimization:</strong> When a tuple of size $\le 20$ is garbage collected, CPython does not free the memory block back to the OS; it preserves it in an internal array of freelists for instantaneous re-use.</li>
+                        <li><strong>Hashability &amp; Dictionary Keys:</strong> If all items inside a tuple are immutable (e.g. ints, strings), the tuple is hashable via <code class="font-mono">__hash__()</code>, allowing it to act as a compound dictionary key.</li>
+                    </ul>
+                </div>
+
+                <!-- 3. array.array & bytearray -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 font-mono">3. array.array &amp; bytearray (True Contiguous Primitives)</h3>
+                            <p class="text-xs text-slate-500">Uniform C-types packed directly into linear hardware memory</p>
+                        </div>
+                        <span class="bg-emerald-50 text-emerald-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-emerald-200">High Density</span>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4 text-xs font-sans">
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                            <span class="font-bold text-slate-900 font-mono block">array.array(typecode, [initializer])</span>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                Requires a strict C-type format character (e.g. <code class="font-mono text-purple-700">'i'</code> for 32-bit signed integer, <code class="font-mono text-purple-700">'d'</code> for 64-bit double, <code class="font-mono text-purple-700">'Q'</code> for 64-bit unsigned integer). Stores primitive scalar values without <code class="font-mono">PyObject</code> wrappers. 1,000,000 integers in a list require ~8MB of RAM; in an <code class="font-mono">array('i')</code>, they require exactly ~4MB.
+                            </p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                            <span class="font-bold text-slate-900 font-mono block">bytearray([source]) &amp; memoryview(obj)</span>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                A mutable array of bytes (integers $0 \le x \le 255$). Combined with <code class="font-mono text-emerald-700 font-bold">memoryview()</code>, it unlocks the Python <strong>Buffer Protocol</strong>: slicing a <code class="font-mono">memoryview</code> creates a pointer window over existing memory with <strong>zero copying overhead</strong> ($O(1)$ memory and time).
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 3. Algorithms: Searching and Sorting Mechanics (Timsort & Binary Search) -->
+        <section id="sorting-searching" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: Searching, Slicing &amp; Timsort</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                How do we maximize the throughput of operations on sequence primitives? We must understand the algorithmic engines underlying Python's search and sort functions.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Timsort Analysis -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Sorting Engine</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">CPython Timsort Internals</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Invented by Tim Peters in 2002 for CPython, <strong>Timsort</strong> is a hybrid, adaptive, stable sorting algorithm that blends <em>Insertion Sort</em> with <em>Merge Sort</em>:
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>Run Detection:</strong> Scans array to identify contiguous chunks that are already ascending or strictly descending. Descending runs are reversed in-place ($O(n)$).</li>
+                        <li><strong>Minrun Splitting:</strong> Short runs are padded to a minimum threshold ($\text{minrun} \in [32, 64]$) and sorted via high-speed Binary Insertion Sort.</li>
+                        <li><strong>Merge Collapse:</strong> Runs are merged together using a stack invariant to maintain balanced sub-tree depths, guaranteeing $O(n \log n)$ worst-case and $O(n)$ best-case on partially sorted data.</li>
+                    </ul>
+                </div>
+
+                <!-- Linear vs Binary Slicing -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Searching &amp; Slices</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Search Cost &amp; The Slicing Trap</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Understanding computational boundaries prevents insidious bottlenecks:
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>Linear Scan (`in` / `.index`):</strong> Unsorted lists require inspecting every pointer sequentially: $O(n)$ average and worst case.</li>
+                        <li><strong>The Slicing Memory Trap:</strong> Executing <code class="font-mono text-slate-800">sub = my_list[100:500000]</code> allocates a brand new list and copies 499,900 object references ($O(k)$ time and space).</li>
+                        <li><strong>The Zero-Copy Fix:</strong> Use <code class="font-mono text-emerald-700 font-bold">memoryview</code> on bytes/bytearrays. Slicing a <code class="font-mono">memoryview</code> creates a new view descriptor without allocating or copying underlying payload bytes ($O(1)$).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 01 -->
+        <section id="memforge-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 01: High-Performance Buffer Architecture</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 01 of <strong>MemForge</strong>. We implement two core components:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">ContiguousBuffer</code>: A circular, pre-allocated zero-copy byte buffer built using Python’s <code class="font-mono text-purple-700 font-bold">bytearray</code> and <code class="font-mono text-purple-700 font-bold">memoryview</code> for zero-allocation transaction commits.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">FixedRecordArray</code>: A typed, compact index storage primitive powered by <code class="font-mono text-purple-700 font-bold">array.array</code> for 64-bit integer file offsets.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 01)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">buffer.py</span>                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Record Index Array</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    └── unit/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_buffer.py</span>             <span class="text-slate-500"># Milestone 01: Capacity, Slicing &amp; Bounds Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/core/buffer.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Core: <code class="text-purple-700">src/memforge/core/buffer.py</code></span>
+                    <span class="text-slate-400">Zero-Copy Memory &amp; Index Buffer</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Storage Engine - Core Sequence &amp; Memory Buffers (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> array
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Iterator, Tuple
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">BufferOverflowError</span>(Exception):
+    <span class="text-slate-500">"""Raised when writing data exceeds maximum pre-allocated buffer capacity."""</span>
+    <span class="text-purple-400">pass</span>
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">RecordNotFoundError</span>(Exception):
+    <span class="text-slate-500">"""Raised when querying a record index beyond valid written bounds."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ContiguousBuffer</span>:
+    <span class="text-slate-500">"""
+    ZERO-COPY BINARY RING BUFFER:
+    Pre-allocates a contiguous bytearray block in memory.
+    Utilizes Python memoryview to slice and read byte segments without
+    incurring heap allocations or intermediate memory copies.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, capacity_bytes: int = 1024 * 1024):
+        <span class="text-slate-500"># Physical allocation: One single contiguous chunk in RAM</span>
+        self._capacity = capacity_bytes
+        self._raw_buffer = bytearray(capacity_bytes)
+        <span class="text-slate-500"># Create root memoryview: Exposes C-level buffer protocol</span>
+        self._view = memoryview(self._raw_buffer)
+        <span class="text-slate-500"># Cursor tracking total valid payload bytes written</span>
+        self._write_cursor = 0
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">bytes_written</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total bytes written to the buffer."""</span>
+        <span class="text-purple-400">return</span> self._write_cursor
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">remaining_capacity</span>(self) -> int:
+        <span class="text-slate-500">"""Returns remaining unoccupied memory slots in bytes."""</span>
+        <span class="text-purple-400">return</span> self._capacity - self._write_cursor
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">write</span>(self, payload: bytes) -> Tuple[int, int]:
+        <span class="text-slate-500">"""
+        Writes a byte chunk into contiguous memory in-place.
+        Returns: (start_offset, length) tuple for index tracking.
+        Raises: BufferOverflowError if payload exceeds remaining space.
+        """</span>
+        payload_len = len(payload)
+        <span class="text-purple-400">if</span> payload_len &gt; self.remaining_capacity:
+            <span class="text-purple-400">raise</span> BufferOverflowError(
+                f<span class="text-amber-300">"Cannot write {payload_len} bytes; only {self.remaining_capacity} bytes available."</span>
+            )
+
+        start = self._write_cursor
+        end = start + payload_len
+
+        <span class="text-slate-500"># In-place slice mutation: writes directly into pre-allocated memory</span>
+        self._raw_buffer[start:end] = payload
+        self._write_cursor = end
+
+        <span class="text-purple-400">return</span> (start, payload_len)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">read_zero_copy</span>(self, start: int, length: int) -> memoryview:
+        <span class="text-slate-500">"""
+        ZERO-COPY READ:
+        Returns a sliced memoryview referencing the exact underlying RAM slice.
+        Zero memory copying takes place regardless of the requested slice size!
+        """</span>
+        <span class="text-purple-400">if</span> start &lt; 0 <span class="text-purple-400">or</span> (start + length) &gt; self._write_cursor:
+            <span class="text-purple-400">raise</span> RecordNotFoundError(f<span class="text-amber-300">"Offset range [{start}:{start+length}] is out of written bounds."</span>)
+
+        <span class="text-purple-400">return</span> self._view[start : start + length]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">clear</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Fast O(1) buffer reset:
+        Resets cursor to zero without zeroing RAM, avoiding expensive memset cycles.
+        """</span>
+        self._write_cursor = 0
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FixedRecordArray</span>:
+    <span class="text-slate-500">"""
+    HIGH-DENSITY NUMERIC INDEX ARRAY:
+    Stores 64-bit unsigned integer offsets ('Q' typecode) in compact C-arrays.
+    Eliminates PyObject pointer overhead, consuming exactly 8 bytes per record.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># 'Q' represents unsigned 64-bit integer (unsigned long long in C)</span>
+        self._index_offsets = array.array(<span class="text-amber-300">'Q'</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">append_offset</span>(self, offset: int) -> int:
+        <span class="text-slate-500">"""
+        Appends an integer offset into the contiguous array.
+        Returns: The unique auto-incrementing Record ID (index position).
+        """</span>
+        <span class="text-purple-400">if</span> offset &lt; 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Record offsets must be positive integers."</span>)
+        
+        self._index_offsets.append(offset)
+        <span class="text-purple-400">return</span> len(self._index_offsets) - 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_offset</span>(self, record_id: int) -> int:
+        <span class="text-slate-500">"""Fast O(1) random access direct read from the C-array buffer."""</span>
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">return</span> self._index_offsets[record_id]
+        <span class="text-purple-400">except</span> IndexError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> RecordNotFoundError(f<span class="text-amber-300">"Record ID {record_id} does not exist in index."</span>) <span class="text-purple-400">from</span> err
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-purple-400">return</span> len(self._index_offsets)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__iter__</span>(self) -> Iterator[int]:
+        <span class="text-purple-400">return</span> iter(self._index_offsets)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_buffer.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Suite: <code class="text-purple-700">tests/unit/test_buffer.py</code></span>
+                    <span class="text-slate-400">Boundary &amp; Zero-Copy Verification</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Contiguous Buffer &amp; Index Tests (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.core.buffer <span class="text-purple-400">import</span> (
+    ContiguousBuffer, 
+    FixedRecordArray, 
+    BufferOverflowError, 
+    RecordNotFoundError
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestContiguousBuffer</span>:
+    <span class="text-slate-500">"""Validates zero-copy slicing, cursor bounds, and overflow guards."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_write_and_zero_copy_read_cycle</span>(self):
+        buf = ContiguousBuffer(capacity_bytes=64)
+        data = b<span class="text-amber-300">"MEMFORGE_TXN_01:SET:user_id:991"</span>
+        
+        offset, length = buf.write(data)
+        assert offset == 0
+        assert length == len(data)
+        assert buf.bytes_written == len(data)
+
+        <span class="text-slate-500"># Read data back using zero-copy memoryview</span>
+        view_slice = buf.read_zero_copy(offset, length)
+        assert isinstance(view_slice, memoryview)
+        assert view_slice.tobytes() == data
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_consecutive_writes_increment_offsets_correctly</span>(self):
+        buf = ContiguousBuffer(capacity_bytes=128)
+        off1, len1 = buf.write(b<span class="text-amber-300">"RECORD_A"</span>)
+        off2, len2 = buf.write(b<span class="text-amber-300">"RECORD_B"</span>)
+
+        assert off1 == 0
+        assert len1 == 8
+        assert off2 == 8
+        assert len2 == 8
+        assert buf.bytes_written == 16
+
+        assert buf.read_zero_copy(off1, len1).tobytes() == b<span class="text-amber-300">"RECORD_A"</span>
+        assert buf.read_zero_copy(off2, len2).tobytes() == b<span class="text-amber-300">"RECORD_B"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_writing_beyond_capacity_raises_overflow_error</span>(self):
+        buf = ContiguousBuffer(capacity_bytes=10)
+        <span class="text-purple-400">with</span> pytest.raises(BufferOverflowError, match=<span class="text-amber-300">r"Cannot write 15 bytes"</span>):
+            buf.write(b<span class="text-amber-300">"0123456789ABCDE"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_reading_out_of_bounds_raises_record_not_found</span>(self):
+        buf = ContiguousBuffer(capacity_bytes=32)
+        buf.write(b<span class="text-amber-300">"VALID_RECORD"</span>)
+        <span class="text-purple-400">with</span> pytest.raises(RecordNotFoundError):
+            buf.read_zero_copy(start=20, length=5)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestFixedRecordArray</span>:
+    <span class="text-slate-500">"""Validates 64-bit integer index offset array."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_append_and_random_access_indexing</span>(self):
+        idx = FixedRecordArray()
+        rec_id_0 = idx.append_offset(0)
+        rec_id_1 = idx.append_offset(256)
+        rec_id_2 = idx.append_offset(1024)
+
+        assert rec_id_0 == 0
+        assert rec_id_1 == 1
+        assert rec_id_2 == 2
+
+        assert idx.get_offset(0) == 0
+        assert idx.get_offset(1) == 256
+        assert idx.get_offset(2) == 1024
+        assert len(idx) == 3
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_out_of_bounds_record_id_raises_error</span>(self):
+        idx = FixedRecordArray()
+        idx.append_offset(128)
+        <span class="text-purple-400">with</span> pytest.raises(RecordNotFoundError):
+            idx.get_offset(99)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The O(n²) Left-Pop Queue Disaster</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">list.pop(0)</code> inside a loop to process a queue of incoming tasks.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> When index 0 is removed, CPython executes <code class="font-mono">memmove()</code> to physically shift every remaining element left by one pointer slot. Popping $N$ items one-by-one from a list of $100,000$ elements forces 5 billion memory shifts, freezing your app for minutes!
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">collections.deque</code> for $O(1)$ bidirectional pops.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Shared Shallow Reference Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Initializing a multi-dimensional matrix using multiplication syntax: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">matrix = [[0] * 5] * 5</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes subtle bugs:</strong> The outer list does not create 5 distinct lists; it replicates the <em>exact same inner list reference 5 times</em>. Modifying <code class="font-mono">matrix[0][0] = 1</code> mutates all 5 rows simultaneously!
+                        <strong>Fix:</strong> Use a list comprehension to allocate separate inner lists: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">[[0 for _ in range(5)] for _ in range(5)]</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Quadratic String Concatenation in Loops</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Constructing a serialized payload via repeated concatenation: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">buffer = buffer + chunk</code> inside a network loop.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes throughput:</strong> Strings are immutable. Every <code class="font-mono">+</code> re-allocates a completely new string in memory and copies all previous characters, yielding $O(n^2)$ time.
+                        <strong>Fix:</strong> Collect chunks into a <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">bytearray</code> or append to a list and call <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">b"".join(list)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Ignoring sys.getsizeof() Pointer Overhead</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Storing 10 million integers in a standard list for analytical processing.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this thrashes RAM:</strong> A 64-bit integer takes 28 bytes in Python, plus an 8-byte pointer inside the list ($36\text{ bytes per integer}$). 10 million integers eat 360MB!
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">array.array('q')</code> or NumPy, storing raw 8-byte scalars in contiguous memory, reducing RAM footprint to exactly 80MB.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, verify memory sizes with CPython diagnostics, and run the PyTest boundary verification suite:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Venv -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize virtual environment and install test framework:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute MemForge buffer unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_buffer.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 6 passed in ~0.06s. Confirms zero-copy reads, offset tracking, and overflow safeguards.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify pointer array vs contiguous memory footprint in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import sys, array; lst = list(range(1000)); arr = array.array('i', range(1000)); print('List base size (bytes):', sys.getsizeof(lst)); print('Contiguous Array size (bytes):', sys.getsizeof(arr))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how array.array is more than half the size of list because it eliminates pointer tables!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Hash Mechanics &amp; Dictionaries - Custom Hash Tables, Sets &amp; Collision Resolution</h4>
+                <p class="text-xs text-slate-500 font-sans">Journeying into key-value indexing: Building a custom hash map from scratch, mastering CPython's compact dict layout, understanding SIPHASH-13, and resolving collisions with Open Addressing.</p>
+            </div>
+            <a href="Chapter 02 - Hash Mechanics and Dictionaries - Custom Hash Tables, Sets and Collision Resolution.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

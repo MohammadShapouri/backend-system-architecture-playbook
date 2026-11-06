@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Advanced Core Queries, CTEs &amp; Bulk Operations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 07 - Analytics, CTEs &amp; Bulk Ingestion)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Analytical Queries &amp; High-Throughput Ingestion
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Advanced Core Queries, CTEs &amp; Bulk Operations
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Beyond basic CRUD: Constructing complex financial analytics with Window Functions (<code class="font-mono text-emerald-400">over()</code>), structuring modular multi-table aggregation pipelines with Common Table Expressions (<code class="font-mono text-emerald-400">cte()</code>), and bypassing the ORM Identity Map memory tax to ingest tens of thousands of records with high-speed Core bulk statements.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 07: High-Volume Analytics &amp; Ingestion</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Financial engines face two opposite scaling bottlenecks: analytical queries that compute running balance histories across millions of historical transactions, and high-frequency settlement events (such as end-of-day bank reconciliations) where 10,000 ledger rows must be inserted in under 100ms. In Milestone 07, we equip LedgerCore with SQL Window Functions to calculate running account balances directly in the database engine, use CTEs for modular volume reporting, and implement Core bulk insertions that bypass Python-level ORM overhead entirely.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Window Functions via <code class="text-purple-300">func.over()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Running balance calculation without loops</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Common Table Expressions (<code class="text-purple-300">cte()</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Identity Map Memory Tax</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> High-speed bulk <code class="text-purple-300">insert().values()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Bulk ingestion &amp; running balance API</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of High-Throughput Ingestion: The Identity Map Tax -->
+        <section id="cs-bulk-overhead" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Identity Map Memory Tax</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When developers need to import 10,000 rows into a database, the naive instinct is to instantiate 10,000 ORM model objects inside a Python loop and call <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">session.add()</code>. In production, this approach often causes memory spikes and degrades latency.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Why does this happen? Every ORM instance managed by the <code class="font-mono text-xs">Session</code> is not just a lightweight data container. It carries an internal <code class="font-mono text-xs text-slate-800">InstanceState</code>, weak reference wrappers, dirty tracking listeners, and an active entry inside the Session’s <strong>Identity Map</strong>:
+            </p>
+
+            <!-- Memory Allocation Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Memory Allocation Architecture: ORM Loop vs. Core Bulk Streaming</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Ingesting 10,000 Financial Records into PostgreSQL</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- ORM Loop -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. ORM Loop (session.add in a loop)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Memory: ~120MB+</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            For each record, Python allocates an ORM class instance:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>for row in batch: session.add(Transaction(**row))</div>
+                            <div>&rarr; 10,000 InstanceState structures created in RAM</div>
+                            <div>&rarr; 10,000 Identity Map keys tracked for mutations</div>
+                            <div>&rarr; High GC (Garbage Collection) pressure &amp; CPU overhead</div>
+                        </div>
+                        <p class="text-rose-400 text-[11px] font-sans">
+                            &cross; Insertion time: <strong>~3,200ms</strong>. Excessive RAM consumption risks triggering Linux kernel OOM (Out Of Memory) killers in resource-constrained Kubernetes pods.
+                        </p>
+                    </div>
+
+                    <!-- Core Bulk -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Core Bulk (insert(Model).values([...]))</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Memory: &lt; 5MB</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Bypasses ORM object creation entirely. Streams raw dictionaries straight to the DBAPI driver:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>session.execute(insert(Transaction), list_of_dicts)</div>
+                            <div>&rarr; Zero ORM instances instantiated in memory</div>
+                            <div>&rarr; Zero Identity Map entries tracked</div>
+                            <div>&rarr; Driver utilizes high-speed multi-values batching</div>
+                        </div>
+                        <p class="text-emerald-300 text-[11px] font-sans">
+                            &check; Insertion time: <strong>~75ms</strong> (42x faster!). Flat memory footprint regardless of whether inserting 1,000 or 100,000 records.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Engineering Rule of Thumb:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Use the <strong>ORM Unit of Work</strong> (<code class="text-white font-mono">session.add()</code>) when executing business logic where you need dirty-tracking, relationship cascades, and optimistic concurrency checks. Use <strong>SQLAlchemy Core Bulk</strong> (<code class="text-white font-mono">insert(Model)</code>) when importing bulk external feeds, data migrations, or reconciling historical bank CSV files.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Window Functions: Computing Running Balances in the Engine -->
+        <section id="window-functions" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Analytical Power: Window Functions via <code>func.over()</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In financial ledgers, displaying an account statement requires computing a <strong>running balance</strong>: after transaction #1 the balance was $100, after transaction #2 (+$50) it was $150, after transaction #3 (-$20) it was $130.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                A common anti-pattern is fetching all transactions into Python and looping over them to add up numbers. This forces your application to transfer thousands of records over the network just to calculate an aggregate. <strong>SQL Window Functions</strong> perform this calculation directly inside the database engine before the first byte leaves the database server:
+            </p>
+
+            <!-- Window Function Frame Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    SQL Window Execution: Cumulative Frame Partitioning
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-800 rounded-xl overflow-hidden">
+                        <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="p-2.5">Tx ID</th>
+                                <th class="p-2.5">Account ID</th>
+                                <th class="p-2.5">Amount</th>
+                                <th class="p-2.5">Window Frame (ROWS UNBOUNDED PRECEDING)</th>
+                                <th class="p-2.5 text-emerald-400">Running Balance (Output)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800 text-slate-300 text-[11px]">
+                            <tr class="hover:bg-slate-800/40">
+                                <td class="p-2.5">1</td>
+                                <td class="p-2.5 text-sky-400">ACC-01</td>
+                                <td class="p-2.5">+100.0000</td>
+                                <td class="p-2.5 text-slate-500">[+100.0000]</td>
+                                <td class="p-2.5 text-emerald-300 font-bold">$100.0000</td>
+                            </tr>
+                            <tr class="hover:bg-slate-800/40">
+                                <td class="p-2.5">2</td>
+                                <td class="p-2.5 text-sky-400">ACC-01</td>
+                                <td class="p-2.5">+50.0000</td>
+                                <td class="p-2.5 text-slate-500">[+100.0000, +50.0000]</td>
+                                <td class="p-2.5 text-emerald-300 font-bold">$150.0000</td>
+                            </tr>
+                            <tr class="hover:bg-slate-800/40">
+                                <td class="p-2.5">3</td>
+                                <td class="p-2.5 text-sky-400">ACC-01</td>
+                                <td class="p-2.5">-30.0000</td>
+                                <td class="p-2.5 text-slate-500">[+100.0000, +50.0000, -30.0000]</td>
+                                <td class="p-2.5 text-emerald-300 font-bold">$120.0000</td>
+                            </tr>
+                            <tr class="bg-slate-950/60 text-slate-400">
+                                <td class="p-2.5">4</td>
+                                <td class="p-2.5 text-purple-400">ACC-02</td>
+                                <td class="p-2.5">+500.0000</td>
+                                <td class="p-2.5 text-slate-500">&larr; PARTITION BY RESETS FRAME &rarr;</td>
+                                <td class="p-2.5 text-purple-300 font-bold">$500.0000</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <span class="text-emerald-400 font-bold">// How to Declare a Window Function in SQLAlchemy 2.0:</span>
+                    <pre class="text-slate-200 overflow-x-auto leading-relaxed pt-1">
+running_balance = func.sum(Transaction.amount).over(
+    partition_by=Transaction.account_id,
+    order_by=(Transaction.created_at.asc(), Transaction.id.asc())
+).label(<span class="text-amber-300">"running_balance"</span>)</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Structuring Complex Logic: Common Table Expressions (CTEs) -->
+        <section id="cte-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Modular Logic: Common Table Expressions (<code>cte()</code>)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When analytical queries grow complex—such as calculating daily transaction volume sums per account, and then joining that aggregate back to the account table to identify high-volume accounts—nesting subqueries inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">FROM (SELECT ...)</code> creates unreadable SQL that is difficult to maintain and debug.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Common Table Expressions (CTEs)</strong> allow you to define temporary, named result sets using the SQL <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">WITH</code> clause. In SQLAlchemy 2.0, you create a CTE by calling <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">.cte()</code> on any <code class="font-mono text-xs">select()</code> construct:
+            </p>
+
+            <!-- CTE Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The CTE Execution Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Base Query -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-52">
+                        <span class="text-sky-900 font-bold block">1. Aggregation Query</span>
+                        <span class="text-[10px] text-slate-500 font-sans">SELECT account_id, SUM(amount) GROUP BY account_id</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; .cte("account_volumes") &rarr;</div>
+
+                    <!-- Step 2: Named CTE -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-56">
+                        <span class="text-purple-900 font-bold block">2. Named CTE Table</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Compiles to SQL: WITH account_volumes AS (...)</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; Join into Target &rarr;</div>
+
+                    <!-- Step 3: Main Select -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-52">
+                        <span class="text-emerald-900 font-bold block">3. Final Master Select</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">SELECT accounts.*, account_volumes.total_volume</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl overflow-x-auto leading-relaxed border border-slate-800">
+                    <pre>
+<span class="text-slate-500"># 1. Define the named CTE</span>
+daily_volume_cte = (
+    select(
+        Transaction.account_id,
+        func.sum(Transaction.amount).label(<span class="text-amber-300">"total_volume"</span>)
+    )
+    .where(Transaction.created_at &gt;= func.now() - text(<span class="text-amber-300">"INTERVAL '30 days'"</span>))
+    .group_by(Transaction.account_id)
+    .<span class="text-emerald-400 font-bold">cte</span>(<span class="text-amber-300">"monthly_volume"</span>)
+)
+
+<span class="text-slate-500"># 2. Join the CTE as if it were a physical database table</span>
+stmt = (
+    select(Account.account_number, Account.owner_name, daily_volume_cte.c.total_volume)
+    .join(daily_volume_cte, Account.id == daily_volume_cte.c.account_id)
+    .order_by(daily_volume_cte.c.total_volume.desc())
+)</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: LedgerCore Milestone 07 -->
+        <section id="ledgercore-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 07: Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07. We implement two enterprise capabilities in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+                <li>A <strong>Bulk Transaction Ingestion Endpoint</strong> that streams raw dictionary records directly into PostgreSQL using SQLAlchemy 2.0 Core bulk <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">insert()</code>, bypassing the Session Identity Map.</li>
+                <li>A <strong>Running Balance Statement Endpoint</strong> utilizing SQL Window Functions (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">func.over()</code>) to calculate cumulative balance trajectories in a single database round-trip.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── models.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">schemas.py</span>                 <span class="text-slate-500"># Adds Bulk Ingestion &amp; Running Balance Schemas</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># Endpoints for Bulk Insert &amp; Window Function Statements</span></div>
+            </div>
+
+            <!-- File 1: app/schemas.py additions -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Bulk &amp; Analytical Schemas: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">Contracts for Ingestion &amp; Window Functions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/schemas.py:</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BulkTransactionItem</span>(BaseModel):
+    account_number: str
+    amount: Decimal = Field(..., gt=0, examples=[<span class="text-amber-300">"125.5000"</span>])
+    transaction_type: str = Field(default=<span class="text-amber-300">"deposit"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BulkIngestRequest</span>(BaseModel):
+    batch_reference: str = Field(..., examples=[<span class="text-amber-300">"BATCH-2026-RECONCILE-001"</span>])
+    items: list[BulkTransactionItem]
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BulkIngestResponse</span>(BaseModel):
+    status: str
+    batch_reference: str
+    records_inserted: int
+    duration_ms: float
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RunningBalanceItem</span>(BaseModel):
+    transaction_id: int
+    amount: Decimal
+    transaction_type: str
+    created_at: datetime
+    running_balance: Decimal</pre>
+            </div>
+
+            <!-- File 2: app/main.py Bulk Insert & Window Endpoints -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Analytics &amp; Bulk API: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Window &amp; Core Bulk Implementation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: Add Bulk Ingestion and Window Function endpoints</span>
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> insert, select, func
+<span class="text-purple-400">from</span> app.models <span class="text-purple-400">import</span> Account, Transaction
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> BulkIngestRequest, BulkIngestResponse, RunningBalanceItem
+
+<span class="text-purple-400">@app.post</span>(
+    <span class="text-amber-300">"/api/v1/transactions/bulk"</span>,
+    response_model=BulkIngestResponse,
+    tags=[<span class="text-amber-300">"High-Volume Ingestion"</span>],
+    summary=<span class="text-amber-300">"High-Speed Bulk Transaction Ingest (Bypasses ORM Identity Map)"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">bulk_ingest_transactions</span>(
+    payload: BulkIngestRequest,
+    session: Session = Depends(get_db_session)
+):
+    <span class="text-slate-500">"""
+    HIGH-THROUGHPUT BULK INGESTION ARCHITECTURE:
+    1. Pre-resolves account numbers to primary key IDs in a single batch query.
+    2. Constructs a list of raw Python dictionaries.
+    3. Emits a single Core insert() statement via session.execute(insert(Transaction), raw_records).
+    4. Commits directly to disk without polluting the Session Identity Map with thousands of objects.
+    """</span>
+    start_time = time.perf_counter()
+
+    <span class="text-slate-500"># Step 1: Pre-resolve all unique account numbers in 1 query</span>
+    unique_account_numbers = list({item.account_number <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> payload.items})
+    accounts_stmt = select(Account.id, Account.account_number).where(Account.account_number.in_(unique_account_numbers))
+    account_lookup = dict(session.execute(accounts_stmt).all())
+
+    <span class="text-slate-500"># Step 2: Build raw record payloads</span>
+    raw_records = []
+    <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> payload.items:
+        account_id = account_lookup.get(item.account_number)
+        <span class="text-purple-400">if not</span> account_id:
+            <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=f<span class="text-amber-300">"Unknown account: &#123;item.account_number&#125;"</span>)
+
+        raw_records.append({
+            <span class="text-amber-300">"account_id"</span>: account_id,
+            <span class="text-amber-300">"amount"</span>: item.amount,
+            <span class="text-amber-300">"transaction_type"</span>: item.transaction_type,
+            <span class="text-amber-300">"description"</span>: f<span class="text-amber-300">"Bulk Import &#123;payload.batch_reference&#125;"</span>
+        })
+
+    <span class="text-slate-500"># Step 3: CORE BULK INSERTION</span>
+    <span class="text-slate-500"># Executes high-speed multi-values batch insert over the DBAPI socket</span>
+    <span class="text-purple-400">if</span> raw_records:
+        session.execute(insert(Transaction), raw_records)
+        session.commit()
+
+    duration_ms = (time.perf_counter() - start_time) * 1000
+
+    <span class="text-purple-400">return</span> BulkIngestResponse(
+        status=<span class="text-amber-300">"success"</span>,
+        batch_reference=payload.batch_reference,
+        records_inserted=<span class="text-purple-400">len</span>(raw_records),
+        duration_ms=round(duration_ms, 2)
+    )
+
+
+<span class="text-purple-400">@app.get</span>(
+    <span class="text-amber-300">"/api/v1/accounts/&#123;account_id&#125;/running-balance"</span>,
+    response_model=list[RunningBalanceItem],
+    tags=[<span class="text-amber-300">"Analytics"</span>],
+    summary=<span class="text-amber-300">"Calculate Running Balance History via SQL Window Function"</span>
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_account_running_balance</span>(
+    account_id: int,
+    session: Session = Depends(get_db_session)
+):
+    <span class="text-slate-500">"""
+    WINDOW FUNCTION ANALYTICAL QUERY:
+    Computes a cumulative sum across historical ledger rows directly inside the DB engine.
+    Uses a deterministic tiebreaker (Transaction.id.asc()) to prevent frame order ambiguity!
+    """</span>
+    running_balance_window = func.sum(Transaction.amount).over(
+        partition_by=Transaction.account_id,
+        order_by=(Transaction.created_at.asc(), Transaction.id.asc())
+    ).label(<span class="text-amber-300">"running_balance"</span>)
+
+    stmt = (
+        select(
+            Transaction.id.label(<span class="text-amber-300">"transaction_id"</span>),
+            Transaction.amount,
+            Transaction.transaction_type,
+            Transaction.created_at,
+            running_balance_window
+        )
+        .where(Transaction.account_id == account_id)
+        .order_by(Transaction.created_at.asc(), Transaction.id.asc())
+    )
+
+    rows = session.execute(stmt).all()
+    <span class="text-purple-400">return</span> [
+        RunningBalanceItem(
+            transaction_id=r.transaction_id,
+            amount=r.amount,
+            transaction_type=r.transaction_type,
+            created_at=r.created_at,
+            running_balance=r.running_balance
+        )
+        <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> rows
+    ]</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Desynchronized Identity Map Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Loading an object into the session (<code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">acc = session.get(Account, 1)</code>), and then issuing a Core bulk update: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">session.execute(update(Account).values(balance=0))</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent data bugs:</strong> Core bulk <code class="font-mono">UPDATE</code> and <code class="font-mono">DELETE</code> statements bypass the ORM layer and update rows directly on disk. The Session’s in-memory <code class="font-mono">acc</code> instance remains completely unaware that its balance changed! Reading <code class="font-mono">acc.balance</code> afterwards returns stale data.
+                        <strong>Fix:</strong> Call <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">session.expire_all()</code> immediately after any Core bulk update statement to force objects to re-synchronize with the database.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Window Functions Without Deterministic Tiebreakers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">func.sum().over(order_by=Transaction.created_at)</code> without including a primary key tiebreaker.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks running balances:</strong> If two transactions occur in the exact same millisecond, they share an identical timestamp. By SQL standards, rows with equal <code class="font-mono">ORDER BY</code> values are treated as a single peer group. The window function calculates the sum of <em>both</em> rows together and stamps that identical total on both rows!
+                        <strong>Fix:</strong> Always append the unique primary key as a secondary tiebreaker: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">order_by=(Transaction.created_at.asc(), Transaction.id.asc())</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your server, ingest a batch of transactions using the high-speed Core bulk endpoint, and verify the running balance calculation:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start LedgerCore API:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Seed Account -->
+                <div>
+                    <span class="text-slate-500"># 2. Seed an account for bulk testing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-ANALYTICS-01", "owner_name": "Quant Fund", "initial_balance": "0.0000"}'
+                    </div>
+                </div>
+
+                <!-- Step 3: High-Speed Bulk Ingest -->
+                <div>
+                    <span class="text-slate-500"># 3. Post a high-volume batch insert (streams directly to DB socket):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/transactions/bulk \
+                        -H "Content-Type: application/json" \
+                        -d '{"batch_reference": "RECON-SETTLE-001", "items": [{"account_number": "ACC-ANALYTICS-01", "amount": "100.0000", "transaction_type": "deposit"}, {"account_number": "ACC-ANALYTICS-01", "amount": "250.0000", "transaction_type": "deposit"}, {"account_number": "ACC-ANALYTICS-01", "amount": "50.0000", "transaction_type": "deposit"}]}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice the response: records_inserted=3 with duration_ms under 15ms.
+                    </span>
+                </div>
+
+                <!-- Step 4: Window Function Statement -->
+                <div>
+                    <span class="text-slate-500"># 4. Fetch the running balance statement computed by the SQL Window Function:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/accounts/1/running-balance
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output reflects cumulative balance progression: Row 1 ($100) &rarr; Row 2 ($350) &rarr; Row 3 ($400) computed directly in SQL.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's bulk &amp; analytical endpoints in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 8 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Schema Evolution with Alembic</h4>
+                <p class="text-xs text-slate-500 font-sans">Evolving relational databases in production: Initializing Alembic, configuring <code class="font-mono">target_metadata</code>, writing custom data backfill migrations, and handling multi-developer branch conflicts without downtime.</p>
+            </div>
+            <a href="Chapter 08 - Schema Evolution with Alembic.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 8 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

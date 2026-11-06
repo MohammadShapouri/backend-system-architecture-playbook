@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Declarative Configuration: YAML-Based Policy Engines &amp; Dynamic Hot-Reloading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 02 - Declarative YAML Policy Engine &amp; Hot-Reloading)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Declarative Policies &amp; GitOps Infrastructure
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Declarative Configuration: YAML-Based Policy Engines &amp; Dynamic Hot-Reloading
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling throttling policies from Python code: Why hardcoded decorators collapse in production, designing hierarchical rate-limiting schemas with Pydantic v2, parsing human-readable rate syntax (<code class="font-mono text-emerald-400">100/minute</code>), route regex compiling, and engineering thread-safe, zero-downtime hot-reloading with fallback resilience in <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 02: Declarative Policy &amp; Hot-Reload Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established mathematical models for rate limits and verified the boundary burst flaw. In Milestone 02, we move past hardcoded limits. Real-world platforms (Stripe, Cloudflare, GitHub) manage thousands of routes with varying rate tiers: Anonymous users receive 10 req/min, Basic customers receive 60 req/min, and Enterprise accounts receive 10,000 req/min. Furthermore, critical endpoints like <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">POST /auth/login</code> require strict limits regardless of tier. We construct a <strong>centralized YAML policy engine</strong> that loads external GitOps rules, resolves route precedence using compiled regular expressions, and hot-reloads dynamically without dropping active requests.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hardcoded Decorators vs. Declarative Policies</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pydantic v2 Schema for Rate Specifications</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hierarchical Precedence &amp; Route Regex Matching</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Downtime Atomic Pointer Swapping</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Graceful Fallback on Corrupted YAML Edits</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full Unit &amp; Dynamic Reloader Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Declarative Policy Engines -->
+        <section id="cs-declarative-policies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Declarative Policy Engines vs. Hardcoded Decorators</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In introductory web tutorials, rate limiting is almost universally taught using function decorators:
+                <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">@limiter.limit("5/minute")</code>. 
+                While straightforward for toy applications, hardcoding limits inside route definitions introduces severe architectural liabilities in enterprise production environments.
+            </p>
+
+            <!-- Hardcoded vs Declarative Comparison (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Architectural Comparison: Decorators vs. Declarative Policy Engine</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Evaluating Operational Agility &amp; Cloud Maintenance</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Decorator Approach -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Hardcoded Decorator (@limiter.limit)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Anti-Pattern at Scale</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Limits are compiled directly into Python function definitions:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>@router.post("/login")</div>
+                            <div>@limiter.limit("5/minute")  # Hardcoded!</div>
+                            <div>def login_endpoint(): ...</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Deployment Friction:</strong> Changing a limit during an ongoing DDoS attack requires a code change, PR review, CI test run, Docker build, and rolling deployment (15–30 minutes).</li>
+                            <li><strong>Zero Multi-Tenancy:</strong> Difficult to vary rates by customer tier (Free vs. Pro vs. Enterprise) without sprawling `if/else` logic inside every route.</li>
+                            <li><strong>Audit Blindness:</strong> Security and compliance teams cannot view all active rate limits in one centralized place.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Declarative Approach -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Declarative Policy Engine (YAML / GitOps)</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Enterprise Standard</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Policies live in dedicated configuration files (e.g., <code class="text-emerald-300">rate_limits.yml</code>):
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>routes:</div>
+                            <div>&nbsp;&nbsp;- path: "^/api/v1/auth/.*"</div>
+                            <div>&nbsp;&nbsp;&nbsp;&nbsp;tiers: { free: "5/m", enterprise: "50/m" }</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Zero-Downtime Hot-Reloading:</strong> SREs can update a rate limit or mitigate a DDoS attack in <strong>1 millisecond</strong> by updating a ConfigMap or YAML file without container restarts.</li>
+                            <li><strong>Single Pane of Glass:</strong> Risk and product teams inspect and audit the entire organization's rate policies in a single file.</li>
+                            <li><strong>Multi-Dimensional Matrices:</strong> Seamlessly combines path matching, client tier, cost weights, and burst multipliers.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Pydantic v2 Schema Modeling for Rate Limits -->
+        <section id="pydantic-schema-engine" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Pydantic v2 Schema Engineering: Parsing Human Rate Syntax</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Humans write rate limits in intuitive strings: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">"100/minute"</code>, <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">"5/second"</code>, or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">"10000/day"</code>. However, computers, algorithms, and Redis Lua scripts require two exact numeric primitives: an integer <strong>limit</strong> ($L$) and a floating-point <strong>window period in seconds</strong> ($W$).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                We leverage Pydantic v2's compiled Rust validator core to parse, validate, and convert human rate strings into normalized domain objects on boot:
+            </p>
+
+            <!-- Rate Parser Regex Decomposition Visual (Pure HTML/CSS) -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    Deconstructing Rate String Expressions
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl text-center text-sm space-y-2">
+                    <span class="text-slate-400">Rate String: </span>
+                    <span class="text-sky-300 font-bold bg-slate-900 px-2 py-1 rounded border border-slate-800">"500 / minute"</span>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl space-y-1">
+                        <span class="text-sky-900 font-bold block">1. Quota Limit (\d+)</span>
+                        <div class="text-[11px] text-sky-700">500 units</div>
+                        <span class="text-[9px] text-slate-500 font-sans">Integer capacity allowed</span>
+                    </div>
+
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-1">
+                        <span class="text-purple-900 font-bold block">2. Delimiter (\s*/\s*)</span>
+                        <div class="text-[11px] text-purple-700">Per / Slash</div>
+                        <span class="text-[9px] text-slate-500 font-sans">Permits flexible whitespace</span>
+                    </div>
+
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. Time Unit (TimeUnit Enum)</span>
+                        <div class="text-[11px] text-emerald-700">"minute" &rarr; 60.0s</div>
+                        <span class="text-[9px] text-slate-500 font-sans">Normalized to seconds</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-slate-600 font-sans text-xs space-y-1">
+                    <strong class="font-mono text-slate-900">Supported Production Time Units:</strong>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] pt-1">
+                        <div>&bull; <code class="text-slate-800">second / s</code> = 1.0s</div>
+                        <div>&bull; <code class="text-slate-800">minute / m</code> = 60.0s</div>
+                        <div>&bull; <code class="text-slate-800">hour / h</code> = 3600.0s</div>
+                        <div>&bull; <code class="text-slate-800">day / d</code> = 86400.0s</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Hierarchical Evaluation Engine: Precedence & Route Matching -->
+        <section id="policy-precedence" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Hierarchical Precedence: Resolving Conflicting Policies</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an incoming request hits <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">POST /api/v1/auth/login</code> from a client belonging to the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-700 font-bold">enterprise</code> tier, multiple policies in your configuration file might match. If your engine lacks a deterministic resolution order, rate limits become erratic.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                SentinelFlow enforces a strict <strong>Hierarchical Evaluation Order</strong> from most specific to least specific:
+            </p>
+
+            <!-- Precedence Hierarchy Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    SentinelFlow Policy Resolution Order (Top to Bottom)
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Layer 1: Route + Method + Tier Specific -->
+                    <div class="w-full p-3.5 bg-emerald-950 border border-emerald-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">1. Route Override + Client Tier (Highest Precedence)</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Matches path regex AND HTTP method AND client tier (e.g., POST /auth/login for Enterprise)</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; if unmatched &darr;</div>
+
+                    <!-- Layer 2: Route Default -->
+                    <div class="w-full p-3.5 bg-sky-950 border border-sky-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-sky-300 font-bold block text-sm">2. Route Default Override</span>
+                        <span class="text-[10px] text-sky-200 font-sans">Matches path regex AND method, applies route-level default across all tiers</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; if unmatched &darr;</div>
+
+                    <!-- Layer 3: Global Tier Quota -->
+                    <div class="w-full p-3.5 bg-purple-950 border border-purple-500 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-purple-300 font-bold block text-sm">3. Global Client Tier Default</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Applies client's global tier quota across all non-overridden endpoints</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; if unmatched &darr;</div>
+
+                    <!-- Layer 4: Global Catch-All -->
+                    <div class="w-full p-3.5 bg-slate-950 border border-slate-700 rounded-xl text-center space-y-0.5 shadow-lg">
+                        <span class="text-slate-300 font-bold block text-sm">4. Global Baseline Default (Lowest Precedence)</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Catch-all fallback applied to unauthenticated anonymous traffic</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Zero-Downtime Hot-Reloading: Atomic Pointer Swapping -->
+        <section id="atomic-hot-reloading" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Zero-Downtime Hot-Reloading: Thread-Safe Atomic Swapping</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                How do we update rate-limiting rules when an SRE modifies <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-800">rate_limits.yml</code> without restarting the FastAPI server or dropping active user requests?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                A dangerous approach is mutating shared dictionaries in place. Under concurrent traffic across multiple async tasks and AnyIO threads, partial dictionary updates trigger <strong>race conditions and RuntimeError: dictionary changed size during iteration</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The senior engineering solution is <strong>Copy-on-Write Atomic Pointer Swapping</strong>:
+            </p>
+
+            <!-- Hot Reloading Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Copy-on-Write Atomic Swap Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Watcher detects -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-slate-900 font-bold block">1. File Watcher Event</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Background thread detects file modification on rate_limits.yml</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; validates &rarr;</div>
+
+                    <!-- Step 2: Isolated Compilation -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. Isolated Parsing</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Builds fresh PolicyConfig in memory. Live traffic continues using old config!</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; atomic swap &rarr;</div>
+
+                    <!-- Step 3: Atomic Swap -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. Atomic Swap</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">self._current_config = new_config (Single atomic Python bytecode pointer assignment)</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl leading-relaxed border border-slate-800 space-y-1 font-sans text-xs">
+                    <strong class="font-mono text-emerald-400">Graceful Fallback on Syntax Errors:</strong>
+                    <p class="text-slate-300">
+                        If an engineer pushes an invalid edit (e.g. malformed YAML indentation or unparseable regex), the background parser catches the <code class="font-mono text-rose-400">ValidationError</code>, logs a critical alert to the monitoring stream, and <strong>discards the reload</strong>. The running application preserves the previous valid configuration with zero downtime!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: SentinelFlow Milestone 02 -->
+        <section id="sentinelflow-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 02: Full Policy Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 02 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We define <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">config/rate_limits.yml</code> with institutional production policies.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/config/models.py</code> using Pydantic v2.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/config/parser.py</code> with compiled regex matching.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/config/watcher.py</code> for thread-safe hot-reloading.</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_config.py</code> validating hierarchical precedence and graceful fallback on corrupted syntax.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 02)</div>
+                <div>sentinelflow/</div>
+                <div>├── <span class="text-emerald-300 font-bold">config/</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">rate_limits.yml</span>             <span class="text-slate-500"># Declarative YAML Policy File</span></div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── core/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">config/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">models.py</span>               <span class="text-slate-500"># Pydantic v2 Rule &amp; Rate Models</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">parser.py</span>               <span class="text-slate-500"># Regex Trie &amp; Precedence Resolver</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">watcher.py</span>              <span class="text-slate-500"># Atomic Hot-Reloading Manager</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_algorithms.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_config.py</span>              <span class="text-slate-500"># Milestone 02 Policy &amp; Reloader Tests</span></div>
+            </div>
+
+            <!-- File 1: config/rate_limits.yml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Declarative Policy Configuration: <code class="text-purple-700">config/rate_limits.yml</code></span>
+                    <span class="text-slate-400">Production Rules File</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Production Rate Limiting Policies (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">version</span>: <span class="text-amber-300">"1.0"</span>
+
+<span class="text-slate-500"># Global client tier quotas (applied across all un-overridden routes)</span>
+<span class="text-purple-400">tiers</span>:
+  <span class="text-sky-300">anonymous</span>: <span class="text-amber-300">"10/minute"</span>
+  <span class="text-sky-300">free</span>: <span class="text-amber-300">"60/minute"</span>
+  <span class="text-sky-300">pro</span>: <span class="text-amber-300">"1000/minute"</span>
+  <span class="text-sky-300">enterprise</span>: <span class="text-amber-300">"10000/minute"</span>
+
+<span class="text-slate-500"># Route-specific overrides with regular expression path matching</span>
+<span class="text-purple-400">routes</span>:
+  <span class="text-slate-500"># 1. Critical Authentication Guard: Tight limits to defeat brute-force &amp; CPU starvation</span>
+  - <span class="text-sky-300">name</span>: <span class="text-amber-300">"auth_login"</span>
+    <span class="text-sky-300">path_pattern</span>: <span class="text-amber-300">"^/api/v1/auth/login$"</span>
+    <span class="text-sky-300">methods</span>: [<span class="text-amber-300">"POST"</span>]
+    <span class="text-sky-300">default_rate</span>: <span class="text-amber-300">"5/minute"</span>
+    <span class="text-sky-300">tier_overrides</span>:
+      <span class="text-sky-300">enterprise</span>: <span class="text-amber-300">"30/minute"</span>
+    <span class="text-sky-300">cost</span>: 1
+
+  <span class="text-slate-500"># 2. Resource-Intensive Data Export: Higher cost weight per invocation</span>
+  - <span class="text-sky-300">name</span>: <span class="text-amber-300">"heavy_export"</span>
+    <span class="text-sky-300">path_pattern</span>: <span class="text-amber-300">"^/api/v1/reports/.*"</span>
+    <span class="text-sky-300">methods</span>: [<span class="text-amber-300">"GET"</span>, <span class="text-amber-300">"POST"</span>]
+    <span class="text-sky-300">default_rate</span>: <span class="text-amber-300">"10/hour"</span>
+    <span class="text-sky-300">tier_overrides</span>:
+      <span class="text-sky-300">pro</span>: <span class="text-amber-300">"100/hour"</span>
+      <span class="text-sky-300">enterprise</span>: <span class="text-amber-300">"1000/hour"</span>
+    <span class="text-sky-300">cost</span>: 5  <span class="text-slate-500"># Consumes 5 quota units per request</span>
+
+<span class="text-slate-500"># Endpoints completely exempt from rate limiting</span>
+<span class="text-purple-400">exempt_patterns</span>:
+  - <span class="text-amber-300">"^/health$"</span>
+  - <span class="text-amber-300">"^/metrics$"</span>
+  - <span class="text-amber-300">"^/docs.*"</span></pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/config/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Pydantic v2 Schema Engine: <code class="text-purple-700">src/sentinelflow/config/models.py</code></span>
+                    <span class="text-slate-400">Parsing &amp; Normalization</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Pydantic v2 Configuration Schemas (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> re
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List, Optional
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field, field_validator
+
+RATE_REGEX = re.compile(<span class="text-amber-300">r"^(\d+)\s*/\s*(second|s|minute|m|hour|h|day|d)$"</span>, re.IGNORECASE)
+
+TIME_UNIT_SECONDS: Dict[str, float] = {
+    <span class="text-amber-300">"s"</span>: 1.0, <span class="text-amber-300">"second"</span>: 1.0,
+    <span class="text-amber-300">"m"</span>: 60.0, <span class="text-amber-300">"minute"</span>: 60.0,
+    <span class="text-amber-300">"h"</span>: 3600.0, <span class="text-amber-300">"hour"</span>: 3600.0,
+    <span class="text-amber-300">"d"</span>: 86400.0, <span class="text-amber-300">"day"</span>: 86400.0,
+}
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ParsedRate</span>(BaseModel):
+    <span class="text-slate-500">"""Normalized mathematical rate: limit integer + window in seconds."""</span>
+    limit: int = Field(..., gt=0)
+    window_seconds: float = Field(..., gt=0.0)
+    raw_expression: str
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">from_string</span>(cls, expr: str) -> <span class="text-amber-300">"ParsedRate"</span>:
+        match = RATE_REGEX.match(expr.strip())
+        <span class="text-purple-400">if not</span> match:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Invalid rate expression: '&#123;expr&#125;'. Expected format: '&lt;limit&gt;/&lt;unit&gt;' (e.g., '100/minute')"</span>)
+
+        limit_str, unit_str = match.groups()
+        limit = int(limit_str)
+        window = TIME_UNIT_SECONDS[unit_str.lower()]
+        <span class="text-purple-400">return</span> cls(limit=limit, window_seconds=window, raw_expression=expr)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RouteRule</span>(BaseModel):
+    name: str
+    path_pattern: str
+    methods: List[str] = Field(default_factory=<span class="text-purple-400">lambda</span>: [<span class="text-amber-300">"GET"</span>, <span class="text-amber-300">"POST"</span>, <span class="text-amber-300">"PUT"</span>, <span class="text-amber-300">"DELETE"</span>, <span class="text-amber-300">"PATCH"</span>])
+    default_rate: ParsedRate
+    tier_overrides: Dict[str, ParsedRate] = Field(default_factory=dict)
+    cost: int = Field(default=1, ge=1)
+
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"default_rate"</span>, mode=<span class="text-amber-300">"before"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">parse_default_rate</span>(cls, val):
+        <span class="text-purple-400">return</span> ParsedRate.from_string(val) <span class="text-purple-400">if isinstance</span>(val, str) <span class="text-purple-400">else</span> val
+
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"tier_overrides"</span>, mode=<span class="text-amber-300">"before"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">parse_tier_overrides</span>(cls, val: dict):
+        parsed = {}
+        <span class="text-purple-400">for</span> tier, expr <span class="text-purple-400">in</span> val.items():
+            parsed[tier] = ParsedRate.from_string(expr) <span class="text-purple-400">if isinstance</span>(expr, str) <span class="text-purple-400">else</span> expr
+        <span class="text-purple-400">return</span> parsed
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PolicyConfig</span>(BaseModel):
+    version: str = <span class="text-amber-300">"1.0"</span>
+    tiers: Dict[str, ParsedRate]
+    routes: List[RouteRule] = Field(default_factory=list)
+    exempt_patterns: List[str] = Field(default_factory=list)
+
+    <span class="text-purple-400">@field_validator</span>(<span class="text-amber-300">"tiers"</span>, mode=<span class="text-amber-300">"before"</span>)
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">parse_tier_dict</span>(cls, val: dict):
+        parsed = {}
+        <span class="text-purple-400">for</span> tier, expr <span class="text-purple-400">in</span> val.items():
+            parsed[tier] = ParsedRate.from_string(expr) <span class="text-purple-400">if isinstance</span>(expr, str) <span class="text-purple-400">else</span> expr
+        <span class="text-purple-400">return</span> parsed</pre>
+            </div>
+
+            <!-- File 3: src/sentinelflow/config/parser.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Policy Parser &amp; Precedence Resolver: <code class="text-purple-700">src/sentinelflow/config/parser.py</code></span>
+                    <span class="text-slate-400">Compiled Regex Trie</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - YAML Loader &amp; Route Resolver (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> re
+<span class="text-purple-400">import</span> yaml
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Tuple, Optional
+<span class="text-purple-400">from</span> sentinelflow.config.models <span class="text-purple-400">import</span> PolicyConfig, RouteRule, ParsedRate
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PolicyEngine</span>:
+    <span class="text-slate-500">"""
+    Evaluates incoming request metadata against compiled policy rules.
+    Pre-compiles regular expressions to guarantee sub-millisecond route resolution.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, config: PolicyConfig):
+        self.config = config
+        <span class="text-slate-500"># Compile route regex patterns upfront during load</span>
+        self._compiled_routes: List[Tuple[RouteRule, re.Pattern]] = [
+            (r, re.compile(r.path_pattern)) <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> config.routes
+        ]
+        self._compiled_exemptions: List[re.Pattern] = [
+            re.compile(p) <span class="text-purple-400">for</span> p <span class="text-purple-400">in</span> config.exempt_patterns
+        ]
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">from_yaml_file</span>(cls, path: Path) -> <span class="text-amber-300">"PolicyEngine"</span>:
+        raw_data = yaml.safe_load(path.read_text(encoding=<span class="text-amber-300">"utf-8"</span>))
+        config = PolicyConfig.model_validate(raw_data)
+        <span class="text-purple-400">return</span> cls(config)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">is_exempt</span>(self, path: str) -> bool:
+        <span class="text-purple-400">return</span> any(pattern.match(path) <span class="text-purple-400">for</span> pattern <span class="text-purple-400">in</span> self._compiled_exemptions)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">resolve</span>(self, path: str, method: str, client_tier: str) -> Tuple[ParsedRate, int]:
+        <span class="text-slate-500">"""
+        Resolves rate policy according to strict Hierarchical Precedence:
+        1. Route Match + Tier Override
+        2. Route Match + Route Default
+        3. Global Tier Quota
+        4. Anonymous Fallback Quota
+        Returns: (ParsedRate, cost)
+        """</span>
+        sanitized_method = method.upper()
+
+        <span class="text-slate-500"># 1 &amp; 2: Check Route-Level Overrides</span>
+        <span class="text-purple-400">for</span> rule, regex <span class="text-purple-400">in</span> self._compiled_routes:
+            <span class="text-purple-400">if</span> regex.match(path) <span class="text-purple-400">and</span> sanitized_method <span class="text-purple-400">in</span> rule.methods:
+                <span class="text-slate-500"># Tier override on route takes top priority</span>
+                <span class="text-purple-400">if</span> client_tier <span class="text-purple-400">in</span> rule.tier_overrides:
+                    <span class="text-purple-400">return</span> rule.tier_overrides[client_tier], rule.cost
+                <span class="text-purple-400">return</span> rule.default_rate, rule.cost
+
+        <span class="text-slate-500"># 3: Check Global Tier Default</span>
+        <span class="text-purple-400">if</span> client_tier <span class="text-purple-400">in</span> self.config.tiers:
+            <span class="text-purple-400">return</span> self.config.tiers[client_tier], 1
+
+        <span class="text-slate-500"># 4: Fallback to anonymous baseline</span>
+        fallback = self.config.tiers.get(<span class="text-amber-300">"anonymous"</span>, ParsedRate(limit=10, window_seconds=60.0, raw_expression=<span class="text-amber-300">"10/m"</span>))
+        <span class="text-purple-400">return</span> fallback, 1</pre>
+            </div>
+
+            <!-- File 4: src/sentinelflow/config/watcher.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Thread-Safe Atomic Hot-Reloader: <code class="text-purple-700">src/sentinelflow/config/watcher.py</code></span>
+                    <span class="text-slate-400">Zero-Downtime Pointer Swapping</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Thread-Safe Policy Reloader (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">from</span> sentinelflow.config.parser <span class="text-purple-400">import</span> PolicyEngine
+
+logger = logging.getLogger(<span class="text-amber-300">"sentinelflow.config"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PolicyWatcher</span>:
+    <span class="text-slate-500">"""
+    Thread-safe container maintaining the active PolicyEngine pointer.
+    Supports atomic pointer swaps and safe fallback on syntax corruption.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, config_path: Path):
+        self.config_path = config_path
+        <span class="text-slate-500"># Load initial state synchronously on boot (fails fast if invalid)</span>
+        self._current_engine = PolicyEngine.from_yaml_file(config_path)
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">engine</span>(self) -> PolicyEngine:
+        <span class="text-slate-500"># Atomic read: Python pointer assignment is bytecode-atomic (STORE_FAST)</span>
+        <span class="text-purple-400">return</span> self._current_engine
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">reload</span>(self) -> bool:
+        <span class="text-slate-500">"""
+        Compiles the updated YAML file in isolation.
+        Performs an atomic swap only if parsing succeeds.
+        Returns: True if reloaded; False if rejected due to syntax corruption.
+        """</span>
+        <span class="text-purple-400">try</span>:
+            new_engine = PolicyEngine.from_yaml_file(self.config_path)
+            <span class="text-slate-500"># COPY-ON-WRITE: Atomic pointer swap</span>
+            self._current_engine = new_engine
+            logger.info(f<span class="text-amber-300">"SentinelFlow rate limit policies hot-reloaded successfully from &#123;self.config_path&#125;"</span>)
+            <span class="text-purple-400">return True</span>
+        <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+            <span class="text-slate-500"># RESILIENCE MANDATE: Log critical error and preserve running state!</span>
+            logger.error(
+                f<span class="text-rose-400">"RELOAD REJECTED: Corrupted YAML or invalid schema in &#123;self.config_path&#125;: &#123;exc&#125;. "</span>
+                f<span class="text-slate-300">"Preserving previous active configuration without dropping traffic."</span>
+            )
+            <span class="text-purple-400">return False</span></pre>
+            </div>
+
+            <!-- File 5: tests/unit/test_config.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">5. Configuration Test Battery: <code class="text-purple-700">tests/unit/test_config.py</code></span>
+                    <span class="text-slate-400">Precedence &amp; Reloader Verification</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> sentinelflow.config.models <span class="text-purple-400">import</span> ParsedRate
+<span class="text-purple-400">from</span> sentinelflow.config.parser <span class="text-purple-400">import</span> PolicyEngine
+<span class="text-purple-400">from</span> sentinelflow.config.watcher <span class="text-purple-400">import</span> PolicyWatcher
+
+SAMPLE_YAML = <span class="text-amber-300">"""
+version: "1.0"
+tiers:
+  anonymous: "10/minute"
+  pro: "1000/minute"
+routes:
+  - name: "auth_login"
+    path_pattern: "^/api/v1/auth/login$"
+    methods: ["POST"]
+    default_rate: "5/minute"
+    tier_overrides:
+      pro: "20/minute"
+    cost: 1
+exempt_patterns:
+  - "^/health$"
+"""</span>
+
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">policy_file</span>(tmp_path):
+    config_path = tmp_path / <span class="text-amber-300">"rate_limits.yml"</span>
+    config_path.write_text(SAMPLE_YAML, encoding=<span class="text-amber-300">"utf-8"</span>)
+    <span class="text-purple-400">return</span> config_path
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestPolicyConfigurationEngine</span>:
+    <span class="text-slate-500">"""Verifies syntax parsing, hierarchical route precedence, and hot-reload safety."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_rate_string_parsing_into_normalized_seconds</span>(self):
+        r1 = ParsedRate.from_string(<span class="text-amber-300">"500/minute"</span>)
+        assert r1.limit == 500
+        assert r1.window_seconds == 60.0
+
+        r2 = ParsedRate.from_string(<span class="text-amber-300">"10 / s"</span>)
+        assert r2.limit == 10
+        assert r2.window_seconds == 1.0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_invalid_rate_expression_raises_value_error</span>(self):
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"Invalid rate expression"</span>):
+            ParsedRate.from_string(<span class="text-amber-300">"unlimited"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_route_precedence_tier_override_takes_priority</span>(self, policy_file):
+        engine = PolicyEngine.from_yaml_file(policy_file)
+
+        <span class="text-slate-500"># 1. Pro client on login route receives route's tier override (20/min), NOT global pro limit (1000/min)</span>
+        rate, cost = engine.resolve(<span class="text-amber-300">"/api/v1/auth/login"</span>, <span class="text-amber-300">"POST"</span>, client_tier=<span class="text-amber-300">"pro"</span>)
+        assert rate.limit == 20
+        assert rate.window_seconds == 60.0
+        assert cost == 1
+
+        <span class="text-slate-500"># 2. Anonymous client on login route receives route's default rate (5/min)</span>
+        rate_anon, _ = engine.resolve(<span class="text-amber-300">"/api/v1/auth/login"</span>, <span class="text-amber-300">"POST"</span>, client_tier=<span class="text-amber-300">"anonymous"</span>)
+        assert rate_anon.limit == 5
+
+        <span class="text-slate-500"># 3. Pro client on generic endpoint receives global pro tier quota (1000/min)</span>
+        rate_generic, _ = engine.resolve(<span class="text-amber-300">"/api/v1/items"</span>, <span class="text-amber-300">"GET"</span>, client_tier=<span class="text-amber-300">"pro"</span>)
+        assert rate_generic.limit == 1000
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_exemption_patterns_match_cleanly</span>(self, policy_file):
+        engine = PolicyEngine.from_yaml_file(policy_file)
+        assert engine.is_exempt(<span class="text-amber-300">"/health"</span>) <span class="text-purple-400">is True</span>
+        assert engine.is_exempt(<span class="text-amber-300">"/api/v1/items"</span>) <span class="text-purple-400">is False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_hot_reload_gracefully_rejects_corrupted_yaml</span>(self, policy_file):
+        watcher = PolicyWatcher(policy_file)
+        assert watcher.engine.config.tiers[<span class="text-amber-300">"pro"</span>].limit == 1000
+
+        <span class="text-slate-500"># Simulate SRE writing corrupted YAML syntax to the configuration file</span>
+        policy_file.write_text(<span class="text-amber-300">"CORRUPTED_SYNTAX: [unclosed_brackets"</span>, encoding=<span class="text-amber-300">"utf-8"</span>)
+
+        <span class="text-slate-500"># Reload must fail safely and return False</span>
+        success = watcher.reload()
+        assert success <span class="text-purple-400">is False</span>
+
+        <span class="text-slate-500"># CRUCIAL INVARIANT: Previous valid configuration remains active in memory!</span>
+        assert watcher.engine.config.tiers[<span class="text-amber-300">"pro"</span>].limit == 1000</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Synchronous Disk I/O on Request Path</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">def resolve(): yaml.safe_load(open("rate_limits.yml"))</code> inside the request middleware.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> If your API handles 5,000 requests per second, you are reading the file from the OS disk 5,000 times per second and reparsing YAML strings 5,000 times per second. This turns a sub-millisecond rate limiter into a 15ms bottleneck! Always keep the compiled rules in memory and reload via background file watchers.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Crashing on Corrupted Hot-Reloads</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing reload logic that allows an unhandled <code class="font-mono text-rose-900">yaml.YAMLError</code> to bubble up and terminate the process during a configuration update.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes outages:</strong> SREs and developers make syntax errors when editing YAML files under pressure. If a typo crashes the background watcher or the main process, the rate limiter crashes your entire API gateway! Always catch parsing exceptions and preserve the previous valid configuration.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to install dependencies, run policy parsing tests, and verify dynamic route precedence:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install PyYAML and Pydantic:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install pyyaml pydantic
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute policy engine and hot-reloader unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_config.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.04s. Verifies rate string parsing, route regex matching, and fallback resilience.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive Python Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 3. Test policy resolution dynamically via Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from pathlib import Path; from sentinelflow.config.parser import PolicyEngine; e = PolicyEngine.from_yaml_file(Path('config/rate_limits.yml')); r, c = e.resolve('/api/v1/auth/login', 'POST', 'enterprise'); print('Limit:', r.limit, 'Window(s):', r.window_seconds, 'Cost:', c)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Resolves enterprise tier override (30/minute) with cost=1 in ~0.2ms.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: The Token Bucket, Leaky Bucket &amp; GCRA: Burst Handling &amp; Virtual Scheduling</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering continuous-time bucket algorithms: Continuous token accumulation, Leaky Bucket traffic smoothing, and the state-of-the-art Generic Cell Rate Algorithm (GCRA) using single-timestamp virtual scheduling.</p>
+            </div>
+            <a href="Chapter 03 - The Token Bucket, Leaky Bucket and GCRA - Burst Handling and Virtual Scheduling.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

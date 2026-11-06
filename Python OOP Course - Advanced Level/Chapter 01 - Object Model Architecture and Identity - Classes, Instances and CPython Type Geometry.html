@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Object Model Architecture &amp; Identity - Classes, Instances &amp; CPython Type Geometry</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 01 - Domain Metamodel &amp; Entity Identity)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Foundations &amp; Type Geometry
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 01: Object Model Architecture &amp; Identity - Classes, Instances &amp; CPython Type Geometry
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing Python's object model from C-level runtime primitives to enterprise domain boundaries: Exploring the circular relationship between <code class="font-mono text-emerald-400">type</code> and <code class="font-mono text-emerald-400">object</code>, pointer identity vs. value equality, dual-namespace attribute resolution, descriptor-driven method binding, and architecting the foundational entity identity layer of <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 1 Bedrock</span>
+                    <h2 class="text-2xl font-extrabold">Introducing EntityForge: Enterprise Domain Metamodel</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Throughout this series, we build <strong>EntityForge</strong>: a production-grade, event-driven domain modeling, plugin, and workflow execution framework. In Milestone 01, we engineer the fundamental core: a typed <strong>BaseEntity</strong> architecture establishing immutable identity (UUID-backed), separating class-level schema definitions from instance-level runtime state, enforcing polymorphic alternative constructors via <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">@classmethod</code>, and securing business identity invariants with <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">@final</code>.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython <code class="text-purple-300">PyObject</code> &amp; <code class="text-purple-300">PyTypeObject</code> Layout</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Circular <code class="text-purple-300">type</code> vs. <code class="text-purple-300">object</code> Hierarchy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Identity (<code class="text-purple-300">is</code>) vs. Equality (<code class="text-purple-300">==</code>) Invariants</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Class vs. Instance Dual-Namespace Model</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Method Binding: Instance, Class &amp; Static</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">BaseEntity</code> Core Architecture</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Python's Object Model -->
+        <section id="cpython-type-geometry" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: CPython Type Geometry &amp; The Type Pyramid</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In many compiled languages (such as C++ or Java), classes are compile-time constructs that vanish or reduce to static metadata tables in the binary. In Python, <strong>classes are full first-class objects residing on the heap at runtime</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Every entity in Python—integers, functions, strings, custom instances, and even class definitions themselves—is allocated as a variation of the C struct <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">PyObject</code>. At the C level, every object contains at minimum two fields:
+            </p>
+            <div class="grid md:grid-cols-2 gap-4 font-mono text-xs">
+                <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-slate-200 space-y-1">
+                    <span class="text-emerald-400 font-bold block">1. ob_refcnt (Reference Count)</span>
+                    <span class="text-slate-400 font-sans text-xs">An 8-byte signed integer tracking how many references point to this object. Drives CPython's immediate memory deallocation when reaching 0.</span>
+                </div>
+                <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-slate-200 space-y-1">
+                    <span class="text-sky-300 font-bold block">2. ob_type (Type Pointer)</span>
+                    <span class="text-slate-400 font-sans text-xs">An 8-byte pointer addressing the object's class (a <code class="font-mono text-sky-200">PyTypeObject</code>), which defines the object's methods, memory size, and behavior.</span>
+                </div>
+            </div>
+
+            <!-- CPython Type Geometry Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The CPython Type Geometry: Dual Relationships</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing Instance Relationships (ob_type) vs. Inheritance Hierarchies (__bases__)</p>
+                </div>
+
+                <!-- 3-Tier Grid Layout -->
+                <div class="grid md:grid-cols-3 gap-6 relative">
+                    <!-- Column 1: Instance Tier -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">1. Instance Tier</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-800">Heap Allocation</span>
+                        </div>
+                        <div class="p-3 bg-slate-900 border border-sky-800/80 rounded-xl space-y-2">
+                            <span class="text-sky-400 font-bold text-sm block">user = User()</span>
+                            <div class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                                &bull; Unique identity: <code class="text-slate-200 font-mono">id(user)</code><br>
+                                &bull; Instance namespace: <code class="text-slate-200 font-mono">user.__dict__</code><br>
+                                &bull; Holds discrete entity state values.
+                            </div>
+                            <div class="pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-sans">
+                                &uarr; <code class="font-mono text-emerald-300">__class__</code> (ob_type) points to:
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Class Tier -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">2. Class Tier</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-bold border border-purple-800">Behavior / Schema</span>
+                        </div>
+                        <div class="p-3 bg-slate-900 border border-purple-800/80 rounded-xl space-y-2">
+                            <span class="text-purple-300 font-bold text-sm block">class User(BaseEntity):</span>
+                            <div class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                                &bull; Class namespace: <code class="text-slate-200 font-mono">User.__dict__</code><br>
+                                &bull; Stores methods, descriptors, and class state.<br>
+                                &bull; Inherits from: <code class="text-slate-200 font-mono">BaseEntity &rarr; object</code>.
+                            </div>
+                            <div class="pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-sans">
+                                &uarr; <code class="font-mono text-emerald-300">type(User)</code> points to:
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 3: Metaclass Tier -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-300 font-bold text-sm">3. Metaclass Tier</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-800">Root Metamodel</span>
+                        </div>
+                        <div class="p-3 bg-slate-900 border border-emerald-500/80 rounded-xl space-y-2">
+                            <span class="text-emerald-300 font-bold text-sm block">type &amp; object</span>
+                            <div class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                                &bull; <code class="text-emerald-300 font-mono">isinstance(type, object) &rarr; True</code><br>
+                                &bull; <code class="text-emerald-300 font-mono">issubclass(type, object) &rarr; True</code><br>
+                                &bull; <code class="text-emerald-300 font-mono">type(type) is type &rarr; True</code>
+                            </div>
+                            <div class="pt-2 border-t border-slate-800 text-[10px] text-amber-300 font-sans">
+                                The self-referential root of Python.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">The Foundational Type Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Python's entire object model rests on a profound circularity: <code class="font-mono text-slate-300">object</code> is the root of the <strong>inheritance tree</strong> (every class inherits from <code class="font-mono text-slate-300">object</code>), while <code class="font-mono text-slate-300">type</code> is the root of the <strong>instance tree</strong> (every class is an instance of <code class="font-mono text-slate-300">type</code>). Crucially, <code class="font-mono text-slate-300">type</code> subclasses <code class="font-mono text-slate-300">object</code>, and <code class="font-mono text-slate-300">object</code> is an instance of <code class="font-mono text-slate-300">type</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Dual Namespaces & Method Binding -->
+        <section id="namespaces-method-binding" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Namespaces &amp; Descriptor Method Binding</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you write <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">user.execute()</code>, how does Python locate the method and pass <code class="font-mono text-purple-700">user</code> as the first argument (<code class="font-mono text-purple-700">self</code>)?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Methods are <strong>not</strong> stored inside instance dictionaries. They live as plain functions in the class dictionary (<code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">User.__dict__</code>). Python uses the <strong>Descriptor Protocol</strong> to dynamically bind functions to instances at runtime:
+            </p>
+
+            <!-- Method Binding Mechanics Box -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-xs">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">Runtime Mechanics</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">The Descriptor Transformation of a Bound Method</h3>
+                <p class="text-slate-600 leading-relaxed">
+                    In Python, every standard function object implements the descriptor method <code class="font-mono text-purple-700 font-bold">__get__()</code>. When an attribute lookup retrieves a function through an instance, CPython executes:
+                </p>
+                <div class="p-3 bg-slate-900 text-sky-300 rounded-xl font-mono text-[11px] space-y-1">
+                    <div># 1. Developer syntax:</div>
+                    <div class="text-slate-400">user.execute(42)</div>
+                    <div># 2. What CPython evaluates under the hood:</div>
+                    <div class="text-emerald-400">func = User.__dict__["execute"]</div>
+                    <div class="text-emerald-400">bound_method = func.__get__(user, User)  # Returns a PyMethodObject</div>
+                    <div class="text-emerald-400">bound_method(42)  # In turn calls: func(user, 42)</div>
+                </div>
+                <p class="text-slate-600 leading-relaxed">
+                    A <strong>Bound Method</strong> is simply a lightweight wrapper storing two pointers: <code class="font-mono text-slate-800">__self__</code> (pointing to the instance) and <code class="font-mono text-slate-800">__func__</code> (pointing to the raw underlying function).
+                </p>
+            </div>
+
+            <!-- Method Varieties Comparison Matrix -->
+            <div class="space-y-4 font-mono text-xs">
+                <h3 class="text-lg font-bold text-slate-900 font-mono">Method Varieties: Instance vs. Class vs. Static Methods</h3>
+                <div class="grid md:grid-cols-3 gap-4 text-xs font-sans">
+                    <!-- 1. Instance Method -->
+                    <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm block">1. Instance Method</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-700 font-mono px-2 py-0.5 rounded font-bold">def method(self, ...)</span>
+                        <p class="text-[11px] text-slate-600 leading-relaxed pt-1">
+                            <strong>Binding:</strong> Automatically receives the instance as <code class="font-mono text-slate-800">self</code>.<br>
+                            <strong>Role:</strong> Inspects and mutates unique instance state (<code class="font-mono text-slate-800">self.__dict__</code>).<br>
+                            <strong>Use case:</strong> 90% of domain business logic.
+                        </p>
+                    </div>
+
+                    <!-- 2. Class Method -->
+                    <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-purple-700 font-mono text-sm block">2. @classmethod</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 font-mono px-2 py-0.5 rounded font-bold">def factory(cls, ...)</span>
+                        <p class="text-[11px] text-slate-600 leading-relaxed pt-1">
+                            <strong>Binding:</strong> Automatically receives the class object as <code class="font-mono text-purple-700">cls</code>.<br>
+                            <strong>Role:</strong> Alternative constructors and polymorphic factory patterns that correctly instantiate subclasses.<br>
+                            <strong>Use case:</strong> <code class="font-mono text-purple-700">from_dict()</code>, <code class="font-mono text-purple-700">from_json()</code>.
+                        </p>
+                    </div>
+
+                    <!-- 3. Static Method -->
+                    <div class="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                        <span class="font-bold text-sky-700 font-mono text-sm block">3. @staticmethod</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 font-mono px-2 py-0.5 rounded font-bold">def sanitize(...)</span>
+                        <p class="text-[11px] text-slate-600 leading-relaxed pt-1">
+                            <strong>Binding:</strong> Strips automatic first-argument binding completely.<br>
+                            <strong>Role:</strong> Pure isolated utility logic grouped under the class namespace for logical cohesion.<br>
+                            <strong>Use case:</strong> Validation helpers, string formatting.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Identity vs. Equality Contracts -->
+        <section id="identity-vs-equality" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Core Invariants: Identity (`is`) vs. Value Equality (`==`)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In Domain-Driven Design (DDD) and production object architecture, distinguishing between an <strong>Entity</strong> (defined by unique lifetime identity) and a <strong>Value Object</strong> (defined solely by its internal attribute values) is foundational.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Identity (is) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">Identity Comparison: is</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Pointer Equality</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Evaluates whether two variables point to the <strong>exact same memory address</strong> in RAM:
+                    </p>
+                    <div class="p-2.5 bg-slate-900 text-purple-300 rounded-xl font-mono text-[11px]">
+                        a is b &hArr; id(a) == id(b)
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Bypasses all method calls. In CPython, it compiles directly to the bytecode instruction <code class="font-mono text-purple-700 font-bold">COMPARE_OP (is)</code>, comparing two C pointers in a single CPU cycle.
+                    </p>
+                </div>
+
+                <!-- Equality (==) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">Value Equality: ==</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">Semantic Equality</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Evaluates whether two distinct objects share the <strong>same semantic state or value</strong>:
+                    </p>
+                    <div class="p-2.5 bg-slate-900 text-emerald-300 rounded-xl font-mono text-[11px]">
+                        a == b &hArr; type(a).__eq__(a, b)
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Delegates execution to the <code class="font-mono text-emerald-700 font-bold">__eq__</code> dunder method. Two completely separate objects located at different memory addresses can evaluate as equal if their attributes match.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: EntityForge Milestone 01 -->
+        <section id="entityforge-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 01: Domain Metamodel &amp; Identity Core</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 01 of <strong>EntityForge</strong>: constructing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/entity.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">EntityIdentity</code>: An immutable UUID-backed value object establishing domain identity.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">BaseEntity</code>: An extensible base class separating class-level schema definitions from instance-level state dictionaries.</li>
+                <li><strong>Polymorphic Alternative Constructors:</strong> Implementing <code class="font-mono text-purple-700 font-bold">@classmethod</code> factories (<code class="font-mono text-xs">create_new()</code> and <code class="font-mono text-xs">from_payload()</code>) that correctly instantiate concrete subclasses using <code class="font-mono text-purple-700 font-bold">cls(...)</code>.</li>
+                <li><strong>Validation Utilities:</strong> Using <code class="font-mono text-purple-700 font-bold">@staticmethod</code> to isolate pure validation logic within the class namespace.</li>
+                <li><strong>Type-Safety Guards:</strong> Enforcing <code class="font-mono text-purple-700 font-bold">@final</code> on identity accessors and <code class="font-mono text-purple-700 font-bold">@override</code> on diagnostic representation.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 01)</div>
+                <div>entityforge/</div>
+                <div>├── pyproject.toml</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">entity.py</span>                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>└── tests/</div>
+                <div>    ├── __init__.py</div>
+                <div>    └── unit/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_entity.py</span>            <span class="text-slate-500"># Milestone 01: Identity, Factories &amp; Namespaces</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/entity.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Core: <code class="text-purple-700">src/entityforge/core/entity.py</code></span>
+                    <span class="text-slate-400">Domain Metamodel &amp; Entity Identity</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Domain Metamodel &amp; Entity Identity (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Optional, Self, final, override
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EntityIdentity</span>:
+    <span class="text-slate-500">"""
+    IMMUTABLE VALUE OBJECT:
+    Represents the unique domain identity of an entity.
+    Equivalence is determined purely by the raw UUID value.
+    """</span>
+    value: uuid.UUID
+    created_at: float
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate</span>(cls) -> Self:
+        <span class="text-slate-500">"""Alternative named constructor generating a fresh cryptographically secure UUIDv4."""</span>
+        <span class="text-purple-400">return</span> cls(value=uuid.uuid4(), created_at=time.time())
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">from_string</span>(cls, raw_uuid: str) -> Self:
+        <span class="text-slate-500">"""Parses an existing UUID string into a strongly typed EntityIdentity."""</span>
+        parsed = uuid.UUID(raw_uuid)
+        <span class="text-purple-400">return</span> cls(value=parsed, created_at=time.time())
+
+    <span class="text-purple-400">@override</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__str__</span>(self) -> str:
+        <span class="text-purple-400">return</span> str(self.value)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BaseEntity</span>:
+    <span class="text-slate-500">"""
+    FOUNDATIONAL DOMAIN ENTITY METAMODEL:
+    Governs entity identity, dual-namespace isolation, polymorphic factory
+    constructors, and diagnostic representations across all domain models.
+    """</span>
+    <span class="text-slate-500"># Class-level schema attribute: Shared across all instances of this type</span>
+    __schema_version__: int = 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, entity_id: EntityIdentity, **attributes: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Private identity pointer: Encapsulated and protected from accidental mutation</span>
+        self._entity_id: EntityIdentity = entity_id
+        <span class="text-slate-500"># Assign instance state: Injected directly into instance __dict__</span>
+        <span class="text-purple-400">for</span> key, val <span class="text-purple-400">in</span> attributes.items():
+            setattr(self, key, val)
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">@final</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">id</span>(self) -> EntityIdentity:
+        <span class="text-slate-500">"""
+        PEP 591 @final Guard:
+        Subclasses must NEVER override or tamper with the entity identity accessor!
+        """</span>
+        <span class="text-purple-400">return</span> self._entity_id
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_new</span>(cls, **attributes: Any) -> Self:
+        <span class="text-slate-500">"""
+        FACTORY CONSTRUCTOR:
+        Allocates a fresh UUID identity and instantiates cls polymorphically.
+        Using cls(...) guarantees subclasses instantiate their own type, not BaseEntity!
+        """</span>
+        fresh_id = EntityIdentity.generate()
+        <span class="text-purple-400">return</span> cls(entity_id=fresh_id, **attributes)
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">from_payload</span>(cls, payload: Dict[str, Any]) -> Self:
+        <span class="text-slate-500">"""Deserialization factory reconstructing an entity from a dictionary payload."""</span>
+        raw_id = payload.get(<span class="text-amber-300">"id"</span>)
+        <span class="text-purple-400">if not</span> raw_id:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Payload must contain an 'id' attribute."</span>)
+
+        identity = EntityIdentity.from_string(str(raw_id))
+        clean_attrs = {k: v <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> payload.items() <span class="text-purple-400">if</span> k != <span class="text-amber-300">"id"</span>}
+        <span class="text-purple-400">return</span> cls(entity_id=identity, **clean_attrs)
+
+    <span class="text-purple-400">@staticmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">sanitize_identifier</span>(name: str) -> str:
+        <span class="text-slate-500">"""
+        STATIC UTILITY HELPER:
+        Operates without 'self' or 'cls'. Scoped under BaseEntity for logical cohesion.
+        Strips whitespace and enforces lowercase alphanumeric normalization.
+        """</span>
+        <span class="text-purple-400">if not isinstance</span>(name, str):
+            <span class="text-purple-400">raise</span> TypeError(<span class="text-amber-300">"Identifier must be a string."</span>)
+        cleaned = name.strip().lower()
+        <span class="text-purple-400">if not</span> cleaned:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Identifier cannot be empty."</span>)
+        <span class="text-purple-400">return</span> cleaned
+
+    <span class="text-purple-400">@override</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__eq__</span>(self, other: object) -> bool:
+        <span class="text-slate-500">"""
+        DOMAIN ENTITY EQUALITY INVARIANT:
+        Two entities are identical if and only if they share the exact same EntityIdentity,
+        even if their mutable state attributes currently diverge!
+        """</span>
+        <span class="text-purple-400">if not isinstance</span>(other, BaseEntity):
+            <span class="text-purple-400">return</span> NotImplemented
+        <span class="text-purple-400">return</span> self._entity_id == other._entity_id
+
+    <span class="text-purple-400">@override</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-slate-500">"""Diagnostic representation displaying class name, ID, and schema version."""</span>
+        class_name = self.__class__.__name__
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"&lt;{class_name} id={self._entity_id.value} schema_v={self.__schema_version__}&gt;"</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_entity.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_entity.py</code></span>
+                    <span class="text-slate-400">Identity, Namespaces &amp; Method Binding Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Entity Metamodel &amp; Identity Verification (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity, EntityIdentity
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserEntity</span>(BaseEntity):
+    <span class="text-slate-500">"""Concrete domain entity subclass used to verify polymorphic instantiation."""</span>
+    __schema_version__: int = 2
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestBaseEntityArchitecture</span>:
+    <span class="text-slate-500">"""Unit tests asserting identity contracts, dual namespaces, and method bindings."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_identity_equality_vs_pointer_identity</span>(self):
+        fixed_uuid = uuid.uuid4()
+        id1 = EntityIdentity(value=fixed_uuid, created_at=100.0)
+        id2 = EntityIdentity(value=fixed_uuid, created_at=200.0)
+
+        # 1. id1 and id2 are separate objects in memory (different pointers)
+        assert id1 is <span class="text-purple-400">not</span> id2
+
+        # 2. But they evaluate as semantically equal because their UUID value matches
+        assert id1 == id2
+
+        # 3. Two separate entity instances sharing the same ID evaluate as equal (Entity Identity Invariant)
+        user_a = UserEntity(entity_id=id1, username=<span class="text-amber-300">"alice"</span>, role=<span class="text-amber-300">"analyst"</span>)
+        user_b = UserEntity(entity_id=id2, username=<span class="text-amber-300">"alice_mutated"</span>, role=<span class="text-amber-300">"admin"</span>)
+
+        assert user_a is <span class="text-purple-400">not</span> user_b  # Distinct instances
+        assert user_a == user_b      # Equal by domain entity identity!
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dual_namespace_isolation</span>(self):
+        # Class attribute resides in Class.__dict__, NOT instance.__dict__
+        user = UserEntity.create_new(username=<span class="text-amber-300">"bob"</span>)
+
+        # Instance namespace holds instance state
+        assert <span class="text-amber-300">"username"</span> <span class="text-purple-400">in</span> user.__dict__
+        assert user.__dict__[<span class="text-amber-300">"username"</span>] == <span class="text-amber-300">"bob"</span>
+
+        # Class attribute is accessible via instance, but resides on UserEntity
+        assert user.__schema_version__ == 2
+        assert <span class="text-amber-300">"__schema_version__"</span> <span class="text-purple-400">not in</span> user.__dict__
+        assert <span class="text-amber-300">"__schema_version__"</span> <span class="text-purple-400">in</span> UserEntity.__dict__
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_polymorphic_classmethod_constructor</span>(self):
+        # Factory method called on subclass must instantiate the subclass, NOT BaseEntity!
+        user = UserEntity.create_new(username=<span class="text-amber-300">"charlie"</span>)
+
+        assert isinstance(user, UserEntity)
+        assert isinstance(user, BaseEntity)
+        assert user.__class__ is UserEntity
+        assert user.username == <span class="text-amber-300">"charlie"</span>
+        assert isinstance(user.id, EntityIdentity)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_classmethod_from_payload_deserialization</span>(self):
+        raw_uuid = str(uuid.uuid4())
+        payload = {<span class="text-amber-300">"id"</span>: raw_uuid, <span class="text-amber-300">"username"</span>: <span class="text-amber-300">"dave"</span>, <span class="text-amber-300">"tier"</span>: <span class="text-amber-300">"enterprise"</span>}
+
+        user = UserEntity.from_payload(payload)
+        assert str(user.id) == raw_uuid
+        assert user.username == <span class="text-amber-300">"dave"</span>
+        assert user.tier == <span class="text-amber-300">"enterprise"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_staticmethod_sanitization_helper</span>(self):
+        cleaned = BaseEntity.sanitize_identifier(<span class="text-amber-300">"   Tenant_Alpha_99   "</span>)
+        assert cleaned == <span class="text-amber-300">"tenant_alpha_99"</span>
+
+        <span class="text-purple-400">with</span> pytest.raises(TypeError):
+            BaseEntity.sanitize_identifier(12345)
+
+        <span class="text-purple-400">with</span> pytest.raises(ValueError):
+            BaseEntity.sanitize_identifier(<span class="text-amber-300">"    "</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Mutable Class Attribute State Leak</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Declaring <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">class User: roles = []</code> and appending via <code class="font-mono text-rose-900">self.roles.append(r)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes severe bugs:</strong> <code class="font-mono">roles</code> is allocated <em>once</em> on the class dictionary. Mutating it modifies the list for <strong>every single instance</strong> across the entire system! User B will inherit User A's administrative permissions!
+                        <strong>Fix:</strong> Initialize mutable collections inside <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__init__()</code>: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">self.roles = []</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Conflating 'is' with '==' on Literals</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">if status is "ACTIVE": ...</code> or <code class="font-mono text-rose-900 font-bold">if count is 1000: ...</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails intermittently:</strong> <code class="font-mono">is</code> compares memory pointers, not string or integer values. CPython interns small integers ($-5$ to $256$) and some strings, making <code class="font-mono">is</code> appear to work in trivial tests, but it fails silently on larger numbers or dynamically computed strings! Use <code class="font-mono text-rose-900 font-bold">==</code> for values, reserving <code class="font-mono text-rose-900 font-bold">is</code> strictly for <code class="font-mono">None</code> or sentinel checks.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Hardcoding Concrete Class in @classmethod</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">return BaseEntity(...)</code> inside a <code class="font-mono text-rose-900">@classmethod</code> factory constructor.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks polymorphism:</strong> If a downstream developer subclasses <code class="font-mono">class User(BaseEntity):</code> and calls <code class="font-mono">User.create_new()</code>, hardcoding <code class="font-mono">BaseEntity(...)</code> returns an instance of the base class, discarding all subclass methods! Always call <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">cls(...)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Overusing @staticmethod for Domain Logic</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Packing an entire module of unrelated business procedures as static methods inside a dummy class: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">class Utils: @staticmethod ...</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is unpythonic:</strong> Python is not Java. Python files are already modules that serve as namespaces. If a function does not need access to <code class="font-mono">self</code> or <code class="font-mono">cls</code> and is used across multiple domains, write it as a clean, top-level function in a dedicated utility module.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, execute the metamodel unit test battery, and inspect CPython type geometry:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Venv -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize environment and install test framework:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate<br>
+                        pip install --upgrade pip pytest
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute EntityForge metamodel unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_entity.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.06s. Confirms identity comparison, namespace isolation, polymorphic factory instantiation, and payload deserialization.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Type Geometry -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect CPython's self-referential type pyramid in the terminal:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "print('type is instance of object:', isinstance(type, object)); print('object is instance of type:', isinstance(object, type)); print('type is subclass of object:', issubclass(type, object)); print('type(type) is type:', type(type) is type)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms the foundational circularity: type creates object, object anchors inheritance, and type is an instance of itself!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Object Lifecycle &amp; Instantiation - __new__, __init__, Memory Allocation &amp; Object Re-Use</h4>
+                <p class="text-xs text-slate-500 font-sans">Diving into the two-phase instantiation protocol: Why __new__ allocates memory before __init__ initializes state, building Flyweight object pools, and safely avoiding the dangers of the __del__ finalizer.</p>
+            </div>
+            <a href="Chapter 02 - Object Lifecycle and Instantiation - __new__, __init__, Memory Allocation and Object Re-Use.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

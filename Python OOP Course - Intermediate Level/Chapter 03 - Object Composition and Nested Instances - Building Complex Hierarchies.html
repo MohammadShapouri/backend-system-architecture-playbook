@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 03: Object Composition &amp; Nested Instances - Building Complex Hierarchies</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP &amp; Intermediate Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OrderForge (Milestone 03 - Object Composition &amp; Aggregate Roots)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 03 &bull; Connecting Domain Objects
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 03: Object Composition &amp; Nested Instances - Building Complex Hierarchies
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Escaping the fragile base class trap: Deconstructing the fundamental law of "Composition over Inheritance", exploring the "Has-A" vs "Is-A" relationship, protecting internal collections with defensive copies via <code class="font-mono text-emerald-400">list.copy()</code>, instantiating complex graphs cleanly via <code class="font-mono text-emerald-400">@classmethod</code> factories, and assembling the master <code class="font-mono text-emerald-400">Order</code> aggregate for <strong>OrderForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Module 3 Topology</span>
+                    <h2 class="text-2xl font-extrabold">OrderForge Milestone 03: The Order Aggregate</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 and 02, we engineered isolated domain components: the <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Item</code> and the validated <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">OrderItem</code>. But real-world applications don't consist of isolated objects; they consist of interconnected webs of instances working together. In Milestone 03, we design the <strong>Aggregate Root</strong>. We create an <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Order</code> class that owns a list of <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">OrderItem</code>s and references a <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Customer</code>, who in turn owns an <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Address</code>. We learn how to protect the boundaries of these objects so external code cannot maliciously manipulate the shopping cart.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 03 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Composition ("Has-A") vs. Inheritance ("Is-A")</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Fragile Base Class Anti-Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defensive Copying with <code class="text-purple-300">list.copy()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Aggregation Metrics using Python's <code class="text-purple-300">sum()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Alternative Constructors with <code class="text-purple-300">@classmethod</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> OrderForge <code class="text-purple-300">Order</code> &amp; <code class="text-purple-300">Customer</code> Architecture</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Class Relationships -->
+        <section id="composition-vs-inheritance" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Composition over Inheritance</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When beginners learn Object-Oriented Programming, they are immediately taught <strong>Inheritance</strong> (e.g., <code class="font-mono text-slate-800">Dog</code> inherits from <code class="font-mono text-slate-800">Animal</code>). This leads to a dangerous habit: using inheritance to share code everywhere.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Inheritance implies an <strong>"Is-A"</strong> relationship. It is the tightest form of coupling in software. If the parent class changes, the child class breaks. Modern software architecture relies on the golden rule: <strong>Favor Composition Over Inheritance</strong>. Composition implies a <strong>"Has-A"</strong> relationship. Instead of inheriting behavior, an object simply contains (or references) an instance of another object and delegates work to it.
+            </p>
+
+            <!-- Relationships Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Structural Relationships: Is-A vs. Has-A
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Inheritance (Is-A) -->
+                    <div class="p-5 bg-slate-950 border border-rose-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Inheritance ("Is-A")</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded font-bold border border-rose-800">Tight Coupling</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            <code class="text-rose-300 font-mono">class SpecialOrder(Order):</code>
+                        </p>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong>The Gorilla/Banana Problem:</strong> You just wanted a single method from the parent class, but you get the entire parent class, all its state, and all its bugs.</li>
+                            <li><strong>Fragile Base Class:</strong> Changing a private method in the parent can unknowingly break the child class.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Composition (Has-A) -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Composition ("Has-A")</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">Loose Coupling</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                            <code class="text-emerald-300 font-mono">class Order:<br>&nbsp;&nbsp;&nbsp;&nbsp;def __init__(self): self.customer = Customer()</code>
+                        </p>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong>Encapsulation Preserved:</strong> The <code class="text-emerald-300">Order</code> interacts with the <code class="text-slate-300">Customer</code> only through its public methods.</li>
+                            <li><strong>Dynamic Assembly:</strong> You can swap out which <code class="text-slate-300">Customer</code> is attached at runtime!</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Encapsulating Internal Collections -->
+        <section id="defensive-copying" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Protecting Internal Lists &amp; Aggregations</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you compose objects into a collection (like storing multiple <code class="font-mono text-slate-800">OrderItem</code> instances inside a list in the <code class="font-mono text-slate-800">Order</code>), a new danger emerges: <strong>State Leakage</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If your <code class="font-mono text-slate-800">Order</code> has an internal list <code class="font-mono text-slate-800">self._items</code>, and you expose it via a standard property, any external code can mutate the list directly (e.g., <code class="font-mono text-slate-800">order.items.clear()</code>). This completely bypasses your class's validation rules!
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Defensive Copying -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">State Protection</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Defensive Copying via list.copy()</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        To protect internal state, never return a direct reference to a mutable internal collection. Instead, return a <strong>shallow copy</strong> using Python's native <code class="font-mono text-purple-700 font-bold">.copy()</code> method (or <code class="font-mono text-purple-700 font-bold">list(items)</code>).
+                    </p>
+                    <pre class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Order</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._items = []
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">items</span>(self):
+        <span class="text-slate-500"># Caller receives a brand new list pointer.</span>
+        <span class="text-slate-500"># Mutating it won't affect self._items!</span>
+        <span class="text-purple-400">return</span> self._items.copy()</pre>
+                </div>
+
+                <!-- Aggregation Arithmetic -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Data Synthesis</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Aggregating Data with sum()</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When an object owns nested objects, it acts as the "Aggregate Root". If you need the total cost of an order, the Order shouldn't store a hardcoded <code class="font-mono text-slate-800">self.total</code> (which can go out of sync). It should dynamically aggregate the data using Python's built-in <code class="font-mono text-emerald-700 font-bold">sum()</code> combined with a generator expression:
+                    </p>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">@property</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">total_amount</span>(self) -> float:
+    <span class="text-slate-500"># Dynamic O(n) calculation guarantees accuracy.</span>
+    <span class="text-purple-400">return</span> sum(item.subtotal <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> self._items)</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Alternative Constructors using @classmethod -->
+        <section id="alternative-constructors" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Class Mechanics: Alternative Constructors with `@classmethod`</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Sometimes the standard <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">__init__</code> constructor is too restrictive. What if you want to create an <code class="font-mono text-slate-800">Order</code> directly from a JSON dictionary? Or create an "empty" order with default values?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Python does not support method overloading (you can't write two <code class="font-mono text-slate-800">__init__</code> methods). Instead, the standard practice is to use the <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@classmethod</code> decorator to build <strong>Factory Methods</strong>.
+            </p>
+
+            <!-- @classmethod Mechanics Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <span class="text-emerald-400 font-bold block text-sm uppercase tracking-wider">// How @classmethod Works:</span>
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] leading-relaxed">
+                    <p class="text-slate-300">
+                        When a method is decorated with <code class="text-sky-300 font-mono">@classmethod</code>, Python automatically passes the <strong>class itself</strong> as the first argument (conventionally named <code class="text-sky-300 font-mono">cls</code>), rather than the instance (<code class="text-slate-400 font-mono">self</code>).
+                    </p>
+                    <p class="text-slate-300">
+                        Inside the method, calling <code class="text-emerald-300 font-mono">cls(...)</code> invokes the <code class="font-mono text-slate-400">__init__</code> method, allowing you to return a perfectly constructed instance without hardcoding the class name.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: OrderForge Milestone 03 -->
+        <section id="orderforge-milestone-03" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OrderForge Milestone 03: The Master Order Aggregate</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 03 of <strong>OrderForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/orderforge/domain/order.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">Address</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">Customer</code>: Value objects and entities demonstrating deep nesting (Order has Customer, Customer has Address).</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">Order</code>: The Aggregate Root. It takes ownership of adding items safely via <code class="font-mono text-purple-700 font-bold">add_product()</code> and calculating the sum total.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">@classmethod create_empty()</code>: A factory method showing how to instantiate an Order in a specific baseline state.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OrderForge Project Hierarchy (Milestone 03)</div>
+                <div>orderforge/</div>
+                <div>├── src/</div>
+                <div>│   └── orderforge/</div>
+                <div>│       └── domain/</div>
+                <div>│           ├── item.py                 <span class="text-slate-500"># Milestone 01: Class Anatomy</span></div>
+                <div>│           ├── order_item.py           <span class="text-slate-500"># Milestone 02: Encapsulation &amp; Properties</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">order.py</span>                <span class="text-slate-500"># Milestone 03: Object Composition &amp; Hierarchies</span></div>
+                <div>└── tests/</div>
+                <div>    ├── test_item.py                <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>    ├── test_order_item.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>    └── <span class="text-purple-300 font-bold">test_order.py</span>               <span class="text-slate-500"># Milestone 03: Composition &amp; Factories Tests</span></div>
+            </div>
+
+            <!-- File 1: src/orderforge/domain/order.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Domain Model: <code class="text-purple-700">src/orderforge/domain/order.py</code></span>
+                    <span class="text-slate-400">Composition &amp; Defensive State</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Domain - Composition &amp; Nested Instances (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List
+<span class="text-purple-400">from</span> orderforge.domain.item <span class="text-purple-400">import</span> Item
+<span class="text-purple-400">from</span> orderforge.domain.order_item <span class="text-purple-400">import</span> OrderItem
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Address</span>:
+    <span class="text-slate-500">"""Simple value object representing a physical location."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, street: str, city: str, zip_code: str) -> <span class="text-rose-400">None</span>:
+        self.street = street
+        self.city = city
+        self.zip_code = zip_code
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"{self.street}, {self.city} ({self.zip_code})"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Customer</span>:
+    <span class="text-slate-500">"""Entity representing a buyer. Demonstrates deep nesting by composing an Address."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, customer_id: str, name: str, address: Address) -> <span class="text-rose-400">None</span>:
+        self.customer_id = customer_id
+        self.name = name
+        <span class="text-slate-500"># Composition: Customer *has an* Address</span>
+        self.address: Address = address
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"Customer(id={self.customer_id!r}, name={self.name!r})"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Order</span>:
+    <span class="text-slate-500">"""
+    The Aggregate Root. Coordinates the Customer and multiple OrderItems.
+    Responsible for maintaining cart state integrity.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, order_id: str, customer: Customer) -> <span class="text-rose-400">None</span>:
+        self.order_id = order_id
+        self.customer = customer
+        
+        <span class="text-slate-500"># Protected internal list. Must not be exposed directly!</span>
+        self._items: List[OrderItem] = []
+        self._is_paid: bool = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_empty</span>(cls, order_id: str, customer: Customer) -> <span class="text-amber-300">"Order"</span>:
+        <span class="text-slate-500">"""
+        FACTORY METHOD: Alternative constructor.
+        Note the use of 'cls(order_id, customer)' instead of hardcoding 'Order(...)'.
+        """</span>
+        <span class="text-purple-400">return</span> cls(order_id=order_id, customer=customer)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_product</span>(self, item: Item, quantity: int = 1) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Encapsulated business logic for adding items."""</span>
+        <span class="text-purple-400">if</span> self._is_paid:
+            <span class="text-purple-400">raise</span> RuntimeError(<span class="text-amber-300">"Cannot modify an order that has already been paid."</span>)
+            
+        <span class="text-slate-500"># The Order manages the instantiation of the OrderItem</span>
+        order_item = OrderItem(item=item, quantity=quantity)
+        self._items.append(order_item)
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">items</span>(self) -> List[OrderItem]:
+        <span class="text-slate-500">"""
+        DEFENSIVE COPY: 
+        Returns a shallow copy so external code cannot run `order.items.clear()` 
+        and bypass our validation rules.
+        """</span>
+        <span class="text-purple-400">return</span> self._items.copy()
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">total_amount</span>(self) -> float:
+        <span class="text-slate-500">"""Dynamically calculates sum across all nested items."""</span>
+        <span class="text-purple-400">return</span> sum(line_item.subtotal <span class="text-purple-400">for</span> line_item <span class="text-purple-400">in</span> self._items)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">mark_as_paid</span>(self) -> <span class="text-rose-400">None</span>:
+        self._is_paid = <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__repr__</span>(self) -> str:
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"Order(id={self.order_id!r}, items={len(self._items)}, total=${self.total_amount:.2f})"</span></pre>
+            </div>
+
+            <!-- File 2: tests/test_order.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/test_order.py</code></span>
+                    <span class="text-slate-400">Testing Composition &amp; Factories</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OrderForge Test Suite - Order Composition Verification (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> orderforge.domain.item <span class="text-purple-400">import</span> Item
+<span class="text-purple-400">from</span> orderforge.domain.order <span class="text-purple-400">import</span> Address, Customer, Order
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestOrderComposition</span>:
+    <span class="text-slate-500">"""Unit tests asserting nested state, defensive copies, and factory methods."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">setup_method</span>(self):
+        self.address = Address(<span class="text-amber-300">"123 Main St"</span>, <span class="text-amber-300">"Tech City"</span>, <span class="text-amber-300">"99999"</span>)
+        self.customer = Customer(<span class="text-amber-300">"C-1"</span>, <span class="text-amber-300">"Alice"</span>, self.address)
+        self.laptop = Item(<span class="text-amber-300">"SKU-1"</span>, <span class="text-amber-300">"Laptop"</span>, 1000.0)
+        self.mouse = Item(<span class="text-amber-300">"SKU-2"</span>, <span class="text-amber-300">"Mouse"</span>, 50.0)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_factory_method_creation</span>(self):
+        # Instantiate using @classmethod
+        order = Order.create_empty(<span class="text-amber-300">"ORD-1"</span>, self.customer)
+        assert order.order_id == <span class="text-amber-300">"ORD-1"</span>
+        assert len(order.items) == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_aggregate_calculations_with_nested_items</span>(self):
+        order = Order(<span class="text-amber-300">"ORD-2"</span>, self.customer)
+        
+        # Add 1 Laptop ($1000) and 2 Mice ($50 * 2 = $100)
+        order.add_product(self.laptop, 1)
+        order.add_product(self.mouse, 2)
+
+        # Total should aggregate dynamically
+        assert order.total_amount == 1100.0
+        assert len(order.items) == 2
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_defensive_copy_protects_internal_state</span>(self):
+        order = Order(<span class="text-amber-300">"ORD-3"</span>, self.customer)
+        order.add_product(self.laptop, 1)
+
+        # External caller retrieves the items list
+        exposed_items = order.items
+        
+        # Malicious or accidental modification
+        exposed_items.clear()
+
+        # The internal state must remain unharmed!
+        assert len(order.items) == 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_business_rules_block_modifying_paid_orders</span>(self):
+        order = Order(<span class="text-amber-300">"ORD-4"</span>, self.customer)
+        order.mark_as_paid()
+
+        <span class="text-purple-400">with</span> pytest.raises(RuntimeError, match=<span class="text-amber-300">r"already been paid"</span>):
+            order.add_product(self.mouse, 1)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Primitive Obsession (Passing Dicts instead of Objects)</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __init__(self, customer_dict: dict):</code> instead of accepting a strong <code class="font-mono text-rose-900 font-bold">Customer</code> object instance.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is terrible:</strong> Passing raw dictionaries around destroys Type Hinting, bypasses any validation rules defined inside the <code class="font-mono">Customer</code> class, and forces the `Order` class to guess if the dictionary contains the correct keys (like `"name"` or `"id"`). Always compose strong, validated objects.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "God Class" Subclassing</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Trying to add functionality by doing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">class Order(Customer, Address):</code>
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this fails:</strong> An Order *is not* a Customer, and it *is not* an Address. Using inheritance here creates a bizarre, bloated "God Class" that attempts to be everything at once. Use composition: an Order *has a* Customer, who *has an* Address. Keep classes small and focused on a single responsibility.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OrderForge Milestone 03</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify the <code class="font-mono text-slate-400">Order</code> aggregate composition and factory logic:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute Order aggregate unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_order.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.03s. Confirms factory creation, dynamic calculations, and defensive copying limits.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Entire Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute all tests across Milestones 01, 02, and 03:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/ -v
+                    </div>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration of nested printing (showing __repr__ inside lists):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from orderforge.domain.order import Order, Customer, Address; c = Customer('C-1', 'Bob', Address('123 St', 'City', '000')); o = Order('O-1', c); print(o.customer.address)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how accessing the nested properties elegantly chains through the object graph!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 04 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 04: Abstraction &amp; Enforced Contracts - Abstract Base Classes &amp; Interfaces</h4>
+                <p class="text-xs text-slate-500 font-sans">Preparing for external plugins. We will explore how to lock down our architecture using the <code class="font-mono text-slate-600">abc</code> module, ensuring that any future Payment Gateway strictly obeys our rules.</p>
+            </div>
+            <a href="Chapter 04 - Abstraction and Enforced Contracts - Abstract Base Classes and Interfaces.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 04 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>Python OOP &amp; Intermediate Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

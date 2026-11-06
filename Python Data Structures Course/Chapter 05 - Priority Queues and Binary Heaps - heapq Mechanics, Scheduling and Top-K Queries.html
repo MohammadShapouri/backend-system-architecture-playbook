@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Priority Queues &amp; Binary Heaps - heapq Mechanics, Scheduling &amp; Top-K Queries</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 05 - Transaction Scheduling &amp; Priority Heaps)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Non-Linear Order &amp; Priority Routing
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 05: Priority Queues &amp; Binary Heaps - heapq Mechanics, Scheduling &amp; Top-K Queries
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Transitioning from linear queues to logarithmic priority routing: Mapping complete binary trees to flat array memory without pointers, demystifying the mathematical proof of linear-time <code class="font-mono text-emerald-400">O(n) heapify</code>, mastering sift-up and sift-down mechanics, resolving comparison tie-breaking, handling lazy task cancellation via tombstones, and constructing an enterprise query priority scheduler for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 2 Execution</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 05: Transaction &amp; Query Priority Scheduler</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In an active multi-tenant database engine, queries cannot execute simply in First-In, First-Out (FIFO) arrival order. Critical Data Definition Language (DDL) transactions, write locks, and high-SLA analytics queries must preempt long-running background table compactions. In Milestone 05, we construct MemForge's <strong>Priority Query Scheduler</strong>: an asynchronous execution engine utilizing Python's <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">heapq</code> primitive to deliver $O(\log n)$ scheduling, monotonic tie-breaking, and $O(1)$ lazy task cancellation.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Array-Based Complete Binary Tree Geometry</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Sift-Up &amp; Sift-Down Invariant Math</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Floyd's Linear Time <code class="text-purple-300">heapify()</code> Proof</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Monotonic Sequence Tie-Breaking</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Dynamic Reprioritization &amp; Tombstones</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">PriorityQueryScheduler</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Binary Heaps -->
+        <section id="heap-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Binary Tree Geometry in Flat Arrays</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A <strong>Binary Heap</strong> is a complete binary tree that satisfies the <strong>Heap-Order Property</strong>. In a <em>Min-Heap</em>, for every node $i$ other than the root, the key of the parent is less than or equal to the key of $i$ ($\text{val}(\text{parent}) \le \text{val}(i)$). Thus, the minimal element always resides at the root.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Unlike general binary trees that allocate independent heap nodes linked together by explicit pointers, a <strong>Complete Binary Tree</strong> (where every level is completely filled except possibly the deepest, which is filled from left to right) can be packed directly into a contiguous <strong>zero-indexed flat array</strong> without wasting a single byte on child or parent pointers.
+            </p>
+
+            <!-- Complete Binary Tree Array Geometry Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Array Index Arithmetic in Complete Binary Trees</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Navigating non-linear tree nodes using purely mathematical index offsets</p>
+                </div>
+
+                <!-- Tree Visualization Structure -->
+                <div class="space-y-4">
+                    <!-- Level 0: Root -->
+                    <div class="flex justify-center">
+                        <div class="p-2.5 bg-emerald-950 border border-emerald-500 rounded-xl text-center w-36 shadow-lg shadow-emerald-950/50">
+                            <span class="text-emerald-400 font-bold block text-sm">Index 0 (Val: 10)</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Root Node</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors L0 -> L1 -->
+                    <div class="flex justify-around text-slate-600 text-[11px] px-24">
+                        <span>&swarr; left = 2(0)+1 = 1</span>
+                        <span>right = 2(0)+2 = 2 &searr;</span>
+                    </div>
+
+                    <!-- Level 1: Children -->
+                    <div class="flex justify-around px-8">
+                        <div class="p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center w-32">
+                            <span class="text-sky-300 font-bold block">Index 1 (Val: 15)</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Parent: (1-1)//2 = 0</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-center w-32">
+                            <span class="text-sky-300 font-bold block">Index 2 (Val: 20)</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Parent: (2-1)//2 = 0</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors L1 -> L2 -->
+                    <div class="grid grid-cols-4 text-center text-slate-600 text-[10px] px-2">
+                        <span>&swarr; 2(1)+1 = 3</span>
+                        <span>2(1)+2 = 4 &searr;</span>
+                        <span>&swarr; 2(2)+1 = 5</span>
+                        <span>2(2)+2 = 6 &searr;</span>
+                    </div>
+
+                    <!-- Level 2: Leaves -->
+                    <div class="grid grid-cols-4 gap-2 text-center text-[10px]">
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-lg text-purple-300 font-bold">Index 3 (30)</div>
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-lg text-purple-300 font-bold">Index 4 (40)</div>
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-lg text-purple-300 font-bold">Index 5 (50)</div>
+                        <div class="p-2 bg-slate-950 border border-slate-800 rounded-lg text-purple-300 font-bold">Index 6 (25)</div>
+                    </div>
+                </div>
+
+                <!-- Flat Array Representation -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <span class="text-slate-400 text-[10px] block font-sans">// Flat Physical List in CPython Memory:</span>
+                    <div class="grid grid-cols-7 gap-1 text-center font-bold text-[11px]">
+                        <div class="bg-emerald-950 text-emerald-400 p-2 rounded border border-emerald-800/80">10<br><span class="text-[9px] text-slate-500 font-normal">idx 0</span></div>
+                        <div class="bg-sky-950 text-sky-300 p-2 rounded border border-sky-800/80">15<br><span class="text-[9px] text-slate-500 font-normal">idx 1</span></div>
+                        <div class="bg-sky-950 text-sky-300 p-2 rounded border border-sky-800/80">20<br><span class="text-[9px] text-slate-500 font-normal">idx 2</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-800/80">30<br><span class="text-[9px] text-slate-500 font-normal">idx 3</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-800/80">40<br><span class="text-[9px] text-slate-500 font-normal">idx 4</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-800/80">50<br><span class="text-[9px] text-slate-500 font-normal">idx 5</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-800/80">25<br><span class="text-[9px] text-slate-500 font-normal">idx 6</span></div>
+                    </div>
+                </div>
+
+                <!-- Arithmetic Equations Box -->
+                <div class="grid md:grid-cols-3 gap-3 text-[11px] font-sans">
+                    <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
+                        <span class="font-mono text-emerald-400 font-bold block">Left Child Formula</span>
+                        <code class="font-mono text-slate-200">left_child = 2 * i + 1</code>
+                        <p class="text-slate-400 text-[10px]">Calculates the memory index of a node's left branch.</p>
+                    </div>
+                    <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
+                        <span class="font-mono text-emerald-400 font-bold block">Right Child Formula</span>
+                        <code class="font-mono text-slate-200">right_child = 2 * i + 2</code>
+                        <p class="text-slate-400 text-[10px]">Calculates the memory index of a node's right branch.</p>
+                    </div>
+                    <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
+                        <span class="font-mono text-emerald-400 font-bold block">Parent Node Formula</span>
+                        <code class="font-mono text-slate-200">parent = (i - 1) // 2</code>
+                        <p class="text-slate-400 text-[10px]">Computes the parent index from any child node.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mathematical Proof: Why heapify is O(n) -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">Mathematical Complexity Analysis</span>
+                <h3 class="text-lg font-bold text-slate-900 font-mono">Floyd's Algorithm: Why heapify() is O(n) and Not O(n log n)</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    A frequent interview trap is assuming that transforming an arbitrary list of $n$ elements into a valid heap takes $O(n \log n)$ time because inserting $n$ elements one by one takes $n \times O(\log n)$.
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    Python's <code class="font-mono text-purple-700 font-bold">heapq.heapify()</code> uses <strong>Floyd's Bottom-Up Heap Construction</strong>. Instead of sifting elements up from the top, it iterates backwards starting at the deepest non-leaf parent index $\lfloor n/2 \rfloor - 1$ down to the root 0, sifting elements <em>downward</em>.
+                </p>
+                <div class="p-4 bg-slate-900 text-slate-200 rounded-xl font-mono text-xs space-y-2 border border-slate-800">
+                    <span class="text-emerald-400 font-bold block text-[11px]">// The Geometric Summation of Node Work:</span>
+                    <div class="text-[11px] leading-relaxed text-slate-300">
+                        In a complete binary tree of height $H = \lfloor\log_2 n\rfloor$:<br>
+                        &bull; Half of all nodes ($n/2$) reside at the bottom leaf level &rarr; <strong>0 swaps needed</strong>.<br>
+                        &bull; A quarter of all nodes ($n/4$) reside 1 level above leaves &rarr; <strong>max 1 swap</strong>.<br>
+                        &bull; An eighth of all nodes ($n/8$) reside 2 levels above leaves &rarr; <strong>max 2 swaps</strong>.<br>
+                        &bull; Only 1 node (the root) can sift down $H$ levels.
+                    </div>
+                    <div class="pt-2 text-amber-300 text-[11px]">
+                        Total Work = &sum;<sub>h=0</sub><sup>H</sup> (n / 2<sup>h+1</sup>) &times; O(h) = n &times; &sum;<sub>h=0</sub><sup>&infin;</sup> (h / 2<sup>h+1</sup>) = n &times; 1 = <strong>O(n)</strong>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Because the vast majority of nodes reside near the bottom of the tree, the aggregate operations converge strictly to <strong>linear time $O(n)$</strong>, making batch heapification far more efficient than building a heap incrementally.
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. Exhaustive Native API & Method Reference -->
+        <section id="native-api" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Exhaustive Native Function Reference: The heapq Module</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In Python, <code class="font-mono text-purple-700 font-bold">heapq</code> is not an object-oriented class; it is a module of algorithm functions that operate directly on standard Python lists in-place. All operations maintain a <strong>Min-Heap</strong> invariant.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 font-mono">Python heapq Module Functions</h3>
+                        <p class="text-xs text-slate-500">In-place Min-Heap algorithmic primitives backed by C acceleration (_heapq)</p>
+                    </div>
+                    <span class="bg-emerald-50 text-emerald-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-emerald-200">heapq Standard Library</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold">Function Signature</th>
+                                <th class="py-2 px-2 font-bold">Time Complexity</th>
+                                <th class="py-2 px-2 font-bold">Mutation / Return</th>
+                                <th class="py-2 px-2 font-bold">CPython Mechanism &amp; Operational Details</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">heappush(heap, item)</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                <td class="py-2.5 px-2 font-sans">Appends item to the end of the list and executes sift-up to restore min-heap invariant.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">heappop(heap)</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">In-place &bull; Returns smallest item</td>
+                                <td class="py-2.5 px-2 font-sans">Swaps root with last item, pops last item, and executes sift-down on the new root. Raises <code class="font-mono text-rose-600">IndexError</code> if heap is empty.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">heappushpop(heap, item)</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">In-place &bull; Returns smallest item</td>
+                                <td class="py-2.5 px-2 font-sans">Compares <code class="font-mono">item</code> directly against root. If item is smaller, returns it immediately without modifying heap. Otherwise, replaces root with item and sifts down. Faster than separate push + pop.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">heapreplace(heap, item)</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">In-place &bull; Returns original root</td>
+                                <td class="py-2.5 px-2 font-sans">Pops root unconditionally and replaces it with <code class="font-mono">item</code>, then sifts down. More efficient than <code class="font-mono">heappop()</code> followed by <code class="font-mono">heappush()</code>. Raises <code class="font-mono text-rose-600">IndexError</code> if empty.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">heapify(x)</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(n)</td>
+                                <td class="py-2.5 px-2">In-place &bull; Returns None</td>
+                                <td class="py-2.5 px-2 font-sans">Transforms an arbitrary Python list into a valid min-heap in-place in linear time using Floyd's bottom-up sifting algorithm.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">nlargest(n, iter, [key])</td>
+                                <td class="py-2.5 px-2 text-amber-700 font-bold">O(m log n)</td>
+                                <td class="py-2.5 px-2">Returns list of size n</td>
+                                <td class="py-2.5 px-2 font-sans">Finds the $n$ largest elements using an internal Min-Heap of size $n$. Far faster than sorting entire collection of size $m$ when $n \ll m$.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">nsmallest(n, iter, [key])</td>
+                                <td class="py-2.5 px-2 text-amber-700 font-bold">O(m log n)</td>
+                                <td class="py-2.5 px-2">Returns list of size n</td>
+                                <td class="py-2.5 px-2 font-sans">Finds the $n$ smallest elements using an internal Max-Heap of size $n$.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">merge(*iterables, [key])</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(N log K)</td>
+                                <td class="py-2.5 px-2">Iterator</td>
+                                <td class="py-2.5 px-2 font-sans">Merges multiple pre-sorted inputs into a single sorted output stream using a $K$-way min-heap ($K = \text{number of streams}$). Never loads entire streams into memory.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Tie-Breaking & The Tombstone Cancellation Pattern -->
+        <section id="tie-breaking-tombstones" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Production Architecture: Tie-Breaking &amp; O(1) Tombstone Cancellation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When building production job queues, database schedulers, or network packet arbiters with heaps, engineers encounter two major architectural hurdles: <strong>comparison collision errors</strong> and <strong>updating priorities of items already in the heap</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Tie-Breaking Tuple Pattern -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">The 3-Tuple Tie-Breaking Pattern</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Stability Guard</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        In Python, tuples compare lexicographically: element by element. If you store <code class="font-mono text-purple-700">(priority, task)</code> in a heap and two tasks share the same priority, Python evaluates <code class="font-mono">task_a &lt; task_b</code>. If your task object is a dictionary or custom class lacking comparison operators, Python crashes:
+                    </p>
+                    <div class="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[10px] font-mono">
+                        TypeError: '&lt;' not supported between instances of 'QueryTask'
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        <strong>The Solution:</strong> Insert a monotonically increasing sequence counter: <code class="font-mono text-emerald-700 font-bold">(priority, sequence_id, task)</code>. Because <code class="font-mono">sequence_id</code> is always unique, Python never compares the task objects, guaranteeing stable FIFO ordering on priority ties!
+                    </p>
+                </div>
+
+                <!-- Tombstone Cancellation Pattern -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">O(1) Tombstone Cancellation</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">Lazy Deletion</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Binary heaps do not support efficient search. Finding an arbitrary task inside a heap list to delete or update its priority takes a linear scan $O(n)$, followed by $O(\log n)$ re-sifting.
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        <strong>The Production Solution:</strong> Maintain an external lookup map <code class="font-mono text-slate-800">entry_finder: dict[task_id, entry]</code>.
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>Cancel:</strong> Mark the entry's task as a sentinel <code class="font-mono text-rose-700 font-bold">&lt;REMOVED&gt;</code> in $O(1)$ time. Leave it in the heap!</li>
+                        <li><strong>Reprioritize:</strong> Mark the existing task as <code class="font-mono">&lt;REMOVED&gt;</code> and push a brand new 3-tuple with the updated priority in $O(\log n)$.</li>
+                        <li><strong>Dispatch:</strong> When <code class="font-mono">heappop()</code> extracts a task marked <code class="font-mono">&lt;REMOVED&gt;</code>, discard it and pop again.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 05 -->
+        <section id="memforge-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 05: Priority Query Scheduler Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 05 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/scheduler/priority_queue.py</code>: an asynchronous transaction and query scheduler.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The scheduler enforces:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Priority tiers (0 = Immediate DDL / Write Lock, 1 = Transactional Write, 2 = Read Query, 3 = Background Maintenance).</li>
+                <li>Monotonic sequence counting preventing task collision errors and guaranteeing FIFO dispatch on equal priority.</li>
+                <li>Constant-time $O(1)$ task cancellation and dynamic reprioritization via the entry-finder tombstone pattern.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 05)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">scheduler/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">priority_queue.py</span>         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler Engine</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_priority_queue.py</span>    <span class="text-slate-500"># Milestone 05: Priority, Tombstones &amp; Ordering Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/scheduler/priority_queue.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Scheduler: <code class="text-purple-700">src/memforge/scheduler/priority_queue.py</code></span>
+                    <span class="text-slate-400">Binary Heap Execution Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Scheduler - Priority Query Queue with Tombstone Removal (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> heapq
+<span class="text-purple-400">import</span> itertools
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Optional
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">QueueEmptyError</span>(Exception):
+    <span class="text-slate-500">"""Raised when attempting to pop from an empty priority queue."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">QueryTask</span>:
+    <span class="text-slate-500">"""Discrete database transaction payload submitted for execution."""</span>
+    task_id: str
+    query_sql: str
+    client_id: str
+
+
+<span class="text-slate-500"># Sentinel token marking cancelled tasks inside the heap</span>
+_REMOVED = <span class="text-amber-300">"&lt;REMOVED_TASK_TOMBSTONE&gt;"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PriorityQueryScheduler</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION QUERY SCHEDULER:
+    Maintains a Min-Heap of [priority, sequence_id, task] entries.
+    Provides O(log n) enqueue/dequeue, monotonic tie-breaking,
+    and O(1) task cancellation/reprioritization via entry lookup mapping.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Underlying flat list array representing the complete binary min-heap</span>
+        self._heap: List[List[Any]] = []
+        <span class="text-slate-500"># Directory mapping task_id to its live heap entry: task_id -> [priority, seq, task]</span>
+        self._entry_finder: Dict[str, List[Any]] = {}
+        <span class="text-slate-500"># Monotonically increasing sequence generator to break comparison ties</span>
+        self._sequence_counter = itertools.count()
+        <span class="text-slate-500"># Number of active, non-cancelled tasks</span>
+        self._active_count = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total active (non-cancelled) tasks pending in the scheduler."""</span>
+        <span class="text-purple-400">return</span> self._active_count
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">push_query</span>(self, task: QueryTask, priority: int = 2) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Enqueues a query task with a priority tier (lower number = higher priority).
+        If task_id already exists, cancels the previous entry and updates.
+        Complexity: O(log n)
+        """</span>
+        <span class="text-purple-400">if</span> task.task_id <span class="text-purple-400">in</span> self._entry_finder:
+            <span class="text-slate-500"># Cancel existing task via tombstone</span>
+            self.cancel_query(task.task_id)
+
+        seq = next(self._sequence_counter)
+        <span class="text-slate-500"># Entry layout: [priority, sequence_id, task]</span>
+        entry = [priority, seq, task]
+        self._entry_finder[task.task_id] = entry
+        heapq.heappush(self._heap, entry)
+        self._active_count += 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pop_next_query</span>(self) -> QueryTask:
+        <span class="text-slate-500">"""
+        Extracts and returns the highest priority active query task.
+        Automatically discards tombstoned (cancelled) tasks in O(log n) time.
+        Raises QueueEmptyError if no active tasks remain.
+        """</span>
+        <span class="text-purple-400">while</span> self._heap:
+            priority, seq, task = heapq.heappop(self._heap)
+            <span class="text-purple-400">if</span> task <span class="text-purple-400">is not</span> _REMOVED:
+                <span class="text-purple-400">del</span> self._entry_finder[task.task_id]
+                self._active_count -= 1
+                <span class="text-purple-400">return</span> task
+
+        <span class="text-purple-400">raise</span> QueueEmptyError(<span class="text-amber-300">"Cannot pop from an empty priority query scheduler."</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">cancel_query</span>(self, task_id: str) -> bool:
+        <span class="text-slate-500">"""
+        Cancels a task in O(1) time by marking its entry as a tombstone.
+        Returns True if task was found and cancelled; False otherwise.
+        """</span>
+        entry = self._entry_finder.pop(task_id, <span class="text-rose-400">None</span>)
+        <span class="text-purple-400">if</span> entry <span class="text-purple-400">is not</span> <span class="text-rose-400">None</span>:
+            <span class="text-slate-500"># Replace task reference with tombstone sentinel</span>
+            entry[-1] = _REMOVED
+            self._active_count -= 1
+            <span class="text-purple-400">return</span> <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return</span> <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">reprioritize_query</span>(self, task_id: str, new_priority: int) -> bool:
+        <span class="text-slate-500">"""
+        Updates the priority of an active task in O(log n) time.
+        Lazily cancels the old task and inserts the new priority entry.
+        """</span>
+        entry = self._entry_finder.get(task_id)
+        <span class="text-purple-400">if</span> entry <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">return</span> <span class="text-rose-400">False</span>
+
+        old_task: QueryTask = entry[-1]
+        <span class="text-slate-500"># Mark old entry as dead</span>
+        self.cancel_query(task_id)
+        <span class="text-slate-500"># Re-insert with new priority tier</span>
+        self.push_query(old_task, priority=new_priority)
+        <span class="text-purple-400">return</span> <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">peek_highest_priority</span>(self) -> Optional[int]:
+        <span class="text-slate-500">"""
+        Inspects the priority number of the next active task without popping.
+        Returns None if queue has no active tasks.
+        """</span>
+        <span class="text-slate-500"># Purge dead tombstones sitting at the root</span>
+        <span class="text-purple-400">while</span> self._heap <span class="text-purple-400">and</span> self._heap[0][-1] <span class="text-purple-400">is</span> _REMOVED:
+            heapq.heappop(self._heap)
+
+        <span class="text-purple-400">if</span> self._heap:
+            <span class="text-purple-400">return</span> self._heap[0][0]
+        <span class="text-purple-400">return</span> <span class="text-rose-400">None</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_priority_queue.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_priority_queue.py</code></span>
+                    <span class="text-slate-400">Priority, Tombstone &amp; FIFO Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Priority Queue Scheduler Tests (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.scheduler.priority_queue <span class="text-purple-400">import</span> (
+    PriorityQueryScheduler, 
+    QueryTask, 
+    QueueEmptyError
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestPriorityQueryScheduler</span>:
+    <span class="text-slate-500">"""Unit tests asserting priority dispatch, sequence tie-breaking, and cancellation."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_priority_tier_dispatch_order</span>(self):
+        scheduler = PriorityQueryScheduler()
+        t_low = QueryTask(<span class="text-amber-300">"t1"</span>, <span class="text-amber-300">"VACUUM FULL"</span>, <span class="text-amber-300">"worker_bg"</span>)
+        t_high = QueryTask(<span class="text-amber-300">"t2"</span>, <span class="text-amber-300">"ALTER TABLE users DROP COLUMN pin"</span>, <span class="text-amber-300">"admin"</span>)
+        t_med = QueryTask(<span class="text-amber-300">"t3"</span>, <span class="text-amber-300">"SELECT * FROM orders"</span>, <span class="text-amber-300">"client_app"</span>)
+
+        <span class="text-slate-500"># Enqueue in randomized order</span>
+        scheduler.push_query(t_low, priority=3)   <span class="text-slate-500"># Low</span>
+        scheduler.push_query(t_high, priority=0)  <span class="text-slate-500"># Critical DDL</span>
+        scheduler.push_query(t_med, priority=2)   <span class="text-slate-500"># Normal Read</span>
+
+        assert len(scheduler) == 3
+        <span class="text-slate-500"># Must pop highest priority first (0 &rarr; 2 &rarr; 3)</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"t2"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"t3"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"t1"</span>
+        assert len(scheduler) == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_identical_priority_preserves_fifo_order</span>(self):
+        scheduler = PriorityQueryScheduler()
+        <span class="text-slate-500"># Three queries submitted with identical priority (1)</span>
+        t1 = QueryTask(<span class="text-amber-300">"q1"</span>, <span class="text-amber-300">"INSERT A"</span>, <span class="text-amber-300">"c1"</span>)
+        t2 = QueryTask(<span class="text-amber-300">"q2"</span>, <span class="text-amber-300">"INSERT B"</span>, <span class="text-amber-300">"c2"</span>)
+        t3 = QueryTask(<span class="text-amber-300">"q3"</span>, <span class="text-amber-300">"INSERT C"</span>, <span class="text-amber-300">"c3"</span>)
+
+        scheduler.push_query(t1, priority=1)
+        scheduler.push_query(t2, priority=1)
+        scheduler.push_query(t3, priority=1)
+
+        <span class="text-slate-500"># Sequence counter must guarantee strict arrival order</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q1"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q2"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q3"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_tombstone_cancellation_skips_removed_tasks</span>(self):
+        scheduler = PriorityQueryScheduler()
+        t1 = QueryTask(<span class="text-amber-300">"q1"</span>, <span class="text-amber-300">"QUERY_1"</span>, <span class="text-amber-300">"c1"</span>)
+        t2 = QueryTask(<span class="text-amber-300">"q2"</span>, <span class="text-amber-300">"QUERY_2"</span>, <span class="text-amber-300">"c2"</span>)
+        t3 = QueryTask(<span class="text-amber-300">"q3"</span>, <span class="text-amber-300">"QUERY_3"</span>, <span class="text-amber-300">"c3"</span>)
+
+        scheduler.push_query(t1, priority=1)
+        scheduler.push_query(t2, priority=0)  <span class="text-slate-500"># Highest priority</span>
+        scheduler.push_query(t3, priority=2)
+
+        <span class="text-slate-500"># Cancel the highest priority query (q2) before execution</span>
+        assert scheduler.cancel_query(<span class="text-amber-300">"q2"</span>) is <span class="text-rose-400">True</span>
+        assert len(scheduler) == 2
+
+        <span class="text-slate-500"># Scheduler must skip q2 cleanly</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q1"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q3"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dynamic_reprioritization_updates_schedule</span>(self):
+        scheduler = PriorityQueryScheduler()
+        t1 = QueryTask(<span class="text-amber-300">"q1"</span>, <span class="text-amber-300">"BACKGROUND_JOB"</span>, <span class="text-amber-300">"c1"</span>)
+        t2 = QueryTask(<span class="text-amber-300">"q2"</span>, <span class="text-amber-300">"REPORT_JOB"</span>, <span class="text-amber-300">"c2"</span>)
+
+        scheduler.push_query(t1, priority=3)  <span class="text-slate-500"># Low</span>
+        scheduler.push_query(t2, priority=2)  <span class="text-slate-500"># Normal</span>
+
+        <span class="text-slate-500"># Promote q1 to Emergency Tier 0!</span>
+        scheduler.reprioritize_query(<span class="text-amber-300">"q1"</span>, new_priority=0)
+
+        <span class="text-slate-500"># q1 must execute before q2 now</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q1"</span>
+        assert scheduler.pop_next_query().task_id == <span class="text-amber-300">"q2"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_empty_queue_raises_error</span>(self):
+        scheduler = PriorityQueryScheduler()
+        <span class="text-purple-400">with</span> pytest.raises(QueueEmptyError):
+            scheduler.pop_next_query()</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The 2-Tuple Heap Comparison Crash</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Storing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">heapq.heappush(h, (priority, task_dict))</code> where task objects are uncomparable.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes production:</strong> As soon as two tasks share the same priority number, Python attempts to compare the second element. Python dictionaries and arbitrary classes raise <code class="font-mono text-rose-950 font-bold">TypeError: '&lt;' not supported</code>, causing your scheduler to fail under concurrent load!
+                        <strong>Fix:</strong> Always insert an incrementing sequence counter as the second tuple element: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">(priority, seq_id, task)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Slicing a Heap Expecting Sorted Order</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">top_3 = heap[:3]</code> to extract the three smallest elements.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this produces incorrect data:</strong> In a binary heap, <em>only the root element at index 0</em> is guaranteed to be the absolute minimum. Children at indices 1 and 2 are smaller than their subtrees, but index 2 might easily be smaller than index 1!
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">[heapq.heappop(heap) for _ in range(k)]</code> or <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">heapq.nsmallest(k, heap)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Calling list.sort() on Every Insertion</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Maintaining a priority queue by appending to a list and calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">tasks.sort()</code> on every incoming event.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> Sorting an entire list takes $O(n \log n)$ time per event. Over 100,000 tasks, this wastes billions of CPU cycles. A binary heap executes <code class="font-mono text-emerald-700 font-bold">heappush</code> in only $O(\log n)$ by sifting along tree height.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Sequential heappop() Followed by heappush()</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">val = heapq.heappop(h); heapq.heappush(h, new_val)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is suboptimal:</strong> This performs two separate tree traversals ($2 \times O(\log n)$) and temporarily shrinks the list. 
+                        <strong>Fix:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">heapq.heapreplace(h, new_val)</code>, which replaces the root and sifts down in a single pass ($1 \times O(\log n)$).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the priority queue test battery and benchmark heap performance:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge priority scheduler unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_priority_queue.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.08s. Confirms priority ordering, FIFO tie-breaking, and tombstone cancellation.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 05:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry counters, LRU buffer pools, and priority heaps.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Benchmark -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify O(n) heapify vs O(n log n) sorting in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "import timeit, heapq, random; data = [random.random() for _ in range(500000)]; print('heapify() [500k items] (sec):', timeit.timeit(lambda: heapq.heapify(data.copy()), number=50)); print('sorted()  [500k items] (sec):', timeit.timeit(lambda: sorted(data), number=50))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates that Floyd's linear-time heapify is over 3x faster than full sorting on raw data!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Sorted Sequences &amp; Binary Search - The bisect Module &amp; Fast Range Queries</h4>
+                <p class="text-xs text-slate-500 font-sans">Maintaining order without full re-sorting: Bisect boundary mechanics (bisect_left vs bisect_right), logarithmic range slicing, score tiering, and building MemForge's numeric range scanner.</p>
+            </div>
+            <a href="Chapter 06 - Sorted Sequences and Binary Search - The bisect Module and Fast Range Queries.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

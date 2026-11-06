@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Load Balancing Strategies &amp; Reverse Proxies: L4 vs. L7</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 05 - Load Balancing &amp; Reverse Proxy Tier)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Ingress &amp; Traffic Routing
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Load Balancing Strategies &amp; Reverse Proxies: L4 vs. L7
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating behind the perimeter: Distinguishing high-throughput <strong>Layer 4 TCP/UDP routing</strong> from feature-rich <strong>Layer 7 Application Proxies</strong>, mastering modern balancing algorithms from Consistent Hashing to <strong>Power of Two Choices (P2C)</strong>, engineering passive outlier detection and zero-downtime connection draining, and building the resilient reverse proxy core of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 05: The Intelligent Traffic Routing Mesh</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 04, we secured the outer perimeter with BGP Anycast, edge caching, and sliding window rate limiting. In Milestone 05, we step into the <strong>Internal Ingress Tier</strong>. When millions of requests breach the edge and arrive at our private infrastructure, we cannot forward them blindly to random application instances. Unequal request complexity, slow database queries, and garbage collection pauses turn naive round-robin into a recipe for server overload. We build OmniRoute's <strong>Adaptive L7 Reverse Proxy</strong> in FastAPI and async SQLAlchemy 2.0, implementing the <strong>Power of Two Choices (P2C) algorithm with Peak-EWMA latency tracking</strong>, passive outlier detection, and zero-loss graceful connection draining.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> L4 (Transport) vs. L7 (Application) Deep-Dive</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Direct Server Return (DSR) &amp; Packet Flow Physics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Power of Two Choices (P2C) with Peak-EWMA</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Active Health Probes vs. Passive Outlier Detection</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Downtime Connection Draining Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production L7 Proxy Core in FastAPI &amp; Async SQLAlchemy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Comprehensive PyTest Routing &amp; Ejection Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Theory: L4 vs. L7 -->
+        <section id="l4-vs-l7" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Architectural Foundations</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Layer 4 vs. Layer 7: The Physics of Load Balancing</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A load balancer is not a single uniform piece of software. In enterprise distributed systems, load balancing is divided into two fundamentally distinct tiers: <strong>Layer 4 (L4)</strong> and <strong>Layer 7 (L7)</strong>.
+            </p>
+
+            <!-- L4 vs L7 Comparison Cards -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- L4 Card -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">Layer 4 (Transport / TCP &amp; UDP)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Raw Packet Routing</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Operates purely on IP addresses, TCP/UDP ports, and protocol flags. <strong>It never inspects the payload or decrypts TLS.</strong>
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-sky-300 text-[10px] space-y-1">
+                        <div>&bull; Technologies: IPVS (Linux Virtual Server), AWS NLB, Google Maglev</div>
+                        <div>&bull; Throughput: Millions of Packets Per Second (Mpps) per node</div>
+                        <div>&bull; Latency: Sub-microsecond (almost wirespeed)</div>
+                        <div>&bull; Direct Server Return (DSR): Responses bypass the LB entirely!</div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong>Limitation:</strong> Blind to application state. Cannot route based on HTTP headers, URLs, cookies, or gRPC methods.
+                    </p>
+                </div>
+
+                <!-- L7 Card -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">Layer 7 (Application / HTTP &amp; gRPC)</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Semantic Reverse Proxy</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Terminates client TLS, parses HTTP headers, cookies, and JSON payloads, and establishes a <em>second independent TCP connection</em> to the upstream service.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-purple-300 text-[10px] space-y-1">
+                        <div>&bull; Technologies: Envoy Proxy, Nginx, HAProxy, AWS ALB</div>
+                        <div>&bull; Capabilities: Path routing (`/api/v1/orders`), Header auth, Retries</div>
+                        <div>&bull; Safety: Buffers slow clients, preventing Slowloris attacks</div>
+                        <div>&bull; Latency: 1ms to 5ms (due to TLS decryption &amp; payload parsing)</div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong>Limitation:</strong> High CPU and memory overhead compared to raw L4 packet forwarding.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine an international post office sorting millions of pieces of mail.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    An <strong>L4 Load Balancer</strong> is a forklift operator reading only the zip code stamped on the outside of a shipping container. The operator doesn't care whether the container holds letters, books, or electronics; they move 50-ton containers between loading docks at maximum velocity without opening anything.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    An <strong>L7 Reverse Proxy</strong> is an intelligence officer who cuts open the envelope, reads the letter inside, verifies the signature, and says: <em>"This is an urgent tax document; rush it to the executive suite on the 4th floor. That other letter is junk mail; drop it in the incinerator."</em> The L7 proxy makes smart, content-based decisions, but requires much more time and cognitive effort per item.
+                </p>
+            </div>
+        </section>
+
+        <!-- THE ENTERPRISE TWO-TIER INGRESS TOPOLOGY -->
+        <section id="ingress-topology" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Infrastructure Blueprint
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Modern Two-Tier Ingress Architecture
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Direct Server Return (DSR) &bull; L4 Fronting L7 Clusters &bull; Scalability Limits
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In tier-1 architectures (Google, Meta, GitHub, Netflix), L4 and L7 are not alternatives; **they operate in concert**. A stateless L4 tier fronts an auto-scaling cluster of L7 proxies:
+            </p>
+
+            <!-- Visual Flowchart: Two-Tier Ingress (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Two-Tier Enterprise Ingress Architecture
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Client -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-sky-300 font-bold block">Client Ingress</span>
+                        <div class="text-[9px] text-slate-400">100k Concurrent TCP Connections</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr;</div>
+
+                    <!-- Tier 1: L4 -->
+                    <div class="p-4 bg-sky-950/80 border-2 border-sky-500 rounded-2xl w-full md:w-56 space-y-1 shadow-lg">
+                        <span class="text-sky-300 font-bold block text-sm">Tier 1: L4 Director</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Maglev / IPVS / AWS NLB</div>
+                        <div class="text-[9px] text-emerald-400">Consistent Hashing on 5-Tuple</div>
+                        <div class="text-[9px] text-slate-400">Wirespeed packet delivery</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr;</div>
+
+                    <!-- Tier 2: L7 -->
+                    <div class="p-4 bg-purple-950/80 border-2 border-purple-500 rounded-2xl w-full md:w-56 space-y-1 shadow-lg">
+                        <span class="text-purple-300 font-bold block text-sm">Tier 2: L7 Proxy Mesh</span>
+                        <div class="text-[10px] text-slate-300 font-sans">Envoy / OmniRoute Proxy</div>
+                        <div class="text-[9px] text-purple-300">TLS Termination &bull; P2C Routing</div>
+                        <div class="text-[9px] text-amber-300">Outlier Detection &bull; Health Probes</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr;</div>
+
+                    <!-- Upstreams -->
+                    <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-emerald-300 font-bold block">Upstream Pods</span>
+                        <div class="text-[9px] text-slate-400">FastAPI Application Services</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">Direct Server Return (DSR) Explained:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        In heavy read systems (like streaming or map tiles), ingress requests are tiny (1 KB HTTP GET), but egress responses are massive (10 MB payload). With Direct Server Return (DSR), the L4 load balancer modifies only the MAC address of the incoming packet. When the backend server replies, it <strong>routes the response directly back to the client via the gateway</strong>, completely bypassing the load balancer! The load balancer never becomes an egress bottleneck.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- LOAD BALANCING ALGORITHMS & THE POWER OF TWO CHOICES -->
+        <section id="algorithms-p2c" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Algorithmic Theory
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Routing Algorithms: Why Round-Robin Fails &amp; The Power of Two Choices (P2C)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Mitzenmacher's Theorem &bull; Peak-EWMA Latency Tracking &bull; Tail Latency Elimination
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Most beginner systems rely on <strong>Round-Robin</strong>: Server 1, then Server 2, then Server 3. In real-world enterprise environments, Round-Robin performs catastrophically under load.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Why Round-Robin Fails -->
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-rose-900 text-sm block">Why Round-Robin Fails in Production</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        Requests are not equal. Request A might take 1ms (fetching cached user profile), while Request B takes 400ms (complex geospatial polygon search).
+                    </p>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        If Server 2 receives three heavy 400ms requests in a row, its CPU spikes to 100%. Round-Robin remains blind to this saturation and continues dumping new requests onto Server 2, creating massive request queues, thread pool exhaustion, and cascading 504 Gateway Timeouts!
+                    </p>
+                </div>
+
+                <!-- The P2C Solution -->
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+                    <span class="font-bold text-emerald-900 text-sm block">The Power of Two Choices (P2C) Solution</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        Computer scientist Michael Mitzenmacher mathematically proved that checking every server in a cluster of $N$ nodes creates $O(N)$ overhead and lock contention.
+                    </p>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        Instead, **pick two servers at random**, compare their current load (active connections or moving average latency), and **route to the better of the two**. This simple $O(1)$ technique provides an exponential reduction in maximum queue length, performing almost identically to full-cluster state scanning with zero coordination overhead!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Mathematical Deep Dive: Peak-EWMA -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-4 shadow-xl border border-slate-800">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Peak-EWMA (Exponentially Weighted Moving Average)</span>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center space-y-2">
+                    <div class="text-sm md:text-base text-sky-300 font-bold tracking-wider">
+                        \text{EWMA}_{t} = \alpha \times \text{Latency}_{\text{recent}} + (1 - \alpha) \times \text{EWMA}_{t-1}
+                    </div>
+                    <p class="text-[10px] text-slate-400 font-sans">
+                        Pioneered by Twitter Finagle and popularized by Envoy Proxy: Instead of looking at raw current connections, the proxy maintains a decaying moving average of response times for each backend instance. If an instance slows down due to a garbage collection pause, its EWMA score immediately rises, and the P2C algorithm naturally diverts traffic away from it until it recovers!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- HEALTH CHECKING & GRACEFUL DRAINING -->
+        <section id="health-draining" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    High Availability Engineering
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Health Checking: Active Probes, Passive Outlier Detection &amp; Zero-Loss Draining
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Synthetic Health Checks &bull; Envoy Outlier Detection &bull; Connection Draining
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Active vs Passive -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <span class="font-bold text-slate-900 text-sm block">Active Probing vs. Passive Outlier Detection</span>
+                    <ul class="text-[11px] text-slate-600 font-sans space-y-2 list-disc pl-4">
+                        <li>
+                            <strong>Active Health Checks:</strong> The load balancer sends a synthetic HTTP request (e.g. `GET /healthz`) every 5 seconds. If a server dies between probes, users experience 5 full seconds of failed requests before the health checker notices.
+                        </li>
+                        <li>
+                            <strong>Passive Outlier Detection (Envoy Style):</strong> The load balancer monitors real production traffic. If an instance returns **3 consecutive 5xx errors**, it is immediately ejected from the routing pool for a cooldown period (e.g. 30 seconds), protecting users in real time without waiting for active probes!
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Connection Draining -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <span class="font-bold text-slate-900 text-sm block">Zero-Downtime Connection Draining (Graceful Shutdown)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        When deploying new code, terminating an instance abruptly drops all active client connections (e.g. payment submissions mid-flight).
+                    </p>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        With **Connection Draining (Deregistration Delay)**, the load balancer transitions the target state to <code class="bg-amber-100 text-amber-900 px-1 py-0.5 rounded font-mono font-bold">DRAINING</code>. Zero new requests are sent to the node. The instance is given a graceful window (e.g. 30 seconds) to complete in-flight transactions before being stopped.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 05 -->
+        <section id="omniroute-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 05: Adaptive L7 Reverse Proxy Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 05 for <strong>OmniRoute</strong>: a production-grade L7 Reverse Proxy &amp; Load Balancing Service. Below is the complete implementation featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>The Power of Two Choices (P2C) algorithm</strong> balancing traffic across upstream nodes using real-time Peak-EWMA latency and in-flight connection counts.</li>
+                <li><strong>Passive Outlier Detection</strong> that ejects unstable backends on consecutive 5xx errors.</li>
+                <li><strong>Graceful Connection Draining</strong> state machine (<code class="font-mono text-xs">HEALTHY</code>, <code class="font-mono text-xs">DRAINING</code>, <code class="font-mono text-xs">EJECTED</code>).</li>
+                <li><strong>Asynchronous SQLAlchemy 2.0 telemetry audit table</strong> recording routing decisions and health transitions.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 05)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── proxy/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>          <span class="text-slate-500"># Milestone 05: Routing &amp; Upstream Audit Entity (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">balancer.py</span>        <span class="text-slate-500"># Milestone 05: P2C Routing, Peak-EWMA, Outlier Detection</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">proxy_router.py</span>    <span class="text-slate-500"># Milestone 05: FastAPI Ingress Gateway Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_load_balancer.py</span>   <span class="text-slate-500"># Milestone 05 P2C Routing, Ejection &amp; Draining Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/proxy/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Upstream Node Audit Entity: <code class="text-purple-700">src/omniroute/proxy/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Proxy - Upstream Node Health &amp; Routing Telemetry Entity</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, Integer, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UpstreamRoutingAuditModel</span>(Base):
+    <span class="text-slate-500">"""
+    PERSISTENT ROUTING AUDIT:
+    Records routing decisions, EWMA scores, and outlier ejection events
+    for observability and post-incident forensic analysis.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"upstream_routing_audits"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    upstream_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    upstream_url: Mapped[str] = mapped_column(String(255), nullable=<span class="text-rose-400">False</span>)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    ewma_latency_ms: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    active_connections: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    event_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/proxy/balancer.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. P2C Load Balancer &amp; Outlier Detection: <code class="text-purple-700">src/omniroute/proxy/balancer.py</code></span>
+                    <span class="text-slate-400">Peak-EWMA &amp; Outlier Ejection</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Proxy - Power of Two Choices (P2C) with Peak-EWMA</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> random
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Optional
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NodeStatus</span>(str, Enum):
+    HEALTHY = <span class="text-amber-300">"HEALTHY"</span>
+    DRAINING = <span class="text-amber-300">"DRAINING"</span>
+    EJECTED = <span class="text-amber-300">"EJECTED"</span>
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UpstreamNode</span>:
+    node_id: str
+    url: str
+    status: NodeStatus = NodeStatus.HEALTHY
+    active_connections: int = 0
+    consecutive_5xx_errors: int = 0
+    ewma_latency_ms: float = 10.0  <span class="text-slate-500"># Initial optimistic seed</span>
+    ejection_timestamp: float = 0.0
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">load_score</span>(self) -> float:
+        <span class="text-slate-500">"""
+        Load Score combining in-flight connections with EWMA latency:
+        Score = active_connections * ewma_latency
+        """</span>
+        <span class="text-purple-400">return</span> (self.active_connections + 1) * self.ewma_latency_ms
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AdaptiveL7Balancer</span>:
+    <span class="text-slate-500">"""
+    ADAPTIVE LOAD BALANCER:
+    1. Power of Two Choices (P2C) algorithm for O(1) optimal dispatch.
+    2. Peak-EWMA latency weighting (decay factor alpha=0.3).
+    3. Passive Outlier Detection (ejects nodes after 3 consecutive 5xx errors).
+    4. Graceful connection draining.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        nodes: List[UpstreamNode],
+        ewma_alpha: float = 0.3,
+        consecutive_error_threshold: int = 3,
+        ejection_cooldown_sec: float = 30.0
+    ):
+        self._nodes = {n.node_id: n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> nodes}
+        self.ewma_alpha = ewma_alpha
+        self.consecutive_error_threshold = consecutive_error_threshold
+        self.ejection_cooldown_sec = ejection_cooldown_sec
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_healthy_nodes</span>(self) -> List[UpstreamNode]:
+        now = time.time()
+        healthy = []
+        <span class="text-purple-400">for</span> node <span class="text-purple-400">in</span> self._nodes.values():
+            <span class="text-purple-400">if</span> node.status == NodeStatus.EJECTED:
+                <span class="text-slate-500"># Check if ejection cooldown expired &rarr; Trial recovery</span>
+                <span class="text-purple-400">if</span> (now - node.ejection_timestamp) &gt;= self.ejection_cooldown_sec:
+                    node.status = NodeStatus.HEALTHY
+                    node.consecutive_5xx_errors = 0
+                    healthy.append(node)
+            <span class="text-purple-400">elif</span> node.status == NodeStatus.HEALTHY:
+                healthy.append(node)
+        <span class="text-purple-400">return</span> healthy
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">select_node_p2c</span>(self) -> UpstreamNode:
+        <span class="text-slate-500">"""
+        POWER OF TWO CHOICES (P2C) SELECTION:
+        Randomly picks two healthy candidate nodes and routes to the one with lower load.
+        """</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            candidates = self.get_healthy_nodes()
+            <span class="text-purple-400">if not</span> candidates:
+                <span class="text-purple-400">raise</span> RuntimeError(<span class="text-amber-300">"No healthy upstream nodes available in routing pool."</span>)
+
+            <span class="text-purple-400">if</span> len(candidates) == 1:
+                chosen = candidates[0]
+            <span class="text-purple-400">else</span>:
+                # Sample two distinct nodes at random (O(1))
+                node_a, node_b = random.sample(candidates, 2)
+                chosen = node_a <span class="text-purple-400">if</span> node_a.load_score &lt;= node_b.load_score <span class="text-purple-400">else</span> node_b
+
+            chosen.active_connections += 1
+            <span class="text-purple-400">return</span> chosen
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">record_feedback</span>(self, node_id: str, latency_ms: float, is_5xx_error: bool) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Updates EWMA latency and evaluates passive outlier detection."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            node = self._nodes.get(node_id)
+            <span class="text-purple-400">if not</span> node:
+                <span class="text-purple-400">return</span>
+
+            node.active_connections = max(0, node.active_connections - 1)
+
+            <span class="text-slate-500"># 1. Update Peak-EWMA</span>
+            node.ewma_latency_ms = (
+                self.ewma_alpha * latency_ms + (1.0 - self.ewma_alpha) * node.ewma_latency_ms
+            )
+
+            <span class="text-slate-500"># 2. Passive Outlier Detection</span>
+            <span class="text-purple-400">if</span> is_5xx_error:
+                node.consecutive_5xx_errors += 1
+                <span class="text-purple-400">if</span> node.consecutive_5xx_errors &gt;= self.consecutive_error_threshold:
+                    node.status = NodeStatus.EJECTED
+                    node.ejection_timestamp = time.time()
+            <span class="text-purple-400">else</span>:
+                node.consecutive_5xx_errors = 0
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">start_draining</span>(self, node_id: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Begins graceful connection drain for rolling deployment."""</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            node = self._nodes.get(node_id)
+            <span class="text-purple-400">if</span> node:
+                node.status = NodeStatus.DRAINING</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/proxy/proxy_router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. FastAPI Ingress Reverse Proxy: <code class="text-purple-700">src/omniroute/proxy/proxy_router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Async Database Reporting</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, HTTPException, status
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.proxy.balancer <span class="text-purple-400">import</span> AdaptiveL7Balancer, UpstreamNode, NodeStatus
+<span class="text-purple-400">from</span> omniroute.proxy.models <span class="text-purple-400">import</span> UpstreamRoutingAuditModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/ingress"</span>, tags=[<span class="text-amber-300">"Ingress Proxy"</span>])
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># DTOs</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ProxyDispatchResponseDTO</span>(BaseModel):
+    dispatched_node_id: str
+    target_url: str
+    measured_latency_ms: float
+    current_ewma_ms: float
+    simulated_payload: str
+
+
+<span class="text-slate-500"># Dependency stubs (overridden in application startup or tests)</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_balancer</span>() -> AdaptiveL7Balancer:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/forward"</span>,
+    response_model=ProxyDispatchResponseDTO,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"L7 Proxy Dispatch via Power of Two Choices (P2C)"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">proxy_forward_request</span>(
+    balancer: AdaptiveL7Balancer = Depends(get_balancer),
+    db: AsyncSession = Depends(get_session)
+) -> ProxyDispatchResponseDTO:
+    <span class="text-slate-500"># 1. Select optimal upstream node via P2C</span>
+    <span class="text-purple-400">try</span>:
+        node = <span class="text-purple-400">await</span> balancer.select_node_p2c()
+    <span class="text-purple-400">except</span> RuntimeError <span class="text-purple-400">as</span> exc:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+    <span class="text-slate-500"># 2. Simulate upstream execution</span>
+    t0 = time.perf_counter()
+    status_code = 200
+    is_5xx = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">try</span>:
+        # In real proxy: await http_client.forward(request, node.url)
+        <span class="text-purple-400">await</span> asyncio.sleep(node.ewma_latency_ms / 1000.0)
+    <span class="text-purple-400">except</span> Exception:
+        status_code = 502
+        is_5xx = <span class="text-rose-400">True</span>
+    <span class="text-purple-400">finally</span>:
+        latency = (time.perf_counter() - t0) * 1000.0
+        <span class="text-purple-400">await</span> balancer.record_feedback(node.node_id, latency, is_5xx)
+
+    <span class="text-slate-500"># 3. Log audit telemetry to Async SQLAlchemy 2.0</span>
+    audit = UpstreamRoutingAuditModel(
+        upstream_id=node.node_id,
+        upstream_url=node.url,
+        latency_ms=latency,
+        ewma_latency_ms=node.ewma_latency_ms,
+        active_connections=node.active_connections,
+        status_code=status_code
+    )
+    db.add(audit)
+    <span class="text-purple-400">await</span> db.commit()
+
+    <span class="text-purple-400">return</span> ProxyDispatchResponseDTO(
+        dispatched_node_id=node.node_id,
+        target_url=node.url,
+        measured_latency_ms=round(latency, 2),
+        current_ewma_ms=round(node.ewma_latency_ms, 2),
+        simulated_payload=f<span class="text-amber-300">"PROXIED_ACK_FROM_{node.node_id}"</span>
+    )</pre>
+            </div>
+
+            <!-- File 4: tests/test_load_balancer.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Routing Verification Suite: <code class="text-purple-700">tests/test_load_balancer.py</code></span>
+                    <span class="text-slate-400">PyTest Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> AsyncClient, ASGITransport
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+
+<span class="text-purple-400">from</span> omniroute.proxy.models <span class="text-purple-400">import</span> Base
+<span class="text-purple-400">from</span> omniroute.proxy.balancer <span class="text-purple-400">import</span> AdaptiveL7Balancer, UpstreamNode, NodeStatus
+<span class="text-purple-400">from</span> omniroute.proxy.proxy_router <span class="text-purple-400">import</span> router, get_session, get_balancer
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestLoadBalancerSuite</span>:
+    <span class="text-slate-500">"""Verifies P2C routing, Peak-EWMA latency adaptation, outlier ejection, and draining."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_p2c_selects_lower_latency_node</span>(self):
+        fast_node = UpstreamNode(node_id=<span class="text-amber-300">"fast"</span>, url=<span class="text-amber-300">"http://fast.internal"</span>, ewma_latency_ms=2.0)
+        slow_node = UpstreamNode(node_id=<span class="text-amber-300">"slow"</span>, url=<span class="text-amber-300">"http://slow.internal"</span>, ewma_latency_ms=100.0)
+
+        balancer = AdaptiveL7Balancer(nodes=[fast_node, slow_node])
+
+        selections = {<span class="text-amber-300">"fast"</span>: 0, <span class="text-amber-300">"slow"</span>: 0}
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(50):
+            selected = <span class="text-purple-400">await</span> balancer.select_node_p2c()
+            selections[selected.node_id] += 1
+            <span class="text-purple-400">await</span> balancer.record_feedback(selected.node_id, selected.ewma_latency_ms, <span class="text-rose-400">False</span>)
+
+        <span class="text-slate-500"># Fast node must receive 100% of P2C comparative choices when paired against slow node</span>
+        assert selections[<span class="text-amber-300">"fast"</span>] == 50
+        assert selections[<span class="text-amber-300">"slow"</span>] == 0
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_passive_outlier_detection_ejects_unhealthy_node</span>(self):
+        flaky_node = UpstreamNode(node_id=<span class="text-amber-300">"flaky"</span>, url=<span class="text-amber-300">"http://flaky.internal"</span>)
+        balancer = AdaptiveL7Balancer(nodes=[flaky_node], consecutive_error_threshold=3)
+
+        assert flaky_node.status == NodeStatus.HEALTHY
+
+        <span class="text-slate-500"># Trigger 2 errors (below threshold)</span>
+        <span class="text-purple-400">await</span> balancer.record_feedback(<span class="text-amber-300">"flaky"</span>, 10.0, is_5xx_error=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">await</span> balancer.record_feedback(<span class="text-amber-300">"flaky"</span>, 10.0, is_5xx_error=<span class="text-rose-400">True</span>)
+        assert flaky_node.status == NodeStatus.HEALTHY
+
+        <span class="text-slate-500"># 3rd consecutive error &rarr; EJECTED!</span>
+        <span class="text-purple-400">await</span> balancer.record_feedback(<span class="text-amber-300">"flaky"</span>, 10.0, is_5xx_error=<span class="text-rose-400">True</span>)
+        assert flaky_node.status == NodeStatus.EJECTED
+
+        <span class="text-slate-500"># P2C selection must now raise because zero healthy nodes exist</span>
+        <span class="text-purple-400">with</span> pytest.raises(RuntimeError, match=<span class="text-amber-300">"No healthy upstream nodes"</span>):
+            <span class="text-purple-400">await</span> balancer.select_node_p2c()
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_graceful_draining_excludes_node_from_new_traffic</span>(self):
+        node_1 = UpstreamNode(node_id=<span class="text-amber-300">"n1"</span>, url=<span class="text-amber-300">"http://n1"</span>)
+        node_2 = UpstreamNode(node_id=<span class="text-amber-300">"n2"</span>, url=<span class="text-amber-300">"http://n2"</span>)
+        balancer = AdaptiveL7Balancer(nodes=[node_1, node_2])
+
+        <span class="text-slate-500"># Mark node_1 as DRAINING</span>
+        <span class="text-purple-400">await</span> balancer.start_draining(<span class="text-amber-300">"n1"</span>)
+        assert node_1.status == NodeStatus.DRAINING
+
+        <span class="text-slate-500"># All subsequent selections must strictly avoid n1</span>
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(10):
+            selected = <span class="text-purple-400">await</span> balancer.select_node_p2c()
+            assert selected.node_id == <span class="text-amber-300">"n2"</span>
+            <span class="text-purple-400">await</span> balancer.record_feedback(selected.node_id, 5.0, <span class="text-rose-400">False</span>)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_proxy_forward_endpoint_integration</span>(self, in_memory_db):
+        app = FastAPI()
+        node = UpstreamNode(node_id=<span class="text-amber-300">"test_pod"</span>, url=<span class="text-amber-300">"http://pod-1.internal"</span>, ewma_latency_ms=1.0)
+        balancer = AdaptiveL7Balancer(nodes=[node])
+
+        app.include_router(router)
+        app.dependency_overrides[get_balancer] = <span class="text-purple-400">lambda</span>: balancer
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">override_session</span>():
+            <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+                <span class="text-purple-400">yield</span> session
+
+        app.dependency_overrides[get_session] = override_session
+
+        transport = ASGITransport(app=app)
+        <span class="text-purple-400">async with</span> AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://test"</span>) <span class="text-purple-400">as</span> client:
+            res = <span class="text-purple-400">await</span> client.post(<span class="text-amber-300">"/api/v1/ingress/forward"</span>)
+            assert res.status_code == 200
+            data = res.json()
+            assert data[<span class="text-amber-300">"dispatched_node_id"</span>] == <span class="text-amber-300">"test_pod"</span>
+            assert <span class="text-amber-300">"PROXIED_ACK"</span> <span class="text-purple-400">in</span> data[<span class="text-amber-300">"simulated_payload"</span>]</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Routing Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Health Check Avalanche (Self-Inflicted DDoS)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring active health checks on <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">GET /healthz</code> where the endpoint executes complex SQL queries (e.g. `SELECT count(*) FROM users`).
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes the system:</strong> If you have 50 proxy workers health-checking 200 backend instances every 2 seconds, your database receives <strong>5,000 heavy analytical queries per second just from health checks</strong>! The database exhausts its connection pool and goes down, triggering a self-inflicted complete platform outage. Keep `/healthz` endpoints **shallow**: testing local memory, or pair with passive outlier detection!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Sticky Session / IP Hash Cloud Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using Source IP Hash load balancing in mobile applications to maintain user session affinity.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes hot-spot failures:</strong> In mobile networks (e.g. Verizon, AT&amp;T) or corporate networks, hundreds of thousands of distinct mobile devices exit through a handful of centralized Carrier-Grade NAT (CGNAT) gateway IP addresses. An IP-hash load balancer views all 100,000 riders as a <em>single client IP</em> and sends every single one to the <strong>exact same server instance</strong>, instantly crashing it while the other 49 instances sit at 0% CPU! Never use IP hashing for mobile app traffic.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the load balancing test battery and observe the Power of Two Choices (P2C) algorithm under dynamic latency adjustments:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Load Balancing and Ingress test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_load_balancer.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.10s. Confirms P2C latency-aware dispatch, 5xx outlier ejection, graceful connection draining, and async database audit logging!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate P2C routing selection in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from omniroute.proxy.balancer import AdaptiveL7Balancer, UpstreamNode; b = AdaptiveL7Balancer([UpstreamNode('pod_fast', 'http://1', ewma_latency_ms=2), UpstreamNode('pod_slow', 'http://2', ewma_latency_ms=50)]); async def run(): sel = await b.select_node_p2c(); print(f'Dispatched to lower-load node: {sel.node_id} (Score: {sel.load_score})'); asyncio.run(run())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates instantaneous O(1) comparative selection biased towards the lower-latency backend!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Defining Availability: The Mathematics of SLAs, SLOs, SLIs &amp; Fault Domains</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving to system reliability: Measuring the nines (99.9% vs. 99.999%), calculating error budgets, designing blast radius boundaries across Availability Zones, and simulating chaos experiments.</p>
+            </div>
+            <a href="Chapter 06 - Defining Availability - The Mathematics of SLAs, SLOs, SLIs and Fault Domains.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

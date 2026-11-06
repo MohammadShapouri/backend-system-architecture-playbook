@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 08: Class Relationships &amp; Composition - Association, Aggregation, Delegation &amp; Mixins</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 08 - Aggregate Roots, Composition &amp; Mixins)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Phase 3: Class Topologies &amp; Composition
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 08: Class Relationships &amp; Composition - Association, Aggregation, Delegation &amp; Mixins
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Escaping the fragile base class trap: Deconstructing the fundamental relationship taxonomy (Association vs. Aggregation vs. Composition), why modern software engineering mandates composition over inheritance, building transparent forwarding proxies with <code class="font-mono text-emerald-400">__getattr__</code> delegation, architecting clean stateless mixins, and engineering an Aggregate Root domain topology for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Kickoff</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 08: Aggregate Roots &amp; Stateless Mixin Architecture</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Phase 1 and Phase 2, we engineered discrete building blocks: entity identity, Flyweight pools, slotted state, diagnostic renderers, value objects, and observable collections. In Milestone 08, we advance from isolated classes to <strong>interconnected domain topologies</strong>. In Domain-Driven Design (DDD), complex systems are organized into <strong>Aggregates</strong>—clusters of entities and value objects managed by a single entry point called the <strong>Aggregate Root</strong>. We construct an <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">OrderAggregate</code> coordinating composed child line items, aggregated customer references, dynamic delegation proxies, and reusable stateless mixins for audit logging.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Relationship Taxonomy (Association, Aggregation, Composition)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defusing the Fragile Base Class &amp; Gorilla-Banana Traps</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Dynamic Delegation with <code class="text-purple-300">__getattr__</code> Forwarding</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Stateless Mixin Design &amp; Cooperative Subclassing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> DDD Aggregate Root Lifecycle Boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">OrderAggregate</code> &amp; <code class="text-purple-300">AuditableMixin</code></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Class Relationships -->
+        <section id="relationship-taxonomy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Class Relationship Taxonomy</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In object-oriented modeling, junior developers often default to inheritance whenever two concepts appear related. This introduces severe coupling. Senior architects classify connections into three distinct structural relationships based on <strong>coupling intensity</strong> and <strong>lifecycle co-dependence</strong>:
+            </p>
+
+            <!-- UML Relationships Visual Matrix (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Class Architecture &bull; Structural Topologies</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing object coupling, lifecycle bindings, and delegation paths</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-6">
+                    <!-- 1. Association: "Knows-a" -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-300 font-bold text-sm">1. Association</span>
+                            <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-bold border border-slate-700">"Knows-a"</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">OrderService</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Workflow Coordinator</span>
+                            </div>
+                            
+                            <!-- Connector: Dotted Line / Arrow (Association) -->
+                            <div class="flex flex-col items-center text-slate-500 py-1">
+                                <div class="w-0.5 h-6 border-l-2 border-dashed border-slate-500"></div>
+                                <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-slate-500"></div>
+                                <span class="text-[10px] text-slate-400 font-sans mt-1">invokes via parameter</span>
+                            </div>
+
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">EmailNotifier</span>
+                                <span class="text-[10px] text-slate-400 font-sans">External Service</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed pt-2">
+                            <strong>Weakest Coupling:</strong> One object briefly interacts with another, typically by receiving it as a method parameter. Neither object owns the other.
+                        </p>
+                    </div>
+
+                    <!-- 2. Aggregation: "Has-a" -->
+                    <div class="p-5 bg-slate-950 border border-sky-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">2. Aggregation</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-300 px-2 py-0.5 rounded font-bold border border-sky-800">"Has-a"</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="p-3 bg-slate-900 border border-sky-700/60 rounded-xl text-center">
+                                <span class="text-sky-300 font-bold block text-sm">OrderAggregate</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Context Container</span>
+                            </div>
+                            
+                            <!-- Connector: Hollow Diamond (Aggregation) -->
+                            <div class="flex flex-col items-center text-sky-400 py-1">
+                                <div class="w-3 h-3 bg-slate-950 border-2 border-sky-400 rotate-45"></div>
+                                <div class="w-0.5 h-6 bg-sky-500/80"></div>
+                                <span class="text-[10px] text-slate-400 font-sans">references pointer</span>
+                            </div>
+
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">Customer</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Independent Lifecycle</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed pt-2">
+                            <strong>Independent Lifecycle:</strong> The <code class="text-sky-300">OrderAggregate</code> references a <code class="text-slate-300">Customer</code>. If the order is deleted or cancelled, the <code class="text-slate-300">Customer</code> continues to exist in the database!
+                        </p>
+                    </div>
+
+                    <!-- 3. Composition: "Contains-a" -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">3. Composition</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">"Part-of"</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="p-3 bg-slate-900 border border-emerald-700/60 rounded-xl text-center">
+                                <span class="text-emerald-300 font-bold block text-sm">OrderAggregate</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Aggregate Root Owner</span>
+                            </div>
+                            
+                            <!-- Connector: Solid Diamond (Composition) -->
+                            <div class="flex flex-col items-center text-emerald-400 py-1">
+                                <div class="w-3 h-3 bg-emerald-400 rotate-45 border border-slate-950"></div>
+                                <div class="w-0.5 h-6 bg-emerald-500/80"></div>
+                                <span class="text-[10px] text-slate-400 font-sans">owns lifecycle</span>
+                            </div>
+
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">OrderLine</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Co-Dependent Entity</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[11px] text-slate-400 font-sans leading-relaxed pt-2">
+                            <strong>Co-Dependent Lifecycle:</strong> An <code class="text-slate-300">OrderLine</code> cannot exist without its parent <code class="text-emerald-300">OrderAggregate</code>. If the parent order is deleted, all contained lines are deleted with it!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Why "Composition Over Inheritance" is an Engineering Law -->
+        <section id="composition-over-inheritance" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architecture Invariant: Why "Composition Over Inheritance" is Law</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Inheritance is the tightest form of coupling available in object-oriented programming. Subclasses inherit all private implementation quirks, memory layout choices, and internal bugs of their ancestors. In large enterprise systems, deep inheritance hierarchies inevitably run into two famous failure modes:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- The Fragile Base Class Problem -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-rose-900 text-sm block">1. The Fragile Base Class Problem</span>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        A base class modifies an internal private method or changes how an attribute is calculated. Unbeknownst to the maintainer, a subclass four levels down in a distant module had overridden a helper method that the base class now relies on.
+                    </p>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        The entire downstream application breaks silently or crashes at runtime. <strong>Base classes cannot easily be modified without risking cascading regressions across every subclass in the codebase.</strong>
+                    </p>
+                </div>
+
+                <!-- The Gorilla / Banana Problem -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-rose-900 text-sm block">2. The Gorilla-Banana Problem</span>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Coined by Erlang creator Joe Armstrong:
+                    </p>
+                    <blockquote class="italic text-rose-900 text-xs border-l-2 border-rose-300 pl-3">
+                        "The problem with object-oriented languages is they’ve got all this implicit environment that they carry around with them. You wanted a banana, but what you got was a gorilla holding the banana and the entire jungle."
+                    </blockquote>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        Subclassing a class to reuse a single 10-line calculation method forces you to inherit its database connections, thread pools, file descriptors, and bloated state.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dynamic Delegation with __getattr__ -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-xs">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">Design Pattern</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">Delegation &amp; Dynamic Forwarding with __getattr__</h3>
+                <p class="text-slate-600 leading-relaxed">
+                    Instead of inheriting from a class to gain its methods, encapsulate an instance of it inside your class and <strong>delegate</strong> calls to it. While explicit delegation (<code class="font-mono text-slate-800">def method(self): return self._inner.method()</code>) is standard, Python enables transparent dynamic delegation via the <code class="font-mono text-purple-700 font-bold">__getattr__</code> fallback hook:
+                </p>
+                <pre class="bg-slate-900 text-purple-300 p-4 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditLoggingProxy</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, target_service: Any) -> <span class="text-rose-400">None</span>:
+        self._target = target_service  <span class="text-slate-500"># Encapsulated instance (Composition)</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getattr__</span>(self, name: str) -> Any:
+        <span class="text-slate-500"># Intercept attribute access only if not found on proxy:</span>
+        attr = getattr(self._target, name)
+        <span class="text-purple-400">if</span> callable(attr):
+            <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">logged_wrapper</span>(*args, **kwargs):
+                print(f<span class="text-amber-300">"AUDIT: Invoking {name} on {self._target.__class__.__name__}"</span>)
+                <span class="text-purple-400">return</span> attr(*args, **kwargs)
+            <span class="text-purple-400">return</span> logged_wrapper
+        <span class="text-purple-400">return</span> attr</pre>
+            </div>
+        </section>
+
+        <!-- 3. Mixin Architecture & Clean Cooperative Design -->
+        <section id="mixin-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Clean Mixin Architecture: Behavioral Extension Without Coupling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If inheritance is so dangerous, why does Python support multiple inheritance? The answer is <strong>Mixins</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                A <strong>Mixin</strong> is a specialized, lightweight class designed strictly to provide reusable behavioral methods across unrelated class hierarchies without representing an independent domain entity.
+            </p>
+
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <span class="text-emerald-400 font-bold block text-sm uppercase tracking-wider">// The 4 Non-Negotiable Rules of Production Mixins</span>
+                <div class="grid md:grid-cols-2 gap-4 text-[11px] font-sans text-slate-300">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <strong class="text-sky-300 font-mono block">1. Must Be Strictly Stateless</strong>
+                        <p class="text-slate-400 text-[10px] leading-relaxed">
+                            A mixin should <strong>never define an <code class="font-mono text-slate-300">__init__</code> that allocates new instance attributes</strong>. Introducing state variables inside a mixin risks colliding with host class variables!
+                        </p>
+                    </div>
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <strong class="text-sky-300 font-mono block">2. Never Instantiated Standalone</strong>
+                        <p class="text-slate-400 text-[10px] leading-relaxed">
+                            A mixin has no standalone business meaning. You should never write <code class="font-mono text-slate-300">m = AuditableMixin()</code>. It exists exclusively to be mixed into concrete classes.
+                        </p>
+                    </div>
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <strong class="text-sky-300 font-mono block">3. Standard Naming Convention</strong>
+                        <p class="text-slate-400 text-[10px] leading-relaxed">
+                            Always suffix the class name with <code class="font-mono text-emerald-300 font-bold">Mixin</code> (e.g. <code class="font-mono text-slate-300">AuditableMixin</code>, <code class="font-mono text-slate-300">JSONSerializableMixin</code>) to communicate architectural intent to other developers.
+                        </p>
+                    </div>
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <strong class="text-sky-300 font-mono block">4. Cooperative Delegation</strong>
+                        <p class="text-slate-400 text-[10px] leading-relaxed">
+                            If a mixin must participate in lifecycle hooks, it must use <code class="font-mono text-purple-300 font-bold">super().__init__(**kwargs)</code> with <code class="font-mono text-slate-300">**kwargs</code> propagation to avoid breaking the MRO chain (detailed in Chapter 09).
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Architectural Decision Matrix -->
+        <section id="architectural-decision-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architectural Decision Matrix: Choosing the Right Relationship</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When connecting classes, evaluate your requirements against this production decision matrix:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Pattern</th>
+                                <th class="py-2 px-2 font-bold font-sans">Coupling Degree</th>
+                                <th class="py-2 px-2 font-bold font-sans">Lifecycle Dependence</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Choose</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-emerald-700">Composition</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">High (Internal)</td>
+                                <td class="py-3 px-2 font-bold text-emerald-700">Strictly Co-Dependent</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    DDD Aggregate Roots owning child entities (Order &rarr; LineItems). Child has no meaning without the parent.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-sky-700">Aggregation</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Medium (Reference)</td>
+                                <td class="py-3 px-2 font-bold text-sky-700">Independent</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Container referencing external entities (Order &rarr; Customer, Department &rarr; Employees).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">Mixin</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Low (Behavioral)</td>
+                                <td class="py-3 px-2 font-bold text-slate-500">Stateless Hook</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Reusing pure cross-cutting behavioral methods (audit logging, JSON serialization, diagnostic dumps) across unrelated types.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-amber-700">Delegation Proxy</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Low (Encapsulated)</td>
+                                <td class="py-3 px-2 font-bold text-slate-500">Independent Wrapper</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Wrapping third-party services, transparent caching, access control, and dynamic protocol routing via <code class="font-mono">__getattr__</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-rose-700">Subclass Inheritance</td>
+                                <td class="py-3 px-2 font-sans text-rose-600 font-bold">Extreme (Tightest)</td>
+                                <td class="py-3 px-2 font-bold text-rose-700">Tightly Bound</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    <strong>Strictly for Liskov-compliant subtype polymorphism or framework base classes</strong> (e.g. <code class="font-mono">BaseEntity</code>, <code class="font-mono">MutableSequence</code>). Avoid for simple code reuse!
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 08 -->
+        <section id="entityforge-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 08: Aggregate Roots &amp; Composition Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 08 of <strong>EntityForge</strong>: implementing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/aggregate.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">AuditableMixin</code>: A clean, stateless mixin adding timestamped audit event tracking without polluting host state.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">OrderLine</code>: An encapsulated child entity governed strictly by composition.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">OrderAggregate</code>: A DDD Aggregate Root combining composition (owning <code class="font-mono text-slate-800">OrderLine</code> children), aggregation (referencing an independent <code class="font-mono text-slate-800">Customer</code> entity), and behavioral extension via <code class="font-mono text-slate-800">AuditableMixin</code>.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">DelegatedRepositoryProxy</code>: An infrastructure wrapper using dynamic <code class="font-mono text-purple-700 font-bold">__getattr__</code> delegation to forward queries while intercepting execution for telemetry metrics.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 08)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           ├── collections.py            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>│           ├── execution.py              <span class="text-slate-500"># Milestone 07: Callable Steps &amp; Reentrant Guards</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">aggregate.py</span>              <span class="text-slate-500"># Milestone 08: Aggregate Roots, Composition &amp; Mixins</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_collections.py       <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_execution.py         <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_aggregate.py</span>         <span class="text-slate-500"># Milestone 08: Composition, Delegation &amp; Mixin Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/aggregate.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Aggregate Core: <code class="text-purple-700">src/entityforge/core/aggregate.py</code></span>
+                    <span class="text-slate-400">Composition, Aggregation &amp; Mixins</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Aggregate Roots, Composition &amp; Mixins (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Optional
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity, EntityIdentity
+<span class="text-purple-400">from</span> entityforge.core.value_object <span class="text-purple-400">import</span> MonetaryAmount
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditableMixin</span>:
+    <span class="text-slate-500">"""
+    CLEAN STATELESS MIXIN:
+    Provides domain event logging behavior across unrelated classes.
+    Rule: Never defines an __init__ assigning instance attributes to prevent state collisions!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_audit_event</span>(self, event_name: str, metadata: Optional[Dict[str, Any]] = <span class="text-rose-400">None</span>) -> Dict[str, Any]:
+        <span class="text-slate-500">"""Pure behavioral method formatting a standardized audit log entry."""</span>
+        entity_id = getattr(self, <span class="text-amber-300">"id"</span>, <span class="text-amber-300">"UNKNOWN"</span>)
+        entry = {
+            <span class="text-amber-300">"entity_id"</span>: str(entity_id),
+            <span class="text-amber-300">"entity_class"</span>: self.__class__.__name__,
+            <span class="text-amber-300">"event"</span>: event_name,
+            <span class="text-amber-300">"timestamp"</span>: time.time(),
+            <span class="text-amber-300">"metadata"</span>: metadata <span class="text-purple-400">or</span> {}
+        }
+        <span class="text-purple-400">return</span> entry
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderLine</span>(BaseEntity):
+    <span class="text-slate-500">"""
+    COMPOSITION TARGET (Child Entity):
+    Holds item details and quantity. Lifecycle is strictly owned by OrderAggregate.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        entity_id: EntityIdentity,
+        product_sku: str,
+        unit_price: MonetaryAmount,
+        quantity: int
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().<span class="text-purple-400">__init__</span>(entity_id=entity_id)
+        <span class="text-purple-400">if</span> quantity &lt;= 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Quantity must be strictly positive."</span>)
+        self.product_sku = product_sku
+        self.unit_price = unit_price
+        self.quantity = quantity
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">total_price</span>(self) -> MonetaryAmount:
+        <span class="text-slate-500">"""Calculates total line cost: unit_price * quantity."""</span>
+        line_total = self.unit_price.amount * Decimal(self.quantity)
+        <span class="text-purple-400">return</span> MonetaryAmount(amount=line_total, currency=self.unit_price.currency)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Customer</span>(BaseEntity):
+    <span class="text-slate-500">"""
+    AGGREGATION TARGET (Independent Entity):
+    Exists completely independently of any specific order.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, entity_id: EntityIdentity, email: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().<span class="text-purple-400">__init__</span>(entity_id=entity_id, email=email)
+        self.email = email
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">OrderAggregate</span>(BaseEntity, AuditableMixin):
+    <span class="text-slate-500">"""
+    DDD AGGREGATE ROOT:
+    1. Composition: Owns the lifecycle of internal OrderLine entities (_lines).
+    2. Aggregation: References an external Customer entity (_customer).
+    3. Behavioral Extension: Mixes in AuditableMixin for audit generation.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        entity_id: EntityIdentity,
+        customer: Customer,
+        currency: str = <span class="text-amber-300">"USD"</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().<span class="text-purple-400">__init__</span>(entity_id=entity_id)
+        <span class="text-slate-500"># AGGREGATION: References existing external customer</span>
+        self._customer: Customer = customer
+        self._currency: str = currency
+        <span class="text-slate-500"># COMPOSITION: Private child entity list owned exclusively by this root</span>
+        self._lines: List[OrderLine] = []
+        self._is_cancelled: bool = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">customer</span>(self) -> Customer:
+        <span class="text-slate-500">"""Returns the aggregated customer reference."""</span>
+        <span class="text-purple-400">return</span> self._customer
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">lines</span>(self) -> List[OrderLine]:
+        <span class="text-slate-500">"""DEFENSIVE COPY: Prevents external callers from mutating _lines directly!"""</span>
+        <span class="text-purple-400">return</span> self._lines.copy()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_line</span>(self, product_sku: str, unit_price: MonetaryAmount, quantity: int) -> OrderLine:
+        <span class="text-slate-500">"""
+        COMPOSITION INVARIANT:
+        The Aggregate Root alone controls the instantiation and attachment of child entities.
+        """</span>
+        <span class="text-purple-400">if</span> self._is_cancelled:
+            <span class="text-purple-400">raise</span> RuntimeError(<span class="text-amber-300">"Cannot add items to a cancelled order."</span>)
+        <span class="text-purple-400">if</span> unit_price.currency != self._currency:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Price currency '{unit_price.currency}' does not match order currency '{self._currency}'"</span>)
+
+        line_id = EntityIdentity.generate()
+        new_line = OrderLine(entity_id=line_id, product_sku=product_sku, unit_price=unit_price, quantity=quantity)
+        self._lines.append(new_line)
+        <span class="text-purple-400">return</span> new_line
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">calculate_grand_total</span>(self) -> MonetaryAmount:
+        <span class="text-slate-500">"""Calculates sum across all composed line items."""</span>
+        total = MonetaryAmount(amount=0, currency=self._currency)
+        <span class="text-purple-400">for</span> line <span class="text-purple-400">in</span> self._lines:
+            total = total.add(line.total_price)
+        <span class="text-purple-400">return</span> total
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">cancel_order</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        LIFECYCLE CASCADE:
+        Cancelling the aggregate destroys/clears composed child line items.
+        Notice that the aggregated Customer remains completely unharmed!
+        """</span>
+        self._is_cancelled = <span class="text-rose-400">True</span>
+        self._lines.clear()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DelegatedRepositoryProxy</span>:
+    <span class="text-slate-500">"""
+    DYNAMIC FORWARDING PROXY:
+    Encapsulates an underlying repository instance via composition.
+    Uses __getattr__ to dynamically delegate calls while auditing execution latency.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, repository: Any) -> <span class="text-rose-400">None</span>:
+        self._repo = repository
+        self.forwarded_call_count: int = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getattr__</span>(self, name: str) -> Any:
+        <span class="text-slate-500">"""Dynamically intercepts and forwards missing methods to the internal repo."""</span>
+        target_attr = getattr(self._repo, name)
+        <span class="text-purple-400">if</span> callable(target_attr):
+            <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">proxy_wrapper</span>(*args: Any, **kwargs: Any) -> Any:
+                self.forwarded_call_count += 1
+                <span class="text-purple-400">return</span> target_attr(*args, **kwargs)
+            <span class="text-purple-400">return</span> proxy_wrapper
+        <span class="text-purple-400">return</span> target_attr</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_aggregate.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_aggregate.py</code></span>
+                    <span class="text-slate-400">Composition, Lifecycle &amp; Delegation Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Composition, Aggregation &amp; Mixins Verification (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> EntityIdentity
+<span class="text-purple-400">from</span> entityforge.core.value_object <span class="text-purple-400">import</span> MonetaryAmount
+<span class="text-purple-400">from</span> entityforge.core.aggregate <span class="text-purple-400">import</span> (
+    Customer,
+    OrderAggregate,
+    DelegatedRepositoryProxy,
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FakeDatabaseRepository</span>:
+    <span class="text-slate-500">"""Mock storage class used to test dynamic __getattr__ delegation."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save_aggregate</span>(self, agg_id: str) -> str:
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"SAVED_{agg_id}"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">ping</span>(self) -> bool:
+        <span class="text-purple-400">return True</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestClassRelationshipsAndComposition</span>:
+    <span class="text-slate-500">"""Unit tests asserting composition lifecycle cascading, aggregation, and delegation."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_composition_lifecycle_cascades_on_order_cancel</span>(self):
+        # 1. Aggregation: Customer has independent existence
+        cust_id = EntityIdentity.generate()
+        customer = Customer(entity_id=cust_id, email=<span class="text-amber-300">"alice@example.com"</span>)
+
+        # 2. Composition: OrderAggregate owns internal OrderLines
+        order_id = EntityIdentity.generate()
+        order = OrderAggregate(entity_id=order_id, customer=customer, currency=<span class="text-amber-300">"USD"</span>)
+
+        order.add_line(<span class="text-amber-300">"SKU-PYTHON-BOOK"</span>, MonetaryAmount(50.00, <span class="text-amber-300">"USD"</span>), quantity=2)
+        order.add_line(<span class="text-amber-300">"SKU-STICKER-PACK"</span>, MonetaryAmount(10.00, <span class="text-amber-300">"USD"</span>), quantity=5)
+
+        assert len(order.lines) == 2
+        assert order.calculate_grand_total() == MonetaryAmount(150.00, <span class="text-amber-300">"USD"</span>)
+
+        # 3. Cancel order: Composed lines are destroyed/cleared
+        order.cancel_order()
+        assert len(order.lines) == 0
+
+        # 4. AGGREGATION INVARIANT:
+        # The aggregated Customer remains completely intact and unaffected by order cancellation!
+        assert customer.email == <span class="text-amber-300">"alice@example.com"</span>
+        assert customer.id == cust_id
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_defensive_copy_protects_composition_encapsulation</span>(self):
+        customer = Customer(entity_id=EntityIdentity.generate(), email=<span class="text-amber-300">"bob@test.io"</span>)
+        order = OrderAggregate(entity_id=EntityIdentity.generate(), customer=customer)
+        order.add_line(<span class="text-amber-300">"SKU-A"</span>, MonetaryAmount(10.00, <span class="text-amber-300">"USD"</span>), 1)
+
+        # External caller attempts to mutate internal lines via returned list
+        leaked_lines = order.lines
+        leaked_lines.clear()  # Mutates the returned copy!
+
+        # Aggregate Root encapsulation holds firm!
+        assert len(order.lines) == 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_stateless_mixin_behavior_injection</span>(self):
+        customer = Customer(entity_id=EntityIdentity.generate(), email=<span class="text-amber-300">"charlie@test.io"</span>)
+        order = OrderAggregate(entity_id=EntityIdentity.generate(), customer=customer)
+
+        # AuditableMixin method available directly on OrderAggregate
+        audit = order.record_audit_event(<span class="text-amber-300">"ORDER_PLACED"</span>, metadata={<span class="text-amber-300">"ip"</span>: <span class="text-amber-300">"127.0.0.1"</span>})
+
+        assert audit[<span class="text-amber-300">"entity_class"</span>] == <span class="text-amber-300">"OrderAggregate"</span>
+        assert audit[<span class="text-amber-300">"event"</span>] == <span class="text-amber-300">"ORDER_PLACED"</span>
+        assert audit[<span class="text-amber-300">"metadata"</span>][<span class="text-amber-300">"ip"</span>] == <span class="text-amber-300">"127.0.0.1"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dynamic_delegation_proxy_forwarding</span>(self):
+        fake_db = FakeDatabaseRepository()
+        proxy = DelegatedRepositoryProxy(repository=fake_db)
+        assert proxy.forwarded_call_count == 0
+
+        # Method call forwarded dynamically via __getattr__
+        result = proxy.save_aggregate(<span class="text-amber-300">"AGG-101"</span>)
+        assert result == <span class="text-amber-300">"SAVED_AGG-101"</span>
+        assert proxy.forwarded_call_count == 1
+
+        assert proxy.ping() is <span class="text-rose-400">True</span>
+        assert proxy.forwarded_call_count == 2</pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>State Pollution in Mixins</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Defining an <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__init__</code> inside a mixin that assigns <code class="font-mono text-rose-900 font-bold">self.data = []</code> or <code class="font-mono text-rose-900 font-bold">self.status = "INIT"</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes bugs:</strong> If the host class (or another mixin) also uses the common attribute name <code class="font-mono">self.data</code>, the mixin silently overwrites the domain model's data during initialization! Mixins must remain <strong>strictly stateless behavioral extensions</strong>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Leaking Internal Composed References</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">@property def lines(self): return self._lines</code> returning the live internal list.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks encapsulation:</strong> Returning the direct reference to an internal composed collection allows external callers to bypass aggregate root validation rules by running <code class="font-mono">order.lines.append(invalid_item)</code> directly. Always return a <strong>defensive shallow copy</strong>: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">return self._lines.copy()</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "God Class" Deep Inheritance Hierarchy</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Constructing trees like: <code class="font-mono text-rose-900 font-bold">Order &rarr; Entity &rarr; Model &rarr; DatabaseRecord &rarr; Serializable &rarr; Object</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes architectural gridlock:</strong> Deep inheritance trees ($> 3$ levels) couple domain models tightly to database drivers, serialization protocols, and validation frameworks. If one base class changes its method signatures, distant subclasses shatter. Refactor to composition: an <code class="font-mono">Order</code> <em>has a</em> repository, it is not a database record.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Unconditional Delegation Loops in __getattr__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __getattr__(self, name): return getattr(self._target, name)</code> when <code class="font-mono text-rose-900">self._target</code> was never initialized.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this triggers infinite recursion:</strong> If an exception occurs before <code class="font-mono">self._target</code> is assigned in <code class="font-mono">__init__</code>, evaluating <code class="font-mono">self._target</code> inside <code class="font-mono">__getattr__</code> calls <code class="font-mono">__getattr__</code> again to find <code class="font-mono">_target</code>, looping infinitely until Python crashes!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the aggregate relationships unit test battery and inspect composition lifecycles:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge aggregate and composition unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_aggregate.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.06s. Confirms composition lifecycle cascading, aggregation preservation, mixin injection, and dynamic delegation.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 08:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweight pooling, slotted state, diagnostic renderers, value objects, observable sequences, execution guards, and aggregate roots with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect Mixin Method Resolution Order (MRO) in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from entityforge.core.aggregate import OrderAggregate; print('OrderAggregate MRO:'); [print(' -', cls.__name__) for cls in OrderAggregate.__mro__]"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that OrderAggregate linearly integrates AuditableMixin, BaseEntity, DiagnosticRendererMixin, and object!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 09 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Advanced Inheritance &amp; C3 Linearization - Cooperative Multiple Inheritance &amp; super() Mechanics</h4>
+                <p class="text-xs text-slate-500 font-sans">Deep dive into CPython multiple inheritance: How the C3 Linearization algorithm prevents inheritance cycles, the mechanics of cooperative super() chains, and building a dynamic plugin pipeline.</p>
+            </div>
+            <a href="Chapter 09 - Advanced Inheritance and C3 Linearization - Cooperative Multiple Inheritance and super() Mechanics.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 09 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

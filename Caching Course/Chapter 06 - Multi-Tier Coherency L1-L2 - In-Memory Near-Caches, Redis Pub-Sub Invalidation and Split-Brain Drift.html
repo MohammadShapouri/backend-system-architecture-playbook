@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Multi-Tier Coherency (L1/L2): In-Memory Near-Caches, Redis Pub/Sub Invalidation &amp; Split-Brain Drift</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Caching &amp; Edge Acceleration Series &bull; Senior Engineering Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">CacheForge (Milestone 06 - L1/L2 Multi-Tier Coherency &amp; Invalidation Bus)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Distributed Consistency &amp; Near-Caches
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Multi-Tier Coherency (L1/L2): In-Memory Near-Caches, Redis Pub/Sub Invalidation &amp; Split-Brain Drift
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Reconciling sub-microsecond local access with cluster-wide consistency: Pairing in-process RAM near-caches (L1) with centralized distributed clusters (L2), engineering a real-time invalidation bus over Redis Pub/Sub, evaluating Redis 6+ RESP3 Client-Side Tracking, bounding split-brain divergence under network partitions, and building the multi-tier coherency fabric of <strong>CacheForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">CacheForge Milestone 06: Multi-Tier Coherency Fabric</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 and 02, we built lightning-fast in-process memory stores (ARC, lock-striped LRU) executing in under <strong>500 nanoseconds</strong>. In Chapters 03 through 05, we scaled horizontally across distributed Redis nodes and eliminated cache stampedes. However, relying exclusively on remote Redis for every query introduces network serialization latency (0.8ms &ndash; 2.5ms per read). In Milestone 06, we combine both worlds into a **hierarchical L1/L2 topology**: ultra-fast local RAM (L1) backed by distributed Redis (L2). We confront the ultimate distributed caching dilemma—<strong>Cache Coherency</strong>—engineering an asynchronous **Redis Pub/Sub Invalidation Bus** that purges stale L1 near-caches across all cluster pods within 1 millisecond of a write mutation.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hierarchical L1 Near-Cache + L2 Remote Topology</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The In-Process Coherency Divergence Hazard</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pub/Sub Invalidation Bus vs. RESP3 Tracking</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Network Partitioning &amp; Bounded Staleness (Safety TTL)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Unified MultiTierCacheManager Implementation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Real-Time Cross-Replica Invalidation Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Hierarchical L1/L2 Topologies -->
+        <section id="cs-l1-l2-topology" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Multi-Tier Latency &amp; Throughput Mandate</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When an API gateway or microservice scales to <strong>100,000 requests per second</strong> across 50 Kubernetes pods, relying entirely on a centralized Redis cluster becomes a bottleneck.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Even with connection pooling and pipelining, 100k RPS against Redis saturates network switches, exhausts Linux socket file descriptors, and introduces a minimum round-trip penalty of <strong>1.0ms to 2.5ms</strong> per query. If a request controller queries 10 cached entities sequentially, network latency alone inflates endpoint response time by <strong>25ms</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The solution adopted by high-throughput tech giants (Meta, Netflix, Stripe) is **Hierarchical Multi-Tier Caching (Near-Caching)**:
+            </p>
+
+            <!-- L1/L2 Hierarchy Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Hierarchical L1/L2 Data Access Cascade</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Traversing from CPU Cache lines to Persistent Storage</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Layer 1: L1 Local -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">Tier 1: L1 Near-Cache</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">In-Process RAM (Striped LRU / ARC)</div>
+                        <div class="text-[10px] bg-slate-950 p-1.5 rounded text-emerald-400 font-bold">
+                            0.0005ms &bull; 0 Socket IO
+                        </div>
+                        <p class="text-[9px] text-slate-400 font-sans">Absorbs 85&ndash;90% of all lookups</p>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; on L1 miss &rarr;</div>
+
+                    <!-- Layer 2: L2 Remote -->
+                    <div class="p-4 bg-sky-950/60 border border-sky-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">Tier 2: L2 Remote Cache</span>
+                        <div class="text-[10px] text-sky-200 font-sans">Centralized Redis / Dragonfly</div>
+                        <div class="text-[10px] bg-slate-950 p-1.5 rounded text-sky-300 font-bold">
+                            1.0ms &ndash; 2.0ms &bull; Network Hop
+                        </div>
+                        <p class="text-[9px] text-slate-400 font-sans">Shared state across all pods</p>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; on L2 miss &rarr;</div>
+
+                    <!-- Layer 3: Database -->
+                    <div class="p-4 bg-rose-950/60 border border-rose-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-rose-400 font-bold block text-sm">Tier 3: Database (SoR)</span>
+                        <div class="text-[10px] text-rose-200 font-sans">PostgreSQL / MongoDB</div>
+                        <div class="text-[10px] bg-slate-950 p-1.5 rounded text-rose-300 font-bold">
+                            15ms &ndash; 100ms &bull; Disk Read
+                        </div>
+                        <p class="text-[9px] text-slate-400 font-sans">System of Record authoritative store</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Mathematical Throughput Advantage:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Assume a service handles 100,000 queries per second. With L2 alone, all 100,000 queries hit Redis over the network. With an L1 Near-Cache achieving an 85% hit ratio, <strong>85,000 queries are resolved entirely inside Python process memory in &lt; 1 microsecond</strong> with zero network overhead. Redis traffic drops from 100,000 to 15,000 RPS, protecting network interfaces and eliminating Redis CPU saturation.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Coherency Dilemma & Invalidation Topologies -->
+        <section id="coherency-dilemma" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Coherency Dilemma: Split-Brain In-Memory Drift Across Replicas</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                While multi-tier caching delivers phenomenal read velocity, it introduces one of the most treacherous consistency bugs in distributed systems: <strong>L1 Cache Desynchronization</strong>.
+            </p>
+
+            <!-- Split-Brain Drift Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Multi-Replica L1 Cache Drift Bug
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <!-- Pod A -->
+                    <div class="p-3 bg-slate-950 border border-sky-500 rounded-xl space-y-1.5">
+                        <span class="text-sky-300 font-bold block">Pod A (Worker 1)</span>
+                        <div class="text-[10px] text-slate-300">T=0s: Handles <code class="text-amber-300">POST /user/update</code></div>
+                        <div class="text-[10px] text-emerald-400">1. Updates PostgreSQL: name="Bob"</div>
+                        <div class="text-[10px] text-emerald-400">2. Deletes from Redis L2: key="user:42"</div>
+                        <div class="text-[10px] text-emerald-400">3. Evicts from local L1: key="user:42"</div>
+                    </div>
+
+                    <!-- Redis State -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                        <span class="text-purple-300 font-bold block">Centralized L2 Redis</span>
+                        <div class="text-[10px] text-slate-400">Key "user:42" evicted!</div>
+                        <div class="text-[10px] text-slate-400">State: Fresh in DB ("Bob")</div>
+                        <div class="text-[10px] text-slate-400">Next read will fetch "Bob"</div>
+                    </div>
+
+                    <!-- Pod B -->
+                    <div class="p-3 bg-rose-950/60 border border-rose-600 rounded-xl space-y-1.5">
+                        <span class="text-rose-300 font-bold block">Pod B (Worker 2)</span>
+                        <div class="text-[10px] text-slate-300">T=1s: Handles <code class="text-amber-300">GET /user/profile</code></div>
+                        <div class="text-[10px] text-rose-300">Reads local L1 RAM...</div>
+                        <div class="text-[10px] text-rose-400 font-bold">L1 HIT! name="Alice" (STALE!)</div>
+                        <div class="text-[10px] text-rose-400 font-bold">&cross; Serves stale data for 10 minutes!</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-rose-400 font-mono">&#9888; Why Standard Cache-Aside Fails for L1:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Because Pod A has no direct memory access to Pod B's process RAM, Pod B has no idea that the underlying entity was mutated. If a user updates their profile and refreshes the browser, and the load balancer routes request 1 to Pod A and request 2 to Pod B, the user sees their old name reappear!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Invalidation Topologies Comparison -->
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Redis Pub/Sub Bus -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">1. Redis Pub/Sub Invalidation Bus</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Recommended Standard</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Whenever any pod mutates or invalidates an entity, it publishes a lightweight event to a dedicated Redis channel: <code class="font-mono text-slate-800">PUBLISH cf:invalidate "user:42"</code>.
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Sub-Millisecond Eviction:</strong> All running application pods listen on a background asynchronous subscriber task and purge the key from their local L1 in under 1ms.</li>
+                        <li><strong>Zero Payload Bloat:</strong> The bus transmits only the <em>key string</em>, not the payload. Pods evict lazily, preventing broadcast memory storms.</li>
+                    </ul>
+                </div>
+
+                <!-- RESP3 Client Tracking -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">2. RESP3 Client-Side Tracking</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Redis 6+ Native</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Leverages native RESP3 protocol push messages (<code class="font-mono text-slate-800">CLIENT TRACKING on</code>). Redis internally remembers which connection read which key and sends push notifications upon key modification.
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Server Memory Overhead:</strong> Redis must store client tracking tables in RAM. If 1,000 clients track 500,000 keys, Redis server memory balloons significantly.</li>
+                        <li><strong>Driver Complexity:</strong> Requires full RESP3 push-mode support in the client driver. Pub/Sub remains more transparent and debuggable for most web services.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Handling Network Partitions: The Safety TTL Invariant -->
+        <section id="safety-ttl-partition" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Fault Tolerance: Bounding Inconsistency Drift Under Network Partitions</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In distributed systems engineering, one must assume the network will fail. What happens if a network switch blips, and Pod B loses its connection to Redis for 500 milliseconds?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Because Redis Pub/Sub operates on <strong>at-most-once delivery (fire-and-forget)</strong>, messages published while Pod B is disconnected are permanently lost. If an invalidation event for <code class="font-mono text-xs">user:42</code> is missed during that 500ms blip, Pod B will never receive the eviction instruction.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To guarantee system safety, CacheForge enforces the <strong>Dual-Control Invalidation Protocol</strong>:
+            </p>
+
+            <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-3 border border-slate-800">
+                <div class="text-emerald-400 font-bold text-center uppercase tracking-widest text-[11px]">
+                    The Dual-Control Invalidation Invariant: Pub/Sub Eviction + L1 Safety TTL
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center text-sm font-bold text-sky-300">
+                    \text{L1 Maximum Drift Bound} \le \min(\text{Pub/Sub Latency}, \text{L1 Safety TTL})
+                </div>
+                <div class="text-[11px] text-slate-400 font-sans leading-relaxed text-center max-w-2xl mx-auto">
+                    While the centralized L2 Redis cache might carry a TTL of <strong>1 hour (3,600s)</strong>, entries placed into local in-process L1 RAM are constrained by an absolute <strong>Safety TTL of 15 to 30 seconds</strong>. Under normal operations, Pub/Sub invalidates keys in &lt; 1ms. If a network partition severs Pub/Sub, the maximum possible drift on any pod is mathematically capped at 30 seconds before the entry automatically self-expires!
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: CacheForge Milestone 06 -->
+        <section id="cacheforge-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">CacheForge Milestone 06: Multi-Tier Coherency Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 06 for <strong>CacheForge</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/coherency/invalidation_bus.py</code>: an asynchronous Redis Pub/Sub publisher and background listener that broadcasts and processes key evictions.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/coherency/multitier.py</code>: the <code class="font-mono text-purple-700 font-bold">MultiTierCacheManager</code> orchestrating L1 (local in-memory LRU) and L2 (remote Redis) lookups with safety TTL boundaries.</li>
+                <li>We write an integration test suite in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_multitier.py</code> simulating multiple application nodes and verifying cross-replica sub-millisecond local eviction.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated CacheForge Hierarchy (Milestone 06)</div>
+                <div>cacheforge/</div>
+                <div>├── src/</div>
+                <div>│   └── cacheforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── serialization/</div>
+                <div>│       ├── storage/</div>
+                <div>│       ├── patterns/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">coherency/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">invalidation_bus.py</span>     <span class="text-slate-500"># Milestone 06: Redis Pub/Sub Eviction Engine</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">multitier.py</span>            <span class="text-slate-500"># Milestone 06: L1/L2 Hierarchical Orchestrator</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── integration/</div>
+                <div>        ├── test_serialization_driver.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_multitier.py</span>           <span class="text-slate-500"># Milestone 06: Multi-Node Coherency Battery</span></div>
+            </div>
+
+            <!-- File 1: src/cacheforge/coherency/invalidation_bus.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Redis Pub/Sub Invalidation Bus: <code class="text-purple-700">src/cacheforge/coherency/invalidation_bus.py</code></span>
+                    <span class="text-slate-400">Real-Time Cluster Eviction Broadcast</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Coherency - Redis Pub/Sub Invalidation Bus (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable, Optional
+<span class="text-purple-400">import</span> redis.asyncio <span class="text-purple-400">as</span> aioredis
+
+logger = logging.getLogger(<span class="text-amber-300">"cacheforge.coherency"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">InvalidationBus</span>:
+    <span class="text-slate-500">"""
+    REDIS PUB/SUB INVALIDATION BUS:
+    Broadcasting key evictions across all distributed application replicas.
+    Runs a non-blocking background consumer task to invalidate local L1 RAM.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        redis_url: str,
+        channel_name: str = <span class="text-amber-300">"cf:invalidation:events"</span>,
+        local_evict_callback: Optional[Callable[[str], <span class="text-rose-400">None</span>]] = <span class="text-rose-400">None</span>
+    ):
+        self.redis_url = redis_url
+        self.channel_name = channel_name
+        self.local_evict_callback = local_evict_callback
+        self._pub_client = aioredis.from_url(redis_url, decode_responses=<span class="text-rose-400">True</span>)
+        self._sub_client: Optional[aioredis.Redis] = <span class="text-rose-400">None</span>
+        self._listen_task: Optional[asyncio.Task] = <span class="text-rose-400">None</span>
+        self._running = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">start_listener</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Initializes dedicated subscriber connection and starts background task."""</span>
+        self._sub_client = aioredis.from_url(self.redis_url, decode_responses=<span class="text-rose-400">True</span>)
+        self._running = <span class="text-rose-400">True</span>
+        self._listen_task = asyncio.create_task(self._consume_invalidations())
+        logger.info(f<span class="text-amber-300">"InvalidationBus listener active on channel '&#123;self.channel_name&#125;'"</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_consume_invalidations</span>(self) -> <span class="text-rose-400">None</span>:
+        pubsub = self._sub_client.pubsub()
+        <span class="text-purple-400">await</span> pubsub.subscribe(self.channel_name)
+
+        <span class="text-purple-400">while</span> self._running:
+            <span class="text-purple-400">try</span>:
+                message = <span class="text-purple-400">await</span> pubsub.get_message(ignore_subscribe_messages=<span class="text-rose-400">True</span>, timeout=1.0)
+                <span class="text-purple-400">if</span> message <span class="text-purple-400">and</span> message[<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"message"</span>:
+                    invalidated_key = message[<span class="text-amber-300">"data"</span>]
+                    <span class="text-purple-400">if</span> self.local_evict_callback:
+                        self.local_evict_callback(invalidated_key)
+            <span class="text-purple-400">except</span> asyncio.CancelledError:
+                <span class="text-purple-400">break</span>
+            <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+                logger.error(f<span class="text-rose-400">"Error in invalidation listener loop: &#123;exc&#125;"</span>)
+                <span class="text-purple-400">await</span> asyncio.sleep(0.5)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">publish_invalidation</span>(self, key: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Broadcasts a key eviction notification across all connected cluster pods."""</span>
+        <span class="text-purple-400">await</span> self._pub_client.publish(self.channel_name, key)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">close</span>(self) -> <span class="text-rose-400">None</span>:
+        self._running = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">if</span> self._listen_task:
+            self._listen_task.cancel()
+        <span class="text-purple-400">if</span> self._sub_client:
+            <span class="text-purple-400">await</span> self._sub_client.aclose()
+        <span class="text-purple-400">await</span> self._pub_client.aclose()</pre>
+            </div>
+
+            <!-- File 2: src/cacheforge/coherency/multitier.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Hierarchical Multi-Tier Orchestrator: <code class="text-purple-700">src/cacheforge/coherency/multitier.py</code></span>
+                    <span class="text-slate-400">L1 RAM + L2 Redis + Safety TTL</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Coherency - Hierarchical Multi-Tier Cache Manager (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Optional, Awaitable
+<span class="text-purple-400">from</span> cacheforge.core.lru <span class="text-purple-400">import</span> LRUCache
+<span class="text-purple-400">from</span> cacheforge.storage.remote_client <span class="text-purple-400">import</span> RemoteCacheDriver
+<span class="text-purple-400">from</span> cacheforge.coherency.invalidation_bus <span class="text-purple-400">import</span> InvalidationBus
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MultiTierCacheManager</span>:
+    <span class="text-slate-500">"""
+    HIERARCHICAL L1/L2 CACHE MANAGER:
+    - Tier 1 (L1): In-process local RAM (Sub-microsecond read latency).
+    - Tier 2 (L2): Centralized Remote Redis (1-2ms shared cluster memory).
+    - Invalidation: Real-time broadcast via Redis Pub/Sub bus.
+    - Safety Boundary: Enforces max L1 TTL to bound split-brain drift during partitions.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        l2_driver: RemoteCacheDriver,
+        invalidation_bus: InvalidationBus,
+        l1_capacity: int = 5000,
+        l1_safety_ttl_seconds: int = 30,  <span class="text-slate-500"># Maximum staleness bound under network partition</span>
+        l2_default_ttl_seconds: int = 3600
+    ):
+        self.l2 = l2_driver
+        self.bus = invalidation_bus
+        self.l1_safety_ttl = l1_safety_ttl_seconds
+        self.l2_default_ttl = l2_default_ttl_seconds
+
+        <span class="text-slate-500"># L1 stores tuple: (value, expiration_timestamp)</span>
+        self._l1 = LRUCache(capacity=l1_capacity)
+
+        <span class="text-slate-500"># Wire invalidation callback to local L1 eviction</span>
+        self.bus.local_evict_callback = self._evict_l1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_evict_l1</span>(self, key: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Evicts key from local process RAM upon receiving bus broadcast."""</span>
+        self._l1.delete(key)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get</span>(
+        self,
+        key: str,
+        db_loader: Optional[Callable[[], Awaitable[Any]]] = <span class="text-rose-400">None</span>
+    ) -> Optional[Any]:
+        now = time.time()
+
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STAGE 1: Check L1 Local Process RAM (Sub-microsecond latency)</span>
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        l1_entry = self._l1.get(key)
+        <span class="text-purple-400">if</span> l1_entry <span class="text-purple-400">is not None</span>:
+            val, expires_at = l1_entry
+            <span class="text-purple-400">if</span> now &lt; expires_at:
+                <span class="text-purple-400">return</span> val  <span class="text-slate-500"># L1 HIT! (Zero socket round-trips)</span>
+            <span class="text-slate-500"># L1 safety TTL expired: Evict expired near-cache entry</span>
+            self._l1.delete(key)
+
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STAGE 2: Check L2 Remote Centralized Redis (1-2ms latency)</span>
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        l2_val = <span class="text-purple-400">await</span> self.l2.get(key)
+        <span class="text-purple-400">if</span> l2_val <span class="text-purple-400">is not None</span>:
+            <span class="text-slate-500"># Populate local L1 with safety TTL boundary</span>
+            self._l1.put(key, (l2_val, now + self.l1_safety_ttl))
+            <span class="text-purple-400">return</span> l2_val
+
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        <span class="text-slate-500"># STAGE 3: Total Cache Miss &rarr; Execute Database Loader</span>
+        <span class="text-slate-500"># ------------------------------------------------------------------</span>
+        <span class="text-purple-400">if</span> db_loader <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">return None</span>
+
+        db_data = <span class="text-purple-400">await</span> db_loader()
+        <span class="text-purple-400">if</span> db_data <span class="text-purple-400">is not None</span>:
+            <span class="text-slate-500"># Populate L2 with long TTL and L1 with safety TTL</span>
+            <span class="text-purple-400">await</span> self.l2.set(key, db_data, ttl_seconds=self.l2_default_ttl)
+            self._l1.put(key, (db_data, now + self.l1_safety_ttl))
+
+        <span class="text-purple-400">return</span> db_data
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">set_or_mutate</span>(
+        self,
+        key: str,
+        value: Any,
+        db_writer: Optional[Callable[[], Awaitable[None]]] = <span class="text-rose-400">None</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        COHERENT MUTATION PROTOCOL:
+        1. Write to database (System of Record).
+        2. Invalidate/Update L2 Redis cluster.
+        3. Evict local L1 RAM immediately.
+        4. Broadcast invalidation event over Pub/Sub bus to all peer pods!
+        """</span>
+        <span class="text-purple-400">if</span> db_writer:
+            <span class="text-purple-400">await</span> db_writer()
+
+        <span class="text-slate-500"># Update/Invalidate L2</span>
+        <span class="text-purple-400">await</span> self.l2.set(key, value, ttl_seconds=self.l2_default_ttl)
+
+        <span class="text-slate-500"># Evict caller's own L1</span>
+        self._l1.delete(key)
+
+        <span class="text-slate-500"># Broadcast invalidation across the cluster bus</span>
+        <span class="text-purple-400">await</span> self.bus.publish_invalidation(key)</pre>
+            </div>
+
+            <!-- File 3: tests/integration/test_multitier.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Multi-Node Coherency Battery: <code class="text-purple-700">tests/integration/test_multitier.py</code></span>
+                    <span class="text-slate-400">Simulating Multi-Pod Cluster Evictions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> testcontainers.redis <span class="text-purple-400">import</span> RedisContainer
+<span class="text-purple-400">from</span> cacheforge.storage.remote_client <span class="text-purple-400">import</span> RemoteCacheDriver
+<span class="text-purple-400">from</span> cacheforge.coherency.invalidation_bus <span class="text-purple-400">import</span> InvalidationBus
+<span class="text-purple-400">from</span> cacheforge.coherency.multitier <span class="text-purple-400">import</span> MultiTierCacheManager
+
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">redis_server</span>():
+    <span class="text-purple-400">with</span> RedisContainer(<span class="text-amber-300">"redis:7-alpine"</span>) <span class="text-purple-400">as</span> server:
+        <span class="text-purple-400">yield</span> server
+
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestMultiTierCoherency</span>:
+    <span class="text-slate-500">"""Verifies cross-pod L1 invalidation, L1 hits, and safety TTL bounds."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_l1_invalidation_bus_evicts_peer_replica_near_cache</span>(self, redis_server):
+        url = f<span class="text-amber-300">"redis://&#123;redis_server.get_container_host_ip()&#125;:&#123;redis_server.get_exposed_port(6379)&#125;/0"</span>
+
+        <span class="text-slate-500"># Simulate Pod A</span>
+        driver_a = RemoteCacheDriver(redis_url=url)
+        bus_a = InvalidationBus(redis_url=url, channel_name=<span class="text-amber-300">"test:invalidation"</span>)
+        manager_a = MultiTierCacheManager(driver_a, bus_a)
+        <span class="text-purple-400">await</span> bus_a.start_listener()
+
+        <span class="text-slate-500"># Simulate Pod B</span>
+        driver_b = RemoteCacheDriver(redis_url=url)
+        bus_b = InvalidationBus(redis_url=url, channel_name=<span class="text-amber-300">"test:invalidation"</span>)
+        manager_b = MultiTierCacheManager(driver_b, bus_b)
+        <span class="text-purple-400">await</span> bus_b.start_listener()
+
+        <span class="text-slate-500"># Step 1: Prime Pod B's cache with "Alice"</span>
+        <span class="text-purple-400">await</span> manager_b.set_or_mutate(<span class="text-amber-300">"user:100"</span>, {<span class="text-amber-300">"name"</span>: <span class="text-amber-300">"Alice"</span>})
+        cached_on_b = <span class="text-purple-400">await</span> manager_b.get(<span class="text-amber-300">"user:100"</span>)
+        assert cached_on_b[<span class="text-amber-300">"name"</span>] == <span class="text-amber-300">"Alice"</span>
+        assert <span class="text-amber-300">"user:100"</span> <span class="text-purple-400">in</span> manager_b._l1._lookup  <span class="text-slate-500"># Present in Pod B's local RAM</span>
+
+        <span class="text-slate-500"># Step 2: Pod A mutates user:100 to "Bob"</span>
+        <span class="text-purple-400">await</span> manager_a.set_or_mutate(<span class="text-amber-300">"user:100"</span>, {<span class="text-amber-300">"name"</span>: <span class="text-amber-300">"Bob"</span>})
+
+        <span class="text-slate-500"># Step 3: Allow event loop to process Pub/Sub message propagation (&lt; 20ms)</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.05)
+
+        <span class="text-slate-500"># VERIFICATION: Key MUST be evicted from Pod B's local RAM!</span>
+        assert <span class="text-amber-300">"user:100"</span> <span class="text-purple-400">not in</span> manager_b._l1._lookup
+
+        <span class="text-slate-500"># Step 4: Next read on Pod B fetches updated "Bob" from L2 Redis!</span>
+        refreshed_on_b = <span class="text-purple-400">await</span> manager_b.get(<span class="text-amber-300">"user:100"</span>)
+        assert refreshed_on_b[<span class="text-amber-300">"name"</span>] == <span class="text-amber-300">"Bob"</span>
+
+        <span class="text-slate-500"># Teardown</span>
+        <span class="text-purple-400">await</span> bus_a.close()
+        <span class="text-purple-400">await</span> bus_b.close()
+        <span class="text-purple-400">await</span> driver_a.close()
+        <span class="text-purple-400">await</span> driver_b.close()</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Infinite Local L1 TTLs (Partition Blindness)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Setting keys in local in-process L1 RAM with no expiration under the assumption that <em>"Pub/Sub will always evict it"</em>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes persistent stale data:</strong> Redis Pub/Sub offers at-most-once delivery. If an application pod restarts, experiences a GC pause, or loses network connectivity for 1 second, it misses the invalidation message. Without an automated <strong>L1 Safety TTL (15&ndash;30s)</strong>, that pod serves stale data indefinitely until the container is manually killed!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Broadcasting Full Payloads Over Pub/Sub</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Publishing the entire updated 50KB JSON document across the invalidation bus: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">PUBLISH cf:bus "{'user': 42, 'data': ...}"</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes broadcast storms:</strong> If 50 pods each publish 50KB updates at 1,000 writes/sec, Redis must broadcast $50\text{KB} \times 1,000 \times 50 = \mathbf{2.5\text{ GB/sec}}$ over the network! Furthermore, 50 pods deserialize payloads for keys their local users may never query. <strong>Always broadcast only the key string.</strong> Evict lazily on write; load on demand on read.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating CacheForge Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the multi-replica coherency integration battery and benchmark L1 vs. L2 access velocity:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the multi-replica coherency test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_multitier.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 1 passed in ~0.9s. Asserts cross-pod Pub/Sub broadcast evicts peer L1 near-caches in &lt; 50ms!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive Latency Benchmark -->
+                <div>
+                    <span class="text-slate-500"># 2. Benchmark L1 local read velocity vs L2 Redis over TCP:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import time; from cacheforge.core.lru import LRUCache; l1=LRUCache(1000); l1.put('k', 'v'); t0=time.perf_counter(); [l1.get('k') for _ in range(100000)]; dur=time.perf_counter()-t0; print(f'L1 Read Latency: {dur/100000*1e6:.2f} nanoseconds per read')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        L1 local RAM resolves lookups in ~300 nanoseconds (&gt; 3,000&times; faster than remote Redis TCP sockets).
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: HTTP Web Caching &amp; RFC 9111: ASGI Middleware, ETags, Cache-Control &amp; Conditional 304s</h4>
+                <p class="text-xs text-slate-500 font-sans">Bringing caching to the web perimeter: Pure ASGI middleware interception, Blake3 cryptographic ETags, Cache-Control directives, and short-circuiting conditional 304 Not Modified responses.</p>
+            </div>
+            <a href="Chapter 07 - HTTP Web Caching and RFC 9111 - ASGI Middleware, ETags, Cache-Control and Conditional 304s.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

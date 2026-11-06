@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 10: FastAPI Patterns, Partial Updates &amp; Microservice Scaling</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 10 - Web Patterns, Partial Updates &amp; Multi-DB Routing)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 10 &bull; Web Integration &amp; Microservice Scaling
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                FastAPI Patterns, Partial Updates &amp; Microservice Scaling
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating everyday web framework realities: Defensive <code class="font-mono text-emerald-400">PATCH</code> partial updates without field clobbering, managing dependency injection boundaries, automated Primary vs. Read-Replica query routing, multi-tenant horizontal sharding, and scaling LedgerCore across distributed clusters.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 10: Enterprise Microservice Routing</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In enterprise SaaS architectures, web endpoints cannot treat databases as a single monolithic connection. Heavy reporting queries must never compete with live financial transfers for primary database CPU cycles. In Milestone 10, we implement the definitive, zero-clobber <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">PATCH</code> partial update pattern, build an automated SQLAlchemy Database Router that directs <code class="font-mono text-purple-300">SELECT</code> queries to Read-Replicas and write mutations to Primary engines, and introduce tenant-isolated horizontal sharding.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 10 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Safe partial updates (<code class="text-purple-300">exclude_unset=True</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Distinguishing <code class="text-purple-300">None</code> vs. omitted fields</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Primary &amp; Read-Replica split routing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Replication Lag trap</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Tenant schema &amp; engine sharding</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Partial Updates (PATCH) -->
+        <section id="cs-partial-updates" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Partial Update (PATCH) Dilemma</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In RESTful architecture, HTTP specifies a strict semantic distinction between <strong>PUT</strong> (complete entity replacement) and <strong>PATCH</strong> (partial delta modification).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In web applications, developers frequently introduce severe data-corruption bugs when implementing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">PATCH</code>. A user wants to freeze an account by sending <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-mono">{"status": "frozen"}</code>. If your code naively iterates over the incoming Pydantic model without inspecting which fields were explicitly provided, all unmentioned fields (such as <code class="font-mono text-xs">balance</code> or <code class="font-mono text-xs">owner_name</code>) default to <code class="font-mono text-xs">None</code>, wiping out customer data or triggering database constraint crashes.
+            </p>
+
+            <!-- Partial Update Pipeline Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Defensive Partial Update (PATCH) Sanitization Pipeline</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Preventing Accidental Field Clobbering in Financial Models</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Client Payload -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. Client JSON Payload</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Client only sends fields to change</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300 font-mono">
+                            {"status": "frozen"}
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; exclude_unset &rarr;</div>
+
+                    <!-- Step 2: Pydantic Filter -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">2. Pydantic Filtering</span>
+                        <div class="text-[10px] text-purple-200 font-sans">exclude_unset=True</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300 font-mono">
+                            {"status": &lt;AccountStatus.FROZEN&gt;}
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; setattr() &rarr;</div>
+
+                    <!-- Step 3: Minimal SQL -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Minimal SQL UPDATE</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Only modified fields flushed!</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-300 font-mono">
+                            UPDATE SET status = 'frozen'
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Tri-State Nullability Reality:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        In enterprise API design, you must distinguish between three distinct client intentions:
+                    </p>
+                    <ul class="list-disc pl-5 text-slate-400 space-y-0.5 text-[11px]">
+                        <li><strong>Omitted Key (<code class="text-white font-mono">{}</code>):</strong> Do not touch this field; keep the current database value intact.</li>
+                        <li><strong>Explicit Value (<code class="text-white font-mono">{"status": "frozen"}</code>):</strong> Update this column to the new value.</li>
+                        <li><strong>Explicit Null (<code class="text-white font-mono">{"description": null}</code>):</strong> The client intentionally wants to erase the existing value and set the column to <code class="text-white font-mono">NULL</code> in the database.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Idiomatic FastAPI + SQLAlchemy Partial Update Pattern -->
+        <section id="idiomatic-patch" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Everyday Code: The Production-Grade PATCH Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Here is the definitive, industry-standard pattern for executing partial updates in FastAPI without clobbering untouched columns, breaking database check constraints, or causing unintended flushes:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-2">
+                <div class="text-emerald-400 font-bold">// The Canonical FastAPI + SQLAlchemy 2.0 PATCH Implementation:</div>
+                <pre>
+<span class="text-purple-400">@app.patch</span>(<span class="text-amber-300">"/api/v1/accounts/&#123;account_id&#125;"</span>, response_model=AccountResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">partial_update_account</span>(
+    account_id: int,
+    payload: AccountUpdate,
+    session: AsyncSession = Depends(get_async_db_session)
+):
+    <span class="text-slate-500"># 1. Fetch target record</span>
+    account = <span class="text-purple-400">await</span> session.scalar(select(Account).where(Account.id == account_id))
+    <span class="text-purple-400">if not</span> account:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Account not found."</span>)
+
+    <span class="text-slate-500"># 2. Extract ONLY fields explicitly sent in the HTTP request body!</span>
+    <span class="text-slate-500"># exclude_unset=True ignores default None values for omitted attributes</span>
+    update_data = payload.model_dump(<span class="text-emerald-400 font-bold">exclude_unset=True</span>)
+
+    <span class="text-slate-500"># 3. Defensive security check: Prevent empty updates</span>
+    <span class="text-purple-400">if not</span> update_data:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"No fields provided for update."</span>)
+
+    <span class="text-slate-500"># 4. Safe attribute mutation using setattr()</span>
+    <span class="text-purple-400">for</span> field_name, new_value <span class="text-purple-400">in</span> update_data.items():
+        setattr(account, field_name, new_value)
+
+    <span class="text-slate-500"># 5. Commit atomically: Unit of Work flushes only modified columns!</span>
+    <span class="text-purple-400">await</span> session.commit()
+    <span class="text-purple-400">await</span> session.refresh(account)
+    <span class="text-purple-400">return</span> account</pre>
+            </div>
+        </section>
+
+        <!-- 3. Primary / Read-Replica Database Routing -->
+        <section id="read-replicas-routing" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Microservice Scaling: Primary &amp; Read-Replica Routing</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In high-scale banking and e-commerce platforms, read queries typically outnumber write operations by <strong>10:1 or 50:1</strong>. Running heavy statement queries or portfolio calculations against your primary database starves write transactions of CPU cycles and memory.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The enterprise solution is <strong>Read-Replicas</strong>: streaming changes from a single Primary (Writer) PostgreSQL instance to one or more Read-Only Replicas. But how do we route traffic cleanly in SQLAlchemy without manually passing different engines throughout our entire codebase?
+            </p>
+
+            <!-- Database Router Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    SQLAlchemy Primary / Read-Replica Dynamic Query Routing
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- FastAPI Layer -->
+                    <div class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
+                        <span class="text-slate-300 font-bold">FastAPI Route Controller</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; Issues SQL via AsyncSession &darr;</div>
+
+                    <!-- Custom Routing Session -->
+                    <div class="w-full p-4 bg-purple-950/80 border border-purple-500 rounded-2xl text-center shadow-lg space-y-1">
+                        <span class="text-purple-300 font-bold block text-sm">Custom RoutingSession (get_bind Override)</span>
+                        <div class="text-[10px] text-purple-200 font-sans">
+                            Inspects query: Is it a <code class="text-emerald-300 font-mono">SELECT</code> (Read) or <code class="text-amber-300 font-mono">INSERT/UPDATE/DELETE</code> (Write)?
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between w-full max-w-md text-slate-500 font-bold">
+                        <span>&swarr; Writes / Mutations</span>
+                        <span>Reads / Selects &searr;</span>
+                    </div>
+
+                    <!-- Dual Engines -->
+                    <div class="grid grid-cols-2 gap-6 w-full max-w-md">
+                        <div class="p-4 bg-amber-950/60 border border-amber-500 rounded-xl text-center space-y-1">
+                            <span class="text-amber-300 font-bold block">Primary Engine</span>
+                            <span class="text-[9px] text-amber-200 font-sans">Read/Write Transactional Core</span>
+                        </div>
+                        <div class="p-4 bg-sky-950/60 border border-sky-500 rounded-xl text-center space-y-1">
+                            <span class="text-sky-300 font-bold block">Replica Engine</span>
+                            <span class="text-[9px] text-sky-200 font-sans">Read-Only Analytical Pool</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-rose-400 font-mono">&#9888; The Replication Lag Trap (Read-After-Write Consistency):</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Replication between Primary and Replica databases is <strong>asynchronous</strong>. If a user transfers money via <code class="text-white font-mono">POST /transfers</code>, the write hits the Primary. If their frontend immediately navigates to their dashboard and calls <code class="text-white font-mono">GET /portfolio</code> 2 milliseconds later, the replica might not have received the WAL update yet! The user sees their old balance, panics, and submits the transfer again.
+                    </p>
+                    <p class="text-emerald-400 leading-relaxed font-bold">
+                        Production Defense: Pin reads to the Primary Engine for 5 seconds after any write operation using session stickiness or user cookie timestamps!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Advanced Scale: Multi-Tenancy & Database Sharding -->
+        <section id="sharding-multitenancy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Advanced Scale: Multi-Tenancy &amp; Tenant Sharding</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When building enterprise B2B financial services, strict data isolation is mandated by compliance laws (SOC2, GDPR, HIPAA). In high-tier systems, organizations require either <strong>Separate Schemas</strong> (PostgreSQL schemas per tenant) or <strong>Separate Databases</strong> (complete physical isolation per tenant).
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Schema-Based Isolation -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-purple-700 text-sm">Pattern A: Postgres Schema-Based</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">search_path Routing</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        A single database where each tenant occupies their own schema namespace (<code class="font-mono text-slate-800">tenant_alpha</code>, <code class="font-mono text-slate-800">tenant_beta</code>).
+                    </p>
+                    <div class="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        # Dynamically set schema upon session checkout:<br>
+                        await session.execute(<br>
+                        &nbsp;&nbsp;text(f'SET search_path TO "{tenant_id}"')<br>
+                        )
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        All models share table definitions (<code class="font-mono">accounts</code>, <code class="font-mono">transactions</code>), but queries run strictly inside that tenant's schema namespace.
+                    </p>
+                </div>
+
+                <!-- Database-Level Sharding -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-700 text-sm">Pattern B: Engine Pool Sharding</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Physical Isolation</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Each enterprise customer connects to a physically separated database cluster or shard.
+                    </p>
+                    <div class="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+                        TENANT_ENGINES = {<br>
+                        &nbsp;&nbsp;"tenant_a": create_async_engine(URL_A),<br>
+                        &nbsp;&nbsp;"tenant_b": create_async_engine(URL_B)<br>
+                        }
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        A FastAPI dependency inspects incoming headers (<code class="font-mono">X-Tenant-ID</code>) or JWT claims and binds the request session to the specific tenant's engine pool!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: LedgerCore Milestone 10 -->
+        <section id="ledgercore-milestone-10" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 10: Full Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 10:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+                <li>We define <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">AccountUpdate</code> in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/schemas.py</code> with all fields optional to support partial updates.</li>
+                <li>We build our production <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">PATCH</code> endpoint in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/main.py</code> using <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-700 font-bold">exclude_unset=True</code>.</li>
+                <li>We configure a dual-engine architecture in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">app/database.py</code> supporting Primary (Writer) and Replica (Reader) connection pools.</li>
+                <li>We implement tenant-aware dependency injection.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">database.py</span>                <span class="text-slate-500"># Dual-engine setup (Primary &amp; Read-Replica pools)</span></div>
+                <div>│   ├── models.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">schemas.py</span>                 <span class="text-slate-500"># AccountUpdate with optional fields</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># PATCH endpoint, read-routing &amp; tenant dependency</span></div>
+            </div>
+
+            <!-- File 1: app/schemas.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Partial Update Schema: <code class="text-purple-700">app/schemas.py</code></span>
+                    <span class="text-slate-400">Pydantic v2 Delta Contracts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/schemas.py:</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountUpdate</span>(BaseModel):
+    <span class="text-slate-500">"""
+    PATCH Contract: All fields are optional.
+    Only fields explicitly sent by the caller will be modified in the database.
+    """</span>
+    owner_name: Optional[str] = Field(<span class="text-rose-400">None</span>, min_length=2, max_length=100)
+    status: Optional[AccountStatus] = Field(<span class="text-rose-400">None</span>)
+    currency: Optional[str] = Field(<span class="text-rose-400">None</span>, min_length=3, max_length=3)</pre>
+            </div>
+
+            <!-- File 2: app/database.py (Primary & Replica Engines) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Dual-Engine Architecture: <code class="text-purple-700">app/database.py</code></span>
+                    <span class="text-slate-400">Primary &amp; Read-Replica Sockets</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/database.py: Add dual-engine support for Primary &amp; Read-Replicas</span>
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+
+<span class="text-slate-500"># 1. Primary Engine (Read/Write)</span>
+primary_engine = create_async_engine(settings.DATABASE_URL, pool_size=10, max_overflow=20)
+
+<span class="text-slate-500"># 2. Read-Replica Engine (Read-Only pool pointing to replica node)</span>
+<span class="text-slate-500"># In production, read from REPLICA_DATABASE_URL environment variable</span>
+replica_engine = create_async_engine(settings.DATABASE_URL, pool_size=20, max_overflow=10)
+
+PrimarySessionLocal = async_sessionmaker(bind=primary_engine, class_=AsyncSession, expire_on_commit=<span class="text-rose-400">False</span>)
+ReplicaSessionLocal = async_sessionmaker(bind=replica_engine, class_=AsyncSession, expire_on_commit=<span class="text-rose-400">False</span>)
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_primary_db</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""Dependency for POST, PUT, PATCH, DELETE operations (Mutations)."""</span>
+    <span class="text-purple-400">async with</span> PrimarySessionLocal() <span class="text-purple-400">as</span> session:
+        <span class="text-purple-400">yield</span> session
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_replica_db</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""Dependency for GET operations (Analytical / Read-Only)."""</span>
+    <span class="text-purple-400">async with</span> ReplicaSessionLocal() <span class="text-purple-400">as</span> session:
+        <span class="text-purple-400">yield</span> session</pre>
+            </div>
+
+            <!-- File 3: app/main.py Endpoints -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Endpoints &amp; Routing: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">PATCH Implementation &amp; Routing Integration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: Add PATCH and Read-Replica endpoints</span>
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> Header
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> get_primary_db, get_replica_db
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> AccountUpdate
+
+<span class="text-purple-400">@app.patch</span>(
+    <span class="text-amber-300">"/api/v1/accounts/&#123;account_id&#125;"</span>,
+    response_model=AccountResponse,
+    tags=[<span class="text-amber-300">"Accounts"</span>],
+    summary=<span class="text-amber-300">"Execute Safe Partial Update (PATCH)"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">update_account_partial</span>(
+    account_id: int,
+    payload: AccountUpdate,
+    session: AsyncSession = Depends(get_primary_db)  <span class="text-slate-500"># Routes mutation to Primary Engine!</span>
+):
+    <span class="text-slate-500">"""
+    PRODUCTION PATCH ARCHITECTURE:
+    1. Fetches account from Primary database.
+    2. Uses exclude_unset=True to extract ONLY fields explicitly supplied by client.
+    3. Leaves untouched fields (such as balance) completely un-mutated.
+    """</span>
+    account = <span class="text-purple-400">await</span> session.scalar(select(Account).where(Account.id == account_id))
+    <span class="text-purple-400">if not</span> account:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Account not found."</span>)
+
+    <span class="text-slate-500"># CRITICAL PYDANTIC v2 CALL: Only process keys present in client JSON</span>
+    update_data = payload.model_dump(<span class="text-emerald-400 font-bold">exclude_unset=True</span>)
+    <span class="text-purple-400">if not</span> update_data:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"No fields provided for update."</span>)
+
+    <span class="text-purple-400">for</span> key, value <span class="text-purple-400">in</span> update_data.items():
+        setattr(account, key, value)
+
+    <span class="text-purple-400">await</span> session.commit()
+    <span class="text-purple-400">await</span> session.refresh(account)
+    <span class="text-purple-400">return</span> account
+
+
+<span class="text-purple-400">@app.get</span>(
+    <span class="text-amber-300">"/api/v1/accounts/&#123;account_id&#125;/read-only"</span>,
+    response_model=AccountResponse,
+    tags=[<span class="text-amber-300">"Accounts"</span>],
+    summary=<span class="text-amber-300">"Fetch Account Details from Read-Replica"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_account_replica</span>(
+    account_id: int,
+    session: AsyncSession = Depends(get_replica_db)  <span class="text-slate-500"># Routes read to Read-Replica Pool!</span>
+):
+    <span class="text-slate-500">"""Query is served by Read-Replica, protecting the Primary from analytical load."""</span>
+    account = <span class="text-purple-400">await</span> session.scalar(select(Account).where(Account.id == account_id))
+    <span class="text-purple-400">if not</span> account:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Account not found."</span>)
+    <span class="text-purple-400">return</span> account
+
+
+<span class="text-purple-400">@app.get</span>(
+    <span class="text-amber-300">"/api/v1/tenant/accounts"</span>,
+    tags=[<span class="text-amber-300">"Multi-Tenancy"</span>],
+    summary=<span class="text-amber-300">"Query Accounts with Schema-Isolated Multi-Tenancy"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_tenant_accounts</span>(
+    x_tenant_id: str = Header(..., description=<span class="text-amber-300">"Tenant namespace e.g. tenant_alpha"</span>),
+    session: AsyncSession = Depends(get_primary_db)
+):
+    <span class="text-slate-500">"""
+    MULTI-TENANT SCHEMA SWITCHING:
+    Dynamically sets the PostgreSQL search_path to the authenticated tenant schema.
+    Guarantees absolute data isolation between different corporate customers!
+    """</span>
+    <span class="text-slate-500"># Sanitize schema identifier to prevent SQL injection</span>
+    clean_tenant = x_tenant_id.replace(<span class="text-amber-300">"-"</span>, <span class="text-amber-300">"_"</span>).lower()
+    <span class="text-purple-400">await</span> session.execute(text(f<span class="text-amber-300">'SET search_path TO "&#123;clean_tenant&#125;"'</span>))
+
+    accounts = (<span class="text-purple-400">await</span> session.scalars(select(Account))).all()
+    <span class="text-purple-400">return</span> accounts</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Blanket Update Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">for key, val in payload.model_dump().items(): setattr(acc, key, val)</code> without passing <code class="font-mono text-rose-900">exclude_unset=True</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys data:</strong> In Pydantic, all omitted fields evaluate to <code class="font-mono">None</code> by default. If the client sends <code class="font-mono">{"owner_name": "New Name"}</code>, calling <code class="font-mono">model_dump()</code> produces <code class="font-mono">{"owner_name": "New Name", "status": None, "currency": None}</code>. The loop executes and overwrites non-null status and currency columns with <code class="font-mono">None</code>, crashing the transaction!
+                        <strong>Fix:</strong> Always call <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">.model_dump(exclude_unset=True)</code> on PATCH schemas!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Global Tenant Context Leaks</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Storing tenant identifiers in global Python variables: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">CURRENT_TENANT = tenant_id</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes security breaches:</strong> Python web servers handle concurrent requests within the same process. Global variables are shared across all requests! If Request A sets the global tenant to Company A, and Python context-switches to Request B, Request B will execute queries inside Company A's schema—leaking confidential financial records to a competitor.
+                        <strong>Fix:</strong> Always pass tenant state through request parameters, dependency injection, or Python’s thread-safe <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">contextvars.ContextVar</code>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 10</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your application, execute safe partial updates, and verify that omitted fields remain untouched:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start LedgerCore API:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Seed Account -->
+                <div>
+                    <span class="text-slate-500"># 2. Seed an initial account:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-PATCH-01", "owner_name": "Original Name", "initial_balance": "500.0000"}'
+                    </div>
+                </div>
+
+                <!-- Step 3: Execute PATCH Partial Update -->
+                <div>
+                    <span class="text-slate-500"># 3. Partially update ONLY the status field to 'frozen' (omits balance and owner_name):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X PATCH http://127.0.0.1:8000/api/v1/accounts/1 \
+                        -H "Content-Type: application/json" \
+                        -d '{"status": "frozen"}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Inspect the returned JSON response: status is updated to "frozen", but balance remains exactly $500.0000 and owner_name remains "Original Name". Zero clobbering!
+                    </span>
+                </div>
+
+                <!-- Step 4: Query Read-Replica Endpoint -->
+                <div>
+                    <span class="text-slate-500"># 4. Query the read-only replica endpoint:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/accounts/1/read-only
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Query is dispatched over the Read-Replica connection pool, protecting Primary write capacity.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's PATCH &amp; microservice endpoints in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 11 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 11: Production-Ready Backend</h4>
+                <p class="text-xs text-slate-500 font-sans">Shipping LedgerCore to production: Connection pool recycling, SQLAlchemy Event Listeners (<code class="font-mono">listens_for</code>), automated CI/CD migrations without container deadlocks, and the 10-Point Database Audit.</p>
+            </div>
+            <a href="Chapter 11 - Production-Ready SQLAlchemy.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 11 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 1: The Anatomy of a Request, ASGI, & FastAPI Routing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 01)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Foundations &amp; Runtime Mechanics
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                The Anatomy of a Request &amp; FastAPI Routing
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                A rigorous look under the hood: How raw TCP packets become high-level Python objects, why ASGI outclasses legacy servers, how the modern async lifespan protocol manages application lifecycle, and how FastAPI pairs runtime type hints with introspection to guarantee rock-solid API boundaries.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "NoteVault"</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        Rather than working on disconnected snippets, you will build a real-world, production-ready RESTful service called <strong>NoteVault</strong>: a multi-tenant personal knowledge engine with tags, encrypted notes, full-text search, and role-based permissions. Every chapter expands this single codebase from a barebones module into an enterprise-grade cloud service.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[240px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Chapter 01 Goal</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Clean project layout</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Deterministic settings</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Modern async lifespan setup</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> In-memory Note CRUD</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Path &amp; Query coercion</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Deep Dive: Computer Science Concepts -->
+        <section id="cs-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Foundational Mechanics: What is a "Backend"?</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                At its core, a web server is an infinite loop that listens for electrical pulses or optical signals on a network interface card (NIC), reassembles them into discrete TCP segments, parses an application-level string format called <strong>HTTP</strong>, and executes application logic based on the requested path.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- HTTP Anatomy -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-mono font-bold">1</span>
+                        Raw HTTP Over the Wire
+                    </h3>
+                    <p class="text-xs text-slate-600">
+                        When a browser or client communicates with your API, it sends a plain text stream over a TCP socket. An HTTP request is not a Python dictionary; it is raw bytes structured according to RFC standards:
+                    </p>
+                    <pre class="bg-slate-900 text-sky-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed">
+<span class="text-emerald-400 font-bold">POST</span> /api/v1/notes?draft=true HTTP/1.1
+<span class="text-purple-300">Host:</span> api.notevault.io
+<span class="text-purple-300">User-Agent:</span> Mozilla/5.0
+<span class="text-purple-300">Content-Type:</span> application/json
+<span class="text-purple-300">Content-Length:</span> 42
+
+{"title": "Ideas", "content": "Learn ASGI"}</pre>
+                    <p class="text-[11px] text-slate-500 italic">
+                        The web framework's primary job is to parse this byte-stream: split the start line into Verb, Path, and Protocol, collect the key-value headers, read the body length, and hand off clean objects to your code.
+                    </p>
+                </div>
+
+                <!-- Network Socket to Logic -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-mono font-bold">2</span>
+                        From Socket to Handler
+                    </h3>
+                    <p class="text-xs text-slate-600">
+                        How does your Python code actually receive this string? The operating system manages network sockets via system calls:
+                    </p>
+                    <ol class="list-decimal pl-5 text-xs text-slate-600 space-y-1.5">
+                        <li><strong>Bind &amp; Listen:</strong> The server process binds to an IP and Port (e.g., <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-800">127.0.0.1:8000</code>) via an OS socket.</li>
+                        <li><strong>Kernel Buffer:</strong> The OS kernel receives TCP packets, acknowledges them, verifies checksums, and buffers them.</li>
+                        <li><strong>Event Notification:</strong> Under Linux, the server uses non-blocking I/O multiplexing primitives like <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-800">epoll</code> (or <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-800">kqueue</code> on macOS) to alert the Python event loop that bytes are ready to read.</li>
+                        <li><strong>Deserialization &amp; Dispatch:</strong> Bytes are parsed into a normalized Python format and routed to the corresponding route handler function.</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. WSGI vs ASGI -->
+        <section id="wsgi-vs-asgi" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Server Gateways: Why WSGI Died &amp; ASGI Won</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In the era of traditional frameworks (Flask, Django), Python apps relied on the <strong>WSGI (Web Server Gateway Interface)</strong> specification (PEP 3333). WSGI is strictly synchronous: one worker thread handles exactly one HTTP request from start to finish.
+            </p>
+
+            <!-- Architectural Comparison Diagram -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- WSGI Card -->
+                <div class="bg-slate-900 p-6 rounded-2xl border border-rose-900/40 text-slate-300 font-mono text-xs space-y-3">
+                    <div class="text-rose-400 font-bold text-sm tracking-wide">Legacy WSGI (Synchronous Thread-per-Request)</div>
+                    <p class="text-slate-400 text-[11px] font-sans">
+                        If a worker handles a request that sleeps or queries an external slow API for 3 seconds, that worker is completely frozen. It cannot handle any other client.
+                    </p>
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-[11px]">
+                        <div class="text-rose-300">Client A ──► [ Worker 1 (BLOCKED 3.0s in I/O) ]</div>
+                        <div class="text-amber-300">Client B ──► [ Worker 2 (BLOCKED 1.5s in DB)  ]</div>
+                        <div class="text-slate-500">Client C ──► [ QUEUED IN OS SOCKET BUFFER...  ] 🛑</div>
+                    </div>
+                    <p class="text-rose-300 text-[11px]">Consequence: You need 500 OS threads or processes to handle 500 concurrent slow queries, destroying RAM and thrashing CPU cache via constant context switches.</p>
+                </div>
+
+                <!-- ASGI Card -->
+                <div class="bg-slate-900 p-6 rounded-2xl border border-emerald-500/40 text-slate-300 font-mono text-xs space-y-3">
+                    <div class="text-emerald-400 font-bold text-sm tracking-wide">Modern ASGI (Asynchronous Server Gateway Interface)</div>
+                    <p class="text-slate-400 text-[11px] font-sans">
+                        FastAPI uses <strong>ASGI</strong> (powered by Uvicorn or Hypercorn). An ASGI server runs a single thread containing an <strong>Event Loop</strong> that orchestrates cooperative multitasking.
+                    </p>
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-[11px]">
+                        <div class="text-emerald-300">Client A ──► [ Event Loop: pauses A via `await` ]</div>
+                        <div class="text-emerald-300">Client B ──► [ Event Loop: switches to B instant ]</div>
+                        <div class="text-sky-300">Client C ──► [ Event Loop: starts C immediately  ] 🚀</div>
+                    </div>
+                    <p class="text-emerald-300 text-[11px]">Consequence: A single process can hold tens of thousands of open connections simultaneously with minimal memory overhead.</p>
+                </div>
+            </div>
+
+            <!-- Deep Dive Code: The ASGI Signature -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">What an ASGI Application Actually Looks Like</h3>
+                <p class="text-sm text-slate-600">
+                    FastAPI is just a specialized ASGI callable. At the bare-metal level, any valid ASGI 3.0 application is simply an asynchronous function with this exact signature:
+                </p>
+                <pre class="bg-slate-900 text-emerald-400 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed">
+async def simple_asgi_app(scope, receive, send):
+    """
+    scope:   A dict containing metadata about the connection (HTTP method, path, headers, client IP)
+    receive: An async channel to listen for incoming chunks of the request body
+    send:    An async channel to push response frames (status, headers, body) back to the server
+    """
+    assert scope['type'] == 'http'
+
+    # 1. Send the HTTP Response Status and Headers frame
+    await send({
+        'type': 'http.response.start',
+        'status': 200,
+        'headers': [[b'content-type', b'text/plain']],
+    })
+
+    # 2. Send the HTTP Response Body frame
+    await send({
+        'type': 'http.response.body',
+        'body': b'Hello from bare-metal ASGI! FastAPI wraps this for you.',
+    })</pre>
+                <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <strong>Why this matters:</strong> FastAPI doesn't replace ASGI; it sits on top of it. Starlette provides the high-level routing, request wrappers, and response classes, while Pydantic handles validation, and FastAPI binds them together seamlessly.
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Virtual Environments and Deterministic Tooling -->
+        <section id="environment-hygiene" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Environment Isolation &amp; Modern Tooling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Python packages installed via <code class="bg-slate-100 px-1.5 py-0.5 rounded text-rose-600 font-mono text-sm">pip install</code> default to a shared global system directory (e.g., <code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs">/usr/lib/python3.x/site-packages</code>). If App A requires <code class="font-mono text-xs">pydantic&gt;=2.0</code> and App B was written in 2021 and requires <code class="font-mono text-xs">pydantic&lt;1.9</code>, installing one will break the other.
+            </p>
+
+            <div class="bg-slate-900 text-slate-300 p-6 rounded-2xl font-mono text-xs space-y-4">
+                <div class="text-emerald-400 font-bold mb-1">// Standard Production Initialization</div>
+                
+                <div class="space-y-1">
+                    <p class="text-slate-500"># 1. Create a dedicated directory and navigate inside</p>
+                    <p class="text-white font-semibold">mkdir notevault_backend &amp;&amp; cd notevault_backend</p>
+                </div>
+
+                <div class="space-y-1">
+                    <p class="text-slate-500"># 2. Spawn a sandboxed virtual environment (creates isolated site-packages &amp; python symlinks)</p>
+                    <p class="text-white font-semibold">python3 -m venv .venv</p>
+                </div>
+
+                <div class="space-y-1">
+                    <p class="text-slate-500"># 3. Activate the environment (mutates your terminal's PATH environment variable)</p>
+                    <p class="text-white">source .venv/bin/activate       <span class="text-slate-500"># Linux / macOS</span></p>
+                    <p class="text-white">.venv\Scripts\activate          <span class="text-slate-500"># Windows PowerShell</span></p>
+                </div>
+
+                <div class="space-y-1">
+                    <p class="text-slate-500"># 4. Verify your shell is executing the isolated interpreter, NOT system Python</p>
+                    <p class="text-emerald-400">which python  <span class="text-slate-500"># Must print: .../notevault_backend/.venv/bin/python</span></p>
+                </div>
+            </div>
+
+            <!-- requirements.txt Deep Dive -->
+            <div class="space-y-3">
+                <h3 class="text-lg font-bold text-slate-900">The Exact Dependencies for Milestone 01</h3>
+                <p class="text-sm text-slate-600">
+                    Create a file named <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">requirements.txt</code>. We intentionally pin versions using compatible release operators (<code class="font-mono text-xs">~=</code>) so your environment receives security patches without breaking major API changes.
+                </p>
+
+                <div class="bg-slate-900 text-white p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+                    <div class="text-slate-400 mb-2"># requirements.txt - Milestone 01 Core Stack</div>
+                    <span class="text-emerald-400">fastapi</span>~=0.110.0          <span class="text-slate-500"># High-performance web framework</span><br>
+                    <span class="text-emerald-400">uvicorn[standard]</span>~=0.28.0 <span class="text-slate-500"># Production-grade lightning-fast ASGI server</span><br>
+                    <span class="text-emerald-400">pydantic</span>~=2.6.0           <span class="text-slate-500"># Core schema validation engine (Rust-backed)</span><br>
+                    <span class="text-emerald-400">pydantic-settings</span>~=2.2.0  <span class="text-slate-500"># 12-Factor App Environment config loader</span>
+                </div>
+
+                <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 space-y-1">
+                    <p class="font-bold">Why the "[standard]" tag on uvicorn?</p>
+                    <p class="text-amber-800">
+                        Without <code class="font-mono bg-amber-100 px-1 rounded">uvicorn[standard]</code>, Uvicorn installs with pure-Python fallbacks. The standard extra compiles C-extensions: <strong>uvloop</strong> (a lightning-fast event loop replacement for Python's default asyncio built on libuv) and <strong>httptools</strong> (a fast C-parser for HTTP streams). Always install <code class="font-mono bg-amber-100 px-1 rounded">[standard]</code> in production.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Architecture & Directory Layout -->
+        <section id="architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 1: Production Layout</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many online tutorials write the whole application inside a single <code class="font-mono text-xs bg-slate-100 px-1 rounded">main.py</code>. This leads to circular imports and spaghetti code by Chapter 4. We will establish our scalable architectural pattern from minute one:
+            </p>
+
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-200 font-mono text-xs overflow-x-auto shadow-inner border border-slate-800">
+                <span class="text-emerald-400 font-bold">notevault_backend/</span><br>
+                ├── <span class="text-amber-300">.venv/</span>                      <span class="text-slate-500"># Isolated Python binary and site-packages (Do NOT commit to git)</span><br>
+                ├── <span class="text-sky-300">.env</span>                        <span class="text-slate-500"># Local environment configuration file (Secrets, DB strings)</span><br>
+                ├── <span class="text-sky-300">.env.example</span>                <span class="text-slate-500"># Committed template showing required variable keys for your team</span><br>
+                ├── <span class="text-sky-300">requirements.txt</span>            <span class="text-slate-500"># Pinned third-party dependencies</span><br>
+                └── <span class="text-emerald-400 font-bold">app/</span>                        <span class="text-slate-500"># Application source root (Python package)</span><br>
+                &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="text-purple-300">__init__.py</span>             <span class="text-slate-500"># Designates app/ as an importable Python module</span><br>
+                &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="text-emerald-300">config.py</span>               <span class="text-slate-500"># Strongly typed Pydantic environment settings</span><br>
+                &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="text-emerald-300">main.py</span>                 <span class="text-slate-500"># Application instantiation, route registration, lifecycle</span>
+            </div>
+
+            <!-- Detailed Explanation of Config Logic -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">Step 1: Fail-Fast Configuration (<code class="font-mono text-sm bg-slate-100 px-1 rounded">app/config.py</code>)</h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                    Following the <a href="https://12factor.net/config" target="_blank" class="text-emerald-600 underline font-semibold">Twelve-Factor App methodology</a>, configuration must be strictly separated from code. Never hardcode credentials or ports in your files. Instead, use <code class="font-mono text-xs bg-slate-100 px-1 rounded">pydantic-settings</code> to parse environment variables, cast them into strong types, and crash the server instantly on startup if a required value is missing.
+                </p>
+
+                <!-- Config Code Snippet -->
+                <div class="relative">
+                    <div class="absolute top-3 right-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">app/config.py</div>
+                    <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> pydantic_settings <span class="text-purple-400">import</span> BaseSettings, SettingsConfigDict
+<span class="text-purple-400">from</span> functools <span class="text-purple-400">import</span> lru_cache
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Settings</span>(BaseSettings):
+    <span class="text-slate-500"># Strong typing: if someone sets PORT=abc, Pydantic raises an error on startup</span>
+    APP_NAME: str = <span class="text-amber-300">"NoteVault API"</span>
+    ENVIRONMENT: str = <span class="text-amber-300">"development"</span>
+    DEBUG_MODE: bool = <span class="text-rose-400">False</span>
+    API_V1_PREFIX: str = <span class="text-amber-300">"/api/v1"</span>
+
+    <span class="text-slate-500"># Pydantic v2 Settings configuration: read from .env if present</span>
+    model_config = SettingsConfigDict(
+        env_file=<span class="text-amber-300">".env"</span>,
+        env_file_encoding=<span class="text-amber-300">"utf-8"</span>,
+        case_sensitive=<span class="text-rose-400">True</span>
+    )
+
+<span class="text-slate-500"># @lru_cache (Least Recently Used Cache) ensures the .env file is read from disk</span>
+<span class="text-slate-500"># only ONCE upon application boot. Every subsequent call returns the cached instance.</span>
+<span class="text-purple-400">@lru_cache</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_settings</span>() -> Settings:
+    <span class="text-purple-400">return</span> Settings()
+
+settings = get_settings()</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Request Pipeline and Routing Deep Dive -->
+        <section id="fastapi-routing-deep-dive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Route Decorators, Type Hints &amp; Introspection</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you annotate a function with <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-600">@app.get("/notes/{note_id}")</code>, what actually happens? FastAPI does not just register your function inside a routing map; it inspects your function signature at startup using Python's standard <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">inspect</code> module and type metadata.
+            </p>
+
+            <!-- Detailed Visual Pipeline Flow -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-mono font-bold uppercase tracking-widest text-slate-500">Under the Hood</span>
+                    <h3 class="text-xl font-bold text-slate-900">The 4-Step Route Invocation Pipeline</h3>
+                </div>
+
+                <div class="flex flex-col gap-3 font-mono text-xs">
+                    <div class="p-4 bg-sky-50 rounded-xl border border-sky-200 flex items-center justify-between">
+                        <div><strong class="text-sky-900">1. Route Match:</strong> Uvicorn receives the HTTP request and checks the URL path against FastAPI's registered Radix-Tree router.</div>
+                        <span class="text-[10px] bg-sky-200 text-sky-800 px-2 py-0.5 rounded">Incoming URL</span>
+                    </div>
+                    <div class="flex justify-center text-slate-400 font-bold">&darr;</div>
+                    <div class="p-4 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between">
+                        <div><strong class="text-purple-900">2. Extraction &amp; Coercion:</strong> FastAPI reads path params, query string, and headers. It coerces string representations (<code class="text-purple-700">"42"</code>) to declared Python types (<code class="text-purple-700">int</code>).</div>
+                        <span class="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded">Runtime Casting</span>
+                    </div>
+                    <div class="flex justify-center text-slate-400 font-bold">&darr;</div>
+                    <div class="p-4 bg-rose-50 rounded-xl border border-rose-200 flex items-center justify-between">
+                        <div><strong class="text-rose-900">3. Short-Circuit Validation:</strong> If casting fails (e.g. string passed where integer expected), FastAPI immediately returns HTTP 422 with a structured JSON error body. <em>Your code never runs.</em></div>
+                        <span class="text-[10px] bg-rose-200 text-rose-800 px-2 py-0.5 rounded">Defensive Guard</span>
+                    </div>
+                    <div class="flex justify-center text-slate-400 font-bold">&darr;</div>
+                    <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between">
+                        <div><strong class="text-emerald-900">4. Handler Execution &amp; Response Serialization:</strong> Clean, typed values are passed into your controller. The return value is auto-serialized into JSON.</div>
+                        <span class="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded">Controller Logic</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Path vs Query Param Logic Table -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-bold text-slate-900">How FastAPI Distinguishes Parameters</h3>
+                <p class="text-sm text-slate-600">
+                    FastAPI uses a simple, deterministic rule set to differentiate between path variables, query string parameters, and request bodies:
+                </p>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">Parameter Syntax</th>
+                                <th class="p-3">Declared Where?</th>
+                                <th class="p-3">Classification</th>
+                                <th class="p-3">Example Invocation</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-slate-700">
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">@app.get("/notes/{id}")</td>
+                                <td class="p-3">Inside the Path URL string</td>
+                                <td class="p-3 font-semibold text-sky-700">Path Parameter</td>
+                                <td class="p-3 text-slate-500">GET /notes/42</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">def get_notes(limit: int)</td>
+                                <td class="p-3">In function signature, NOT in URL</td>
+                                <td class="p-3 font-semibold text-amber-700">Query Parameter</td>
+                                <td class="p-3 text-slate-500">GET /notes?limit=10</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="p-3 text-purple-700 font-bold">def get_notes(q: str | None = None)</td>
+                                <td class="p-3">In signature, has default value</td>
+                                <td class="p-3 font-semibold text-emerald-700">Optional Query Param</td>
+                                <td class="p-3 text-slate-500">GET /notes (defaults to None)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Deep Dive: Modern Lifespan Handlers vs Deprecated on_event -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-mono font-bold">Architectural Standard</span>
+                    Application Lifespan Protocol: Modern <code class="font-mono text-purple-900">@asynccontextmanager lifespan</code> vs. Deprecated <code class="font-mono text-rose-700">on_event</code>
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    In older tutorials, you will frequently see event registration written like this:
+                </p>
+                <div class="grid md:grid-cols-2 gap-4 text-xs font-mono">
+                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                        <span class="text-rose-900 font-bold block text-sm">&cross; DEPRECATED: on_event("startup" / "shutdown")</span>
+                        <pre class="bg-slate-900 text-rose-300 p-3 rounded-lg text-[11px] leading-relaxed overflow-x-auto">
+<span class="text-purple-400">@app.on_event</span>(<span class="text-amber-300">"startup"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300">startup_event</span>():
+    init_db_connection()
+
+<span class="text-purple-400">@app.on_event</span>(<span class="text-amber-300">"shutdown"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300">shutdown_event</span>():
+    close_db_connection()</pre>
+                        <p class="text-rose-800 font-sans text-[11px]">
+                            Disjointed handlers cannot share state safely, fail to handle exceptions across startup/shutdown symmetrically, and are officially deprecated by Starlette.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                        <span class="text-emerald-900 font-bold block text-sm">&check; MODERN: Unified Lifespan Async Context Manager</span>
+                        <pre class="bg-slate-900 text-emerald-300 p-3 rounded-lg text-[11px] leading-relaxed overflow-x-auto">
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+
+<span class="text-purple-400">@asynccontextmanager</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300">lifespan</span>(app: FastAPI):
+    <span class="text-slate-500"># STARTUP: runs before requests arrive</span>
+    init_db_connection()
+    <span class="text-purple-400">yield</span>
+    <span class="text-slate-500"># SHUTDOWN: runs on SIGTERM / exit</span>
+    close_db_connection()
+
+app = FastAPI(lifespan=lifespan)</pre>
+                        <p class="text-emerald-800 font-sans text-[11px]">
+                            A single clean context manager wraps the entire application runtime. Any code before <code class="font-mono text-emerald-900 font-bold">yield</code> runs on boot; code after <code class="font-mono text-emerald-900 font-bold">yield</code> is guaranteed to execute on server shutdown.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Step 2: The Core Project Code (NoteVault Milestone 1) -->
+        <section id="project-code" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 1: Full Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Here is the complete code for <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">app/main.py</code>. We implement our in-memory storage, health checks, note retrieval with optional search filters, and safe deletion. Read every comment carefully:
+            </p>
+
+            <div class="relative">
+                <div class="absolute top-3 right-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">app/main.py</div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Milestone 01 (Foundation, Routing &amp; Lifespan)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+
+<span class="text-slate-500"># 1. Ephemeral In-Memory Storage</span>
+<span class="text-slate-500"># In Chapter 06, we will seamlessly replace this dict with a PostgreSQL database via SQLAlchemy.</span>
+NOTE_DATABASE: dict[int, dict] = {
+    1: {
+        <span class="text-amber-300">"id"</span>: 1,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"FastAPI Architecture Rules"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Always validate input boundaries; keep business logic modular."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"backend"</span>, <span class="text-amber-300">"python"</span>],
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc).isoformat(),
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    },
+    2: {
+        <span class="text-amber-300">"id"</span>: 2,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"ASGI vs WSGI"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"ASGI handles asynchronous concurrency without blocking threads."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"networking"</span>],
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc).isoformat(),
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    }
+}
+
+<span class="text-slate-500"># 2. Modern Lifespan Context Manager</span>
+<span class="text-slate-500"># Replaces deprecated @app.on_event("startup") and @app.on_event("shutdown")</span>
+<span class="text-purple-400">@asynccontextmanager</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">lifespan</span>(app: FastAPI):
+    <span class="text-slate-500"># --- APPLICATION STARTUP ---</span>
+    print(f<span class="text-amber-300">"[STARTUP] Initializing &#123;settings.APP_NAME&#125; in &#123;settings.ENVIRONMENT&#125; mode..."</span>)
+    print(f<span class="text-amber-300">"[STARTUP] Pre-seeded in-memory store with &#123;len(NOTE_DATABASE)&#125; records."</span>)
+    
+    <span class="text-purple-400">yield</span>  <span class="text-slate-500"># Server accepts traffic while paused at yield</span>
+
+    <span class="text-slate-500"># --- APPLICATION SHUTDOWN ---</span>
+    print(f<span class="text-amber-300">"[SHUTDOWN] Cleaning up resources and shutting down &#123;settings.APP_NAME&#125;..."</span>)
+
+<span class="text-slate-500"># 3. Instantiate the FastAPI Engine with the Lifespan Handler</span>
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=<span class="text-amber-300">"Production-grade personal knowledge vault API."</span>,
+    version=<span class="text-amber-300">"1.0.0"</span>,
+    docs_url=<span class="text-amber-300">"/docs"</span> <span class="text-purple-400">if</span> settings.ENVIRONMENT == <span class="text-amber-300">"development"</span> <span class="text-purple-400">else</span> <span class="text-rose-400">None</span>,
+    redoc_url=<span class="text-amber-300">"/redoc"</span> <span class="text-purple-400">if</span> settings.ENVIRONMENT == <span class="text-amber-300">"development"</span> <span class="text-purple-400">else</span> <span class="text-rose-400">None</span>,
+    lifespan=lifespan,
+)
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># System & Diagnostic Endpoints</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">@app.get</span>(<span class="text-amber-300">"/health"</span>, tags=[<span class="text-amber-300">"System"</span>], summary=<span class="text-amber-300">"Health Check"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">health_check</span>():
+    <span class="text-slate-500">"""
+    Used by orchestrators (Kubernetes, AWS ECS) to verify the process is alive.
+    Must always return fast and never hit a slow database.
+    """</span>
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"healthy"</span>,
+        <span class="text-amber-300">"environment"</span>: settings.ENVIRONMENT,
+        <span class="text-amber-300">"timestamp"</span>: datetime.now(timezone.utc).isoformat()
+    }
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Note Management Endpoints (CRUD)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">@app.get</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes"</span>,
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"List &amp; Query Notes"</span>,
+    status_code=status.HTTP_200_OK
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    <span class="text-slate-500"># Query parameters declared as optional with metadata validation via Query()</span>
+    search: Optional[str] = Query(
+        <span class="text-rose-400">None</span>, 
+        min_length=2, 
+        max_length=50, 
+        description=<span class="text-amber-300">"Case-insensitive search string to match against title or content."</span>
+    ),
+    include_archived: bool = Query(
+        <span class="text-rose-400">False</span>, 
+        description=<span class="text-amber-300">"Whether to return soft-deleted/archived notes."</span>
+    ),
+    limit: int = Query(
+        10, 
+        ge=1, 
+        le=100, 
+        description=<span class="text-amber-300">"Pagination limit (Max 100 per page)."</span>
+    )
+):
+    <span class="text-slate-500">"""
+    Fetches notes with automatic query parameter casting and defensive boundaries.
+    """</span>
+    results = list(NOTE_DATABASE.values())
+
+    <span class="text-slate-500"># Filter by archive status</span>
+    <span class="text-purple-400">if not</span> include_archived:
+        results = [note <span class="text-purple-400">for</span> note <span class="text-purple-400">in</span> results <span class="text-purple-400">if not</span> note[<span class="text-amber-300">"is_archived"</span>]]
+
+    <span class="text-slate-500"># Filter by search string</span>
+    <span class="text-purple-400">if</span> search:
+        query_str = search.lower()
+        results = [
+            note <span class="text-purple-400">for</span> note <span class="text-purple-400">in</span> results 
+            <span class="text-purple-400">if</span> query_str <span class="text-purple-400">in</span> note[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> query_str <span class="text-purple-400">in</span> note[<span class="text-amber-300">"content"</span>].lower()
+        ]
+
+    <span class="text-purple-400">return</span> results[:limit]
+
+
+<span class="text-purple-400">@app.get</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes/&#123;note_id&#125;"</span>,
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"Retrieve a specific note by ID"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_note</span>(
+    note_id: int = Path(..., ge=1, description=<span class="text-amber-300">"The unique numerical primary key of the note."</span>)
+):
+    <span class="text-slate-500"># Check if record exists; if not, raise a standard HTTP 404 response</span>
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note with ID &#123;note_id&#125; does not exist in the database."</span>
+        )
+    <span class="text-purple-400">return</span> NOTE_DATABASE[note_id]
+
+
+<span class="text-purple-400">@app.delete</span>(
+    f<span class="text-amber-300">"{settings.API_V1_PREFIX}/notes/&#123;note_id&#125;"</span>,
+    tags=[<span class="text-amber-300">"Notes"</span>],
+    summary=<span class="text-amber-300">"Delete a note"</span>,
+    status_code=status.HTTP_204_NO_CONTENT
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">delete_note</span>(
+    note_id: int = Path(..., ge=1)
+):
+    <span class="text-slate-500">"""
+    HTTP 204 No Content: Instructs the client that the record was destroyed,
+    and returns an empty response body.
+    """</span>
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Cannot delete note &#123;note_id&#125;: record not found."</span>
+        )
+    
+    <span class="text-purple-400">del</span> NOTE_DATABASE[note_id]
+    <span class="text-purple-400">return</span> <span class="text-rose-400">None</span></pre>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Never Return Dicts for Errors</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Beginners often write: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">return {"error": "Not Found"}</code>. 
+                    </p>
+                    <p class="text-xs text-rose-900">
+                        <strong>Why this is bad:</strong> The HTTP response status code is still <strong>200 OK</strong>! Frontend clients and mobile apps inspect the HTTP status code first. If you return 200, frontend code thinks the call succeeded. Always <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">raise HTTPException(status_code=404, ...)</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Mutable Default Arguments</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Never do this: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">def get_items(tags: list = [])</code>.
+                    </p>
+                    <p class="text-xs text-rose-900">
+                        <strong>Why this is bad:</strong> In Python, default lists are instantiated <em>once</em> at module load time. Every user request will append to and share that exact same list in memory! Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">tags: Optional[list[str]] = None</code> instead.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Booting &amp; Validating NoteVault</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Run the following commands inside your terminal from the root <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">notevault_backend/</code> folder:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Command 1 -->
+                <div>
+                    <span class="text-slate-500"># Start Uvicorn pointing to the app module instance:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Notice in the terminal logs: the lifespan context manager prints "[STARTUP] Initializing NoteVault API..." before Uvicorn binds to the socket.</span>
+                </div>
+
+                <!-- Curl Verification Suite -->
+                <div class="space-y-2">
+                    <span class="text-slate-500"># Test 1: Health Diagnostic (Expect 200 OK)</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300">
+                        curl -i http://127.0.0.1:8000/health
+                    </div>
+
+                    <span class="text-slate-500"># Test 2: Fetch notes with Query filtering</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300">
+                        curl -i "http://127.0.0.1:8000/api/v1/notes?search=asgi"
+                    </div>
+
+                    <span class="text-slate-500"># Test 3: Trigger runtime 422 validation error (pass string to int path parameter)</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-amber-300">
+                        curl -i http://127.0.0.1:8000/api/v1/notes/not-a-number
+                    </div>
+                </div>
+            </div>
+
+            <!-- Docs link callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span>Interactive Swagger UI Documentation auto-generated at:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 2 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Data Contracts with Pydantic</h4>
+                <p class="text-xs text-slate-500">Moving beyond query strings: Deserializing JSON bodies, custom validators, and Rust-powered model schemas.</p>
+            </div>
+            <a href="chapter2_serialization.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 2 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

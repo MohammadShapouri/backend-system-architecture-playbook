@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Collections &amp; Custom Sequence Protocols - Emulating Containers, Slicing &amp; Iterables</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 06 - Observable Collections &amp; Sequence Protocols)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Container Protocols &amp; Iteration
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 06: Collections &amp; Custom Sequence Protocols - Emulating Containers, Slicing &amp; Iterables
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Transforming domain classes into first-class Python data structures: Navigating the collection protocol pyramid, the legacy iteration fallback, dissecting slice object mechanics with <code class="font-mono text-emerald-400">slice.indices()</code>, avoiding the pitfalls of subclassing built-in <code class="font-mono text-emerald-400">list</code>, leveraging <code class="font-mono text-emerald-400">collections.abc.MutableSequence</code> for free mixin behaviors, and building an observable domain collection for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 2 Invariants</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 06: Observable Domain Collections</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 04 and 05, we engineered diagnostic representations and immutable value objects. In Milestone 06, we build the state container that holds and manages them: the <strong>Observable EntityCollection</strong>. Domain aggregates (such as an <code class="font-mono text-slate-300">Order</code> holding <code class="font-mono text-slate-300">LineItem</code> entities) must support bracket indexing, slicing, iteration, and membership tests natively, while notifying change listeners on every insertion, deletion, or batch mutation. We engineer a fully compliant, sliceable sequence inheriting from <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">collections.abc.MutableSequence</code> that guarantees subtype preservation across slices.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Container Protocol Pyramid (<code class="text-purple-300">Container</code>, <code class="text-purple-300">Sized</code>, <code class="text-purple-300">Iterable</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Slicing Geometry &amp; <code class="text-purple-300">slice.indices()</code> Normalization</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Legacy Fallback: Iteration via <code class="text-purple-300">__getitem__</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Built-in Subclassing Trap (<code class="text-rose-400">list</code> vs. <code class="text-purple-300">MutableSequence</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Slice Homogeneity &amp; Type Preservation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">EntityCollection</code> Core Architecture</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Collection Protocol Pyramid -->
+        <section id="protocol-pyramid" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Collection Protocol Pyramid</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Python does not rely on monolithic container interfaces. Instead, it decomposes collection behavior into small, composable <strong>Protocols</strong> defined by specific dunder methods. A class only needs to implement the exact protocols required for its domain semantics:
+            </p>
+
+            <!-- Protocol Pyramid Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Python Collection Protocol Hierarchy (collections.abc)
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Protocol 1: Sized -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Sized</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            <code class="text-emerald-300 font-mono">__len__(self) -&gt; int</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            Allows <code class="font-mono text-slate-200">len(c)</code>. Invariant: Must return a non-negative integer $\ge 0$. Governs truthiness if <code class="font-mono text-slate-200">__bool__</code> is omitted.
+                        </p>
+                    </div>
+
+                    <!-- Protocol 2: Container -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Container</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            <code class="text-emerald-300 font-mono">__contains__(self, item) -&gt; bool</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            Enables the <code class="font-mono text-slate-200">in</code> operator. Provides $O(1)$ membership checks (e.g. hash lookups) bypassing linear $O(n)$ iteration scans.
+                        </p>
+                    </div>
+
+                    <!-- Protocol 3: Iterable -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-emerald-300 font-bold block text-sm">Iterable</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            <code class="text-emerald-300 font-mono">__iter__(self) -&gt; Iterator</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            Permits <code class="font-mono text-slate-200">for x in c:</code>, list comprehensions, unpacking, and generator delegation. Returns an iterator satisfying <code class="font-mono text-slate-200">__next__</code>.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Combined Composite: Sequence & MutableSequence -->
+                <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-amber-300 font-bold text-xs uppercase tracking-wider">Composite Protocol: Sequence &amp; MutableSequence</span>
+                        <span class="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded font-bold border border-amber-800">collections.abc</span>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 text-[11px] font-sans text-slate-300">
+                        <div>
+                            <strong class="text-sky-300 font-mono text-xs block">Sequence (Read-Only):</strong>
+                            <p class="text-slate-400 text-[10px] leading-relaxed">
+                                Unites <code class="font-mono text-slate-200">Sized</code> + <code class="font-mono text-slate-200">Container</code> + <code class="font-mono text-slate-200">Iterable</code> + <code class="font-mono text-slate-200">__getitem__</code>. Provides mixin implementations of <code class="font-mono text-slate-200">__reversed__()</code>, <code class="font-mono text-slate-200">.index()</code>, and <code class="font-mono text-slate-200">.count()</code> automatically!
+                            </p>
+                        </div>
+                        <div>
+                            <strong class="text-emerald-300 font-mono text-xs block">MutableSequence (Read-Write):</strong>
+                            <p class="text-slate-400 text-[10px] leading-relaxed">
+                                Adds <code class="font-mono text-slate-200">__setitem__</code>, <code class="font-mono text-slate-200">__delitem__</code>, and <code class="font-mono text-slate-200">insert()</code>. Synthesizes <code class="font-mono text-slate-200">.append()</code>, <code class="font-mono text-slate-200">.reverse()</code>, <code class="font-mono text-slate-200">.extend()</code>, <code class="font-mono text-slate-200">.pop()</code>, and <code class="font-mono text-slate-200">.remove()</code> for free!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Legacy Fallback Explanation -->
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs block">// CPython Legacy Fallback: Iteration via __getitem__</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If an object defines <code class="font-mono text-purple-300">__getitem__</code> but omits <code class="font-mono text-purple-300">__iter__</code>, CPython <strong>automatically falls back to indexed iteration</strong>. When a loop executes <code class="font-mono text-slate-300">for x in obj:</code>, Python queries <code class="font-mono text-slate-300">obj[0]</code>, <code class="font-mono text-slate-300">obj[1]</code>, <code class="font-mono text-slate-300">obj[2]</code>, ... sequentially until an <code class="font-mono text-rose-400">IndexError</code> is raised! In modern production code, always implement <code class="font-mono text-emerald-300">__iter__</code> explicitly to communicate architectural intent.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Slicing Mechanics & slice.indices() -->
+        <section id="slicing-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Slicing Geometry &amp; `slice.indices()` Normalization</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When bracket notation includes a colon (e.g. <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">c[1:10:2]</code>), Python does not pass integers into <code class="font-mono text-purple-700 font-bold">__getitem__</code>. It constructs and passes an instance of the built-in <code class="font-mono text-purple-700 font-bold">slice</code> class: <code class="font-mono text-slate-800">slice(1, 10, 2)</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Manually handling slice boundaries—accounting for negative indices (e.g. <code class="font-mono text-slate-800">c[:-2]</code>), omitted bounds (<code class="font-mono text-slate-800">c[::-1]</code>), and strides out of range—is a notorious source of off-by-one errors.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Python provides the definitive standard solution: the <code class="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">slice.indices(length)</code> method.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- slice.indices Mechanics -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Standard Library Method</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">slice.indices(length)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Given the total length of the sequence, <code class="font-mono text-purple-700">indices()</code> normalizes all negative offsets, clips bounds to $[0, \text{length}]$, and resolves negative step directions:
+                    </p>
+                    <pre class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+s = slice(-5, <span class="text-rose-400">None</span>, -1)
+start, stop, step = s.indices(10)
+<span class="text-slate-500"># Output: (5, -1, -1)</span>
+<span class="text-slate-500"># Perfectly matches range(start, stop, step)!</span></pre>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        You can immediately feed the normalized 3-tuple directly into <code class="font-mono text-slate-800">range()</code> with zero conditional logic.
+                    </p>
+                </div>
+
+                <!-- Subtype Preservation Invariant -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Type Homogeneity</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">The Subtype Preservation Invariant</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When slicing a custom domain collection, a common anti-pattern is returning a standard raw Python <code class="font-mono text-slate-800">list</code>:
+                    </p>
+                    <div class="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[10px] font-mono">
+                        sub = entity_collection[1:5]  # Returns plain list! Breaks custom domain methods!
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        <strong>The Production Invariant:</strong> Slicing a custom sequence <strong>must return a new instance of the exact same collection type</strong>, preserving domain methods, custom observers, and validation rules down the processing chain!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Why Subclassing built-in 'list' is an Anti-Pattern -->
+        <section id="subclassing-list-trap" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architecture Warning: The Subclassing `list` Anti-Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When developers need a custom list that enforces validation or emits events, their first instinct is to subclass Python's built-in <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">list</code>: <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">class CustomList(list):</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In CPython, <strong>subclassing built-in collections directly is an architectural trap</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- The C-Level Bypass Trap -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-rose-900 text-sm block">The C-Level Method Bypass Trap</span>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        In CPython, built-in types (<code class="font-mono">list</code>, <code class="font-mono">dict</code>) are implemented in optimized C. For performance reasons, C-level methods frequently <strong>bypass overridden Python methods</strong>:
+                    </p>
+                    <ul class="space-y-1.5 text-xs text-rose-800 list-disc pl-4 leading-relaxed">
+                        <li>If you override <code class="font-mono">__setitem__</code> to validate incoming values, calling <code class="font-mono">custom_list.extend([bad_data])</code> runs internal C code that inserts the data directly, completely skipping your overridden <code class="font-mono">__setitem__</code>!</li>
+                        <li>Subclassing <code class="font-mono">dict</code> exhibits the exact same flaw: overriding <code class="font-mono">__setitem__</code> is ignored by <code class="font-mono">dict.update()</code>!</li>
+                    </ul>
+                </div>
+
+                <!-- The ABC Solution -->
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-emerald-900 text-sm block">The Production Standard: collections.abc</span>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        To build robust, production-grade custom sequences:
+                    </p>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        Inherit from <code class="font-mono bg-emerald-100 px-1 rounded text-emerald-900 font-bold">collections.abc.MutableSequence</code> (or wrap an internal list compositionally). When you implement the 5 core abstract methods (<code class="font-mono text-emerald-900 font-bold">__getitem__</code>, <code class="font-mono text-emerald-900 font-bold">__setitem__</code>, <code class="font-mono text-emerald-900 font-bold">__delitem__</code>, <code class="font-mono text-emerald-900 font-bold">__len__</code>, <code class="font-mono text-emerald-900 font-bold">insert</code>), all convenience methods (<code class="font-mono">append</code>, <code class="font-mono">extend</code>, <code class="font-mono">pop</code>, <code class="font-mono">remove</code>, <code class="font-mono">__iadd__</code>) are implemented as Python mixins that <strong>guarantee your validation hooks are always invoked!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Dunder Method Matrix: Sequence & Container Protocols -->
+        <section id="dunder-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Dunder Method Matrix: Container &amp; Sequence Protocols</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The exact contract specifications for emulating Python collections:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Method</th>
+                                <th class="py-2 px-2 font-bold font-sans">Trigger Syntax</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Override (&check;)</th>
+                                <th class="py-2 px-2 font-bold font-sans">When NOT to Override (&cross;)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__len__</td>
+                                <td class="py-3 px-2 font-mono">len(c)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Whenever instances act as sized collections. Invariant: Must return non-negative int $\ge 0$.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Infinite streams, unbuffered generators, or database cursors where total count is unknown without consuming all rows.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__getitem__</td>
+                                <td class="py-3 px-2 font-mono">c[i], c[start:stop]</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Index access and slicing. Must handle both <code class="font-mono text-slate-800">int</code> and <code class="font-mono text-slate-800">slice</code> objects. Raise <code class="font-mono text-slate-800">IndexError</code> on out-of-bounds indices.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Simple data transfer objects or services that should not pretend to be arrays.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__setitem__</td>
+                                <td class="py-3 px-2 font-mono">c[i] = val, c[s:e] = vals</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Mutable sequences and mappings. Validate types and emit change notifications.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Immutable collections (raise <code class="font-mono text-slate-800">TypeError</code> or omit definition entirely).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__iter__</td>
+                                <td class="py-3 px-2 font-mono">for x in c:</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Yielding items directly. Implement as a generator function with <code class="font-mono text-slate-800">yield</code> or delegate to <code class="font-mono text-slate-800">iter(internal_collection)</code>.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    When the class is already an iterator (implements <code class="font-mono text-slate-800">__next__</code> returning items). Iterators return <code class="font-mono text-slate-800">self</code> in <code class="font-mono">__iter__</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__contains__</td>
+                                <td class="py-3 px-2 font-mono">x in c</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Providing an optimized $O(1)$ membership check (e.g. by checking an internal set or index) bypassing linear iteration.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    When membership is already inherently $O(n)$ linear traversal (Python’s default fallback handles this automatically).
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 06 -->
+        <section id="entityforge-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 06: Observable EntityCollection Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 06 of <strong>EntityForge</strong>: constructing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/collections.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">EntityCollection</code>: An enterprise sequence subclassing <code class="font-mono text-purple-700 font-bold">collections.abc.MutableSequence</code>.</li>
+                <li><strong>Slice Subtype Preservation:</strong> Slicing an <code class="font-mono text-slate-800">EntityCollection</code> returns a new, independent <code class="font-mono text-purple-700 font-bold">EntityCollection</code> instance of the same type rather than a raw Python list.</li>
+                <li><strong>Normalized Slice Arithmetic:</strong> Employs <code class="font-mono text-purple-700 font-bold">slice.indices()</code> to safely manage negative strides, reversed slices, and clipped boundaries.</li>
+                <li><strong>Observable Mutation Hooks:</strong> Dispatches change events to registered listener callbacks whenever items are inserted, updated, or removed.</li>
+                <li><strong>Fast Membership Lookups:</strong> Maintains an internal identity lookup set to evaluate <code class="font-mono text-purple-700 font-bold">entity in collection</code> in $O(1)$ time by UUID.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 06)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">collections.py</span>            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_collections.py</span>       <span class="text-slate-500"># Milestone 06: Slicing, Sized &amp; Observer Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/collections.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Sequence Core: <code class="text-purple-700">src/entityforge/core/collections.py</code></span>
+                    <span class="text-slate-400">MutableSequence &amp; Slicing Protocols</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Observable EntityCollection &amp; Sequence Protocols (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">from</span> collections.abc <span class="text-purple-400">import</span> MutableSequence
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Generic, Iterable, Iterator, List, Optional, Set, TypeVar, Union, overload
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity, EntityIdentity
+<span class="text-purple-400">from</span> entityforge.core.diagnostics <span class="text-purple-400">import</span> DiagnosticRendererMixin
+
+T = TypeVar(<span class="text-amber-300">"T"</span>, bound=BaseEntity)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EntityCollection</span>(MutableSequence[T], DiagnosticRendererMixin, Generic[T]):
+    <span class="text-slate-500">"""
+    PRODUCTION OBSERVABLE DOMAIN SEQUENCE:
+    Subclasses collections.abc.MutableSequence to acquire mixin methods (.append, .pop, .extend)
+    while strictly preserving subclass type homogeneity during slicing operations.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, initial_items: Optional[Iterable[T]] = <span class="text-rose-400">None</span>) -> <span class="text-rose-400">None</span>:
+        self._items: List[T] = []
+        <span class="text-slate-500"># Secondary index set enabling O(1) membership checks by EntityIdentity UUID:</span>
+        self._identity_index: Set[EntityIdentity] = set()
+        <span class="text-slate-500"># Observer callback registry for mutation events:</span>
+        self._listeners: List[Callable[[str, Any], <span class="text-rose-400">None</span>]] = []
+
+        <span class="text-purple-400">if</span> initial_items <span class="text-purple-400">is not None</span>:
+            self.extend(initial_items)
+
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-slate-500"># Observer Registration &amp; Dispatch</span>
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_listener</span>(self, callback: Callable[[str, Any], <span class="text-rose-400">None</span>]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Registers an observer callback: callback(event_type: str, payload: Any)."""</span>
+        self._listeners.append(callback)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_notify</span>(self, event_type: str, payload: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Dispatches change notifications to all registered listeners."""</span>
+        <span class="text-purple-400">for</span> listener <span class="text-purple-400">in</span> self._listeners:
+            listener(event_type, payload)
+
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-slate-500"># The 5 Core Abstract Methods of MutableSequence</span>
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total entity count in O(1) time."""</span>
+        <span class="text-purple-400">return</span> len(self._items)
+
+    @overload
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getitem__</span>(self, index: int) -> T: ...
+
+    @overload
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getitem__</span>(self, index: slice) -> EntityCollection[T]: ...
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__getitem__</span>(self, index: Union[int, slice]) -> Union[T, EntityCollection[T]]:
+        <span class="text-slate-500">"""
+        INDEX &amp; SLICE RESOLUTION:
+        1. If index is int &rarr; returns the single entity at that position.
+        2. If index is slice &rarr; uses slice.indices() to return a new EntityCollection
+           of the EXACT same class, preserving domain methods and type homogeneity!
+        """</span>
+        <span class="text-purple-400">if isinstance</span>(index, slice):
+            start, stop, step = index.indices(len(self._items))
+            sliced_items = [self._items[i] <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(start, stop, step)]
+            <span class="text-slate-500"># Subtype preservation invariant: Return instance of self.__class__!</span>
+            new_collection = self.__class__(sliced_items)
+            <span class="text-purple-400">return</span> new_collection
+        <span class="text-purple-400">return</span> self._items[index]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__setitem__</span>(self, index: Union[int, slice], value: Union[T, Iterable[T]]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Updates item(s) at position, updating the identity index and notifying listeners."""</span>
+        <span class="text-purple-400">if isinstance</span>(index, slice):
+            <span class="text-purple-400">raise</span> NotImplementedError(<span class="text-amber-300">"Batch slice assignment is restricted to maintain domain invariants."</span>)
+
+        <span class="text-purple-400">if not isinstance</span>(value, BaseEntity):
+            <span class="text-purple-400">raise</span> TypeError(f<span class="text-amber-300">"Expected BaseEntity instance, got '{type(value).__name__}'"</span>)
+
+        old_item = self._items[index]
+        self._identity_index.discard(old_item.id)
+        self._items[index] = value
+        self._identity_index.add(value.id)
+        self._notify(<span class="text-amber-300">"SET"</span>, {<span class="text-amber-300">"index"</span>: index, <span class="text-amber-300">"old"</span>: old_item, <span class="text-amber-300">"new"</span>: value})
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__delitem__</span>(self, index: Union[int, slice]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Removes item(s) at position, updating identity set and notifying listeners."""</span>
+        <span class="text-purple-400">if isinstance</span>(index, slice):
+            start, stop, step = index.indices(len(self._items))
+            # Delete in reverse order to preserve valid index positions
+            indices_to_delete = sorted(list(range(start, stop, step)), reverse=<span class="text-rose-400">True</span>)
+            <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> indices_to_delete:
+                del self[i]
+            <span class="text-purple-400">return</span>
+
+        item = self._items.pop(index)
+        self._identity_index.discard(item.id)
+        self._notify(<span class="text-amber-300">"DELETE"</span>, {<span class="text-amber-300">"index"</span>: index, <span class="text-amber-300">"item"</span>: item})
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insert</span>(self, index: int, value: T) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Inserts an entity at position, updating index and notifying listeners."""</span>
+        <span class="text-purple-400">if not isinstance</span>(value, BaseEntity):
+            <span class="text-purple-400">raise</span> TypeError(f<span class="text-amber-300">"Expected BaseEntity instance, got '{type(value).__name__}'"</span>)
+
+        self._items.insert(index, value)
+        self._identity_index.add(value.id)
+        self._notify(<span class="text-amber-300">"INSERT"</span>, {<span class="text-amber-300">"index"</span>: index, <span class="text-amber-300">"item"</span>: value})
+
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-slate-500"># Optimized Protocol Overrides</span>
+    <span class="text-slate-500"># ==========================================================================</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__contains__</span>(self, item: object) -> bool:
+        <span class="text-slate-500">"""
+        OPTIMIZED CONTAINER PROTOCOL:
+        Leverages internal UUID identity set for O(1) membership check,
+        bypassing O(n) sequential list traversal!
+        """</span>
+        <span class="text-purple-400">if isinstance</span>(item, BaseEntity):
+            <span class="text-purple-400">return</span> item.id <span class="text-purple-400">in</span> self._identity_index
+        <span class="text-purple-400">return False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__iter__</span>(self) -> Iterator[T]:
+        <span class="text-slate-500">"""Yields entities in sequential arrival order."""</span>
+        <span class="text-purple-400">return</span> iter(self._items)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">find_by_id</span>(self, entity_id: EntityIdentity | str) -> Optional[T]:
+        <span class="text-slate-500">"""Domain query finding an entity by UUID in O(n) scan."""</span>
+        target_str = str(entity_id)
+        <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> self._items:
+            <span class="text-purple-400">if</span> str(item.id) == target_str:
+                <span class="text-purple-400">return</span> item
+        <span class="text-purple-400">return None</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_collections.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_collections.py</code></span>
+                    <span class="text-slate-400">Slicing, Sized &amp; Observer Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Collection Sequence Protocols Verification (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity
+<span class="text-purple-400">from</span> entityforge.core.collections <span class="text-purple-400">import</span> EntityCollection
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DomainItem</span>(BaseEntity):
+    <span class="text-slate-500">"""Concrete entity subclass for collection testing."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestEntityCollectionProtocols</span>:
+    <span class="text-slate-500">"""Unit tests asserting Sized, Iterable, Sequence slicing, and Observer notifications."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_sized_and_iterable_protocols</span>(self):
+        col = EntityCollection()
+        assert len(col) == 0
+
+        e1 = DomainItem.create_new(name=<span class="text-amber-300">"Item_1"</span>)
+        e2 = DomainItem.create_new(name=<span class="text-amber-300">"Item_2"</span>)
+
+        # Mixin append() provided by MutableSequence
+        col.append(e1)
+        col.append(e2)
+
+        # Sized protocol
+        assert len(col) == 2
+
+        # Iterable protocol
+        names = [item.name <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> col]
+        assert names == [<span class="text-amber-300">"Item_1"</span>, <span class="text-amber-300">"Item_2"</span>]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_optimized_o1_membership_container_protocol</span>(self):
+        col = EntityCollection()
+        e1 = DomainItem.create_new(name=<span class="text-amber-300">"Alpha"</span>)
+        e2 = DomainItem.create_new(name=<span class="text-amber-300">"Beta"</span>)
+
+        col.append(e1)
+        assert e1 <span class="text-purple-400">in</span> col      # O(1) check against internal UUID set
+        assert e2 <span class="text-purple-400">not in</span> col
+
+        # Remove e1 -> index set must discard
+        col.remove(e1)
+        assert e1 <span class="text-purple-400">not in</span> col
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_slicing_preserves_subtype_homogeneity</span>(self):
+        col = EntityCollection([DomainItem.create_new(code=i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(10)])
+
+        # 1. Single item indexing returns domain entity
+        assert isinstance(col[0], DomainItem)
+        assert col[0].code == 0
+
+        # 2. SUBTYPE PRESERVATION INVARIANT:
+        # Slicing MUST return a new EntityCollection instance, NOT a plain Python list!
+        sub_slice = col[2:6]
+        assert isinstance(sub_slice, EntityCollection)
+        assert len(sub_slice) == 4
+        assert [item.code <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> sub_slice] == [2, 3, 4, 5]
+
+        # 3. Complex negative step slicing
+        rev_slice = col[::-1]
+        assert isinstance(rev_slice, EntityCollection)
+        assert len(rev_slice) == 10
+        assert rev_slice[0].code == 9
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_observer_listener_dispatches_mutation_events</span>(self):
+        col = EntityCollection()
+        events = []
+
+        # Register observer callback
+        col.add_listener(<span class="text-purple-400">lambda</span> ev_type, payload: events.append((ev_type, payload)))
+
+        e1 = DomainItem.create_new(name=<span class="text-amber-300">"Observed_A"</span>)
+        col.append(e1)
+
+        assert len(events) == 1
+        assert events[0][0] == <span class="text-amber-300">"INSERT"</span>
+        assert events[0][1][<span class="text-amber-300">"item"</span>] is e1
+
+        # Delete triggers notification
+        del col[0]
+        assert len(events) == 2
+        assert events[1][0] == <span class="text-amber-300">"DELETE"</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Subclassing Built-in list Directly</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">class MyList(list):</code> and overriding <code class="font-mono text-rose-900 font-bold">__setitem__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent security bugs:</strong> CPython's built-in <code class="font-mono">list</code> methods like <code class="font-mono">extend()</code> and C-level slice assignments bypass overridden Python methods for speed. Unvalidated items bypass your validation hooks! Always subclass <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">collections.abc.MutableSequence</code> or use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">collections.UserList</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Slicing Returning a Raw list</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__getitem__</code> slice branch as <code class="font-mono text-rose-900 font-bold">return self._items[idx]</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks domain pipelines:</strong> If a caller writes <code class="font-mono">subset = my_collection[0:5]</code>, they expect <code class="font-mono">subset</code> to still be an instance of <code class="font-mono">MyCollection</code> with domain filtering and observer methods. Returning a raw list strips all custom methods and breaks method chaining. Always return <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">self.__class__(self._items[idx])</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Mutating Sequences During Iteration</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">for item in collection: if condition: collection.remove(item)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this drops elements silently:</strong> Removing an element shifts all following elements leftward by one pointer. The internal iterator counter advances by one, causing the loop to completely skip the element immediately following the deleted item! Iterate over a slice snapshot: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">for item in list(collection):</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Manual Slice Calculation Boilerplate</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing custom <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">if s.start &lt; 0: ... elif s.step is None: ...</code> logic.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes bugs:</strong> Hand-rolled boundary logic fails on negative steps (<code class="font-mono">[::-1]</code>) and negative bounds (<code class="font-mono">[-3:-1]</code>). Python already provides the battle-tested C-level method <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">start, stop, step = slice_obj.indices(len(self))</code>. Always use it!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the custom sequence test battery and verify slice normalization:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge collection protocol unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_collections.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.06s. Confirms Sized, Container, Sequence slice subtype preservation, and observer dispatches.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 06:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweight pooling, slotted state, diagnostic renderers, value objects, and observable collections with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect slice.indices() normalization in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "s = slice(-5, None, -2); print('Slice indices for length 20:', s.indices(20))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs (15, -1, -2), perfectly mapping negative indices and steps directly into range()!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Callable Objects &amp; Context Protocols - __call__, Reentrant Context Managers &amp; Resource Guards</h4>
+                <p class="text-xs text-slate-500 font-sans">Transforming instances into first-class stateful functions with __call__, mastering the context manager protocol (__enter__, __exit__), building reentrant locks, and engineering transactional rollback guards.</p>
+            </div>
+            <a href="Chapter 07 - Callable Objects and Context Protocols - __call__, Reentrant Context Managers and Resource Guards.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

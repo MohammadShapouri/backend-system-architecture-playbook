@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: PyTest Architecture: pluggy Hooks, Plugins &amp; Custom Reporters</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 09 - pluggy Plugins &amp; Compliance Audit Reporters)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Framework Metaprogramming &amp; pluggy Hooks
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                PyTest Architecture: pluggy Hooks, Plugins &amp; Custom Reporters
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Extending PyTest's internal runtime engine: Deconstructing <code class="font-mono text-emerald-400">pluggy</code> hook specifications and implementations, controlling multicast execution orders via <code class="font-mono text-emerald-400">hookwrapper=True</code>, adding custom command-line options (<code class="font-mono text-emerald-400">pytest_addoption</code>), validating collection items with <code class="font-mono text-emerald-400">pytest_collection_modifyitems</code>, packaging installable plugins via entry points, and engineering an automated SOX-404 regulatory compliance audit reporter for <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">VaultFlow Milestone 09: Regulatory Audit Plugin &amp; Compliance Enforcer</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In enterprise financial institutions, software is not certified solely by green passing tests; it must satisfy statutory audit frameworks (Sarbanes-Oxley Section 404, Basel III, PCI-DSS). Regulatory auditors mandate proof that critical financial ledger paths possess verified test coverage. In Milestone 09, we build an internal PyTest plugin: <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">pytest_vaultflow_audit</code>. We create custom markers (<code class="font-mono text-purple-300">@pytest.mark.compliance</code>), hook into collection to reject untagged financial tests, wrap the execution protocol to measure test outcomes, and generate an immutable, cryptographically hashed JSON compliance audit ledger.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">pluggy</code> Plugin Architecture Model</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hook Specification (<code class="text-purple-300">hookspec</code>) vs. Implementation (<code class="text-purple-300">hookimpl</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Execution Sequencing: <code class="text-purple-300">tryfirst</code>, <code class="text-purple-300">trylast</code>, <code class="text-purple-300">hookwrapper</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Custom CLI Flags via <code class="text-purple-300">pytest_addoption</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Test Rejection &amp; Tag Enforcement in <code class="text-purple-300">pytest_collection_modifyitems</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Generating Regulatory JSON Audit Reports on Terminal Summary</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Computer Science: pluggy & PyTest's Internal Plugin Bus -->
+        <section id="cs-pluggy-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The <code>pluggy</code> Hook Bus &amp; Multicast Execution</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                PyTest is not a monolithic application. Internally, almost the entire framework—including test discovery, fixture evaluation, assertion rewriting, standard terminal printing, and exception formatting—is implemented as a collection of modular plugins coordinating across an event bus powered by the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">pluggy</code> library.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <code class="font-mono text-xs">pluggy</code> establishes a strict contract between two decorator primitives:
+            </p>
+            <div class="grid md:grid-cols-2 gap-4 font-mono text-xs">
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
+                    <span class="text-purple-700 font-bold block">1. Hook Specification (@hookspec)</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Declares the function signature, argument types, and return contract for an extension point (e.g., <code class="text-slate-900">pytest_runtest_protocol</code>). Contains no implementation.
+                    </p>
+                </div>
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold block">2. Hook Implementation (@hookimpl)</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Concrete functions written by PyTest core or third-party developers matching the specification signature. Registered into the runtime <code class="text-slate-900">PluginManager</code>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- pluggy Execution Pipeline Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The pluggy Multicast Hook Execution Order
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Layer 1: Hookwrapper Pre-Execution -->
+                    <div class="w-full p-3 bg-purple-950/80 border border-purple-500 rounded-xl text-center space-y-0.5">
+                        <span class="text-purple-300 font-bold block text-sm">1. hookwrapper=True [Pre-Yield Phase]</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Starts stopwatch &bull; Records execution context &bull; Yields execution</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; descends call stack &darr;</div>
+
+                    <!-- Layer 2: tryfirst Hooks -->
+                    <div class="w-full p-3 bg-sky-950/80 border border-sky-500 rounded-xl text-center space-y-0.5">
+                        <span class="text-sky-300 font-bold block">2. tryfirst=True Implementations</span>
+                        <span class="text-[10px] text-slate-400 font-sans">High-priority plugins executed first</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; standard sequence &darr;</div>
+
+                    <!-- Layer 3: Standard Implementations -->
+                    <div class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-center space-y-0.5">
+                        <span class="text-slate-300 font-bold block">3. Standard @hookimpl Implementations</span>
+                        <span class="text-[10px] text-slate-400 font-sans">LIFO execution of standard registered hooks (in conftest.py or installed plugins)</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; lowest priority &darr;</div>
+
+                    <!-- Layer 4: trylast Hooks -->
+                    <div class="w-full p-3 bg-sky-950/80 border border-sky-500 rounded-xl text-center space-y-0.5">
+                        <span class="text-sky-300 font-bold block">4. trylast=True Implementations</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Fallback handlers (e.g. PyTest default terminal reporter)</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&uarr; unwinds call stack &uarr;</div>
+
+                    <!-- Layer 5: Hookwrapper Post-Execution -->
+                    <div class="w-full p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl text-center space-y-0.5">
+                        <span class="text-emerald-300 font-bold block text-sm">5. hookwrapper=True [Post-Yield Phase]</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Interprets Outcome object (<code class="text-emerald-300">outcome.get_result()</code>) &bull; Emits custom telemetry</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Hookwrapper Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        A hook annotated with <code class="text-white font-mono">hookwrapper=True</code> acts as a decorator around all other implementations. It executes up to its single <code class="text-emerald-300 font-mono">yield</code> statement, delegates execution to downstream hooks, and resumes immediately after all other hooks have returned, receiving an <code class="text-emerald-300 font-mono">outcome</code> handle containing the return value or exception.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The PyTest Lifecycle Phases: Configuration, Collection, Runtest, Reporting -->
+        <section id="pytest-lifecycle-phases" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Four PyTest Lifecycle Phases &amp; Essential Hooks</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To build plugins effectively, senior engineers must understand which hook fires during which phase of test runner execution. PyTest operations divide into four chronological phases:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Phase 1: Boot & Config -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-sky-600 uppercase tracking-widest block">Phase 1</span>
+                    <h3 class="text-base font-bold text-slate-900">Bootstrapping &amp; Configuration</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Parses command-line arguments, validates <code class="font-mono text-slate-800">pyproject.toml</code>, and initializes plugins.
+                    </p>
+                    <ul class="text-[11px] font-mono text-slate-700 space-y-1">
+                        <li><span class="text-purple-700 font-bold">pytest_addoption(parser)</span>: Registers custom CLI arguments and INI options.</li>
+                        <li><span class="text-purple-700 font-bold">pytest_configure(config)</span>: Invoked after command line options are parsed. Perfect for registering markers programmatically.</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 2: Collection -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-purple-600 uppercase tracking-widest block">Phase 2</span>
+                    <h3 class="text-base font-bold text-slate-900">Collection &amp; Test Tree Construction</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Traverses the file tree and discovers test items, building the composite execution graph.
+                    </p>
+                    <ul class="text-[11px] font-mono text-slate-700 space-y-1">
+                        <li><span class="text-purple-700 font-bold">pytest_collect_file(file_path, parent)</span>: Determines if a file is collectable.</li>
+                        <li><span class="text-purple-700 font-bold">pytest_collection_modifyitems(config, items)</span>: Invoked after all items are collected. Enables reordering, filtering, or enforcing strict tagging rules.</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 3: Runtest Protocol -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-emerald-600 uppercase tracking-widest block">Phase 3</span>
+                    <h3 class="text-base font-bold text-slate-900">The Runtest Execution Protocol</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Executes for each individual test item across three sub-stages: setup, call, teardown.
+                    </p>
+                    <ul class="text-[11px] font-mono text-slate-700 space-y-1">
+                        <li><span class="text-purple-700 font-bold">pytest_runtest_protocol(item, nextitem)</span>: Oversees the 3-stage execution loop.</li>
+                        <li><span class="text-purple-700 font-bold">pytest_runtest_makereport(item, call)</span>: Converts raw test execution results into a formatted <code class="text-slate-800">TestReport</code>.</li>
+                    </ul>
+                </div>
+
+                <!-- Phase 4: Reporting -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-amber-600 uppercase tracking-widest block">Phase 4</span>
+                    <h3 class="text-base font-bold text-slate-900">Terminal Reporting &amp; Teardown</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Formats terminal output, outputs test summary bars, and dispatches external report files.
+                    </p>
+                    <ul class="text-[11px] font-mono text-slate-700 space-y-1">
+                        <li><span class="text-purple-700 font-bold">pytest_report_teststatus(report, config)</span>: Customizes terminal symbols (e.g., replacing '.' with custom markers).</li>
+                        <li><span class="text-purple-700 font-bold">pytest_terminal_summary(terminalreporter, exitstatus, config)</span>: Prints final summary metrics and generates output files.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Dynamic Collection Filtering: pytest_collection_modifyitems -->
+        <section id="collection-modify-items" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Enforcing Standards: <code>pytest_collection_modifyitems</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In enterprise projects with dozens of engineers, policies like <em>"Every test in the payment ledger must have a compliance ticket reference"</em> frequently fail because humans forget to apply markers.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                By hooking into <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">pytest_collection_modifyitems</code>, we can inspect every collected test node in memory before execution begins. If a test located in <code class="font-mono text-xs text-slate-800">tests/unit/test_ledger.py</code> or <code class="font-mono text-xs text-slate-800">tests/integration/</code> lacks an explicit <code class="font-mono text-xs text-purple-700">@pytest.mark.compliance</code> tag, our plugin can dynamically reject the test or fail the CI build immediately:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Architectural Guardrail: Enforcing Compliance Metadata in Collection:</div>
+                <pre>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_collection_modifyitems</span>(config, items):
+    enforce_compliance = config.getoption(<span class="text-amber-300">"--enforce-compliance"</span>, default=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">if not</span> enforce_compliance:
+        <span class="text-purple-400">return</span>
+
+    unmarked_items = []
+    <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> items:
+        <span class="text-slate-500"># Check if test resides in core financial domain or services directory</span>
+        <span class="text-purple-400">if</span> <span class="text-amber-300">"core"</span> <span class="text-purple-400">in</span> str(item.fspath) <span class="text-purple-400">or</span> <span class="text-amber-300">"services"</span> <span class="text-purple-400">in</span> str(item.fspath):
+            marker = item.get_closest_marker(<span class="text-amber-300">"compliance"</span>)
+            <span class="text-purple-400">if not</span> marker:
+                unmarked_items.append(item.nodeid)
+
+    <span class="text-purple-400">if</span> unmarked_items:
+        formatted_list = <span class="text-amber-300">"\n  "</span> + <span class="text-amber-300">"\n  "</span>.join(unmarked_items)
+        pytest.exit(
+            f<span class="text-rose-400">"COMPLIANCE VIOLATION: The following financial tests lack mandatory @pytest.mark.compliance tags:&#123;formatted_list&#125;"</span>,
+            returncode=1
+        )</pre>
+            </div>
+        </section>
+
+        <!-- 4. Hook Wrappers: pytest_runtest_makereport -->
+        <section id="hookwrappers-makereport" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Interception Metaprogramming: <code>hookwrapper=True</code> on <code>makereport</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When auditing high-risk systems, management requires proof not only that a test ran, but its exact execution duration, whether it passed or failed, and the associated regulatory ticket identifier.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The standard hook <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">pytest_runtest_makereport</code> generates a <code class="font-mono text-xs text-slate-800">TestReport</code> object for each stage (<code class="font-mono text-xs">setup</code>, <code class="font-mono text-xs">call</code>, <code class="font-mono text-xs">teardown</code>). By wrapping this hook with <code class="font-mono text-xs text-purple-700 font-bold">hookwrapper=True</code>, we intercept the outcome object after PyTest finishes evaluating assertions, extract test metadata, and store telemetry in a shared audit session:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Intercepting Test Execution Outcomes via Hook Wrapper:</div>
+                <pre>
+<span class="text-purple-400">@pytest.hookimpl</span>(hookwrapper=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_runtest_makereport</span>(item, call):
+    <span class="text-slate-500"># 1. Pre-execution phase: yields control downstream</span>
+    outcome = <span class="text-purple-400">yield</span>
+
+    <span class="text-slate-500"># 2. Post-execution phase: retrieves the finalized TestReport object</span>
+    report = outcome.get_result()
+
+    <span class="text-slate-500"># Only capture the main execution call (ignores setup/teardown unless failed)</span>
+    <span class="text-purple-400">if</span> report.when == <span class="text-amber-300">"call"</span>:
+        compliance_marker = item.get_closest_marker(<span class="text-amber-300">"compliance"</span>)
+        audit_entry = {
+            <span class="text-amber-300">"nodeid"</span>: item.nodeid,
+            <span class="text-amber-300">"outcome"</span>: report.outcome,
+            <span class="text-amber-300">"duration_seconds"</span>: round(call.duration, 4),
+            <span class="text-amber-300">"regulatory_code"</span>: compliance_marker.kwargs.get(<span class="text-amber-300">"code"</span>) <span class="text-purple-400">if</span> compliance_marker <span class="text-purple-400">else</span> <span class="text-rose-400">None</span>,
+            <span class="text-amber-300">"risk_tier"</span>: compliance_marker.kwargs.get(<span class="text-amber-300">"risk"</span>, <span class="text-amber-300">"STANDARD"</span>) <span class="text-purple-400">if</span> compliance_marker <span class="text-purple-400">else</span> <span class="text-rose-400">None</span>,
+        }
+        item.session.compliance_audit_ledger.append(audit_entry)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: VaultFlow Milestone 09 -->
+        <section id="vaultflow-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 09: Regulatory Compliance Audit Plugin Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 09 for <strong>VaultFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We engineer <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/vaultflow/plugins/audit_plugin.py</code>: an enterprise plugin implementing CLI options, collection enforcement, and JSON audit log exporting.</li>
+                <li>We register the plugin inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/conftest.py</code>.</li>
+                <li>We annotate VaultFlow’s core financial test suite with compliance metadata (<code class="font-mono text-purple-700 font-bold">@pytest.mark.compliance</code>).</li>
+                <li>We verify CLI flags <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">--compliance-report</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">--enforce-compliance</code>.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 09)</div>
+                <div>vaultflow/</div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── services/</div>
+                <div>│       ├── storage/</div>
+                <div>│       ├── web/</div>
+                <div>│       ├── cli/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">plugins/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">audit_plugin.py</span>        <span class="text-slate-500"># Milestone 09: Custom pluggy Compliance Plugin</span></div>
+                <div>└── tests/</div>
+                <div>    ├── <span class="text-emerald-300 font-bold">conftest.py</span>                 <span class="text-slate-500"># Registers audit plugin hooks</span></div>
+                <div>    ├── unit/</div>
+                <div>    │   └── <span class="text-purple-300 font-bold">test_compliance_ledger.py</span>  <span class="text-slate-500"># Milestone 09: Compliance tagged tests</span></div>
+                <div>    ├── integration/</div>
+                <div>    ├── functional/</div>
+                <div>    └── property/</div>
+            </div>
+
+            <!-- File 1: src/vaultflow/plugins/audit_plugin.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Regulatory Audit Plugin: <code class="text-purple-700">src/vaultflow/plugins/audit_plugin.py</code></span>
+                    <span class="text-slate-400">pluggy Hook Implementations</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Plugins - SOX/Basel III Audit Reporter (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">import</span> pytest
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">VaultFlowAuditPlugin</span>:
+    <span class="text-slate-500">"""Enterprise PyTest plugin generating immutable regulatory audit logs."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self.audit_records = []
+        self.session_start = time.time()
+
+    <span class="text-purple-400">@pytest.hookimpl</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_addoption</span>(self, parser):
+        group = parser.getgroup(<span class="text-amber-300">"vaultflow"</span>, <span class="text-amber-300">"VaultFlow Financial Governance"</span>)
+        group.addoption(
+            <span class="text-amber-300">"--compliance-report"</span>,
+            action=<span class="text-amber-300">"store"</span>,
+            default=<span class="text-rose-400">None</span>,
+            help=<span class="text-amber-300">"Path to output immutable JSON regulatory audit ledger"</span>
+        )
+        group.addoption(
+            <span class="text-amber-300">"--enforce-compliance"</span>,
+            action=<span class="text-amber-300">"store_true"</span>,
+            default=<span class="text-rose-400">False</span>,
+            help=<span class="text-amber-300">"Fail test session if any core financial tests lack @pytest.mark.compliance"</span>
+        )
+
+    <span class="text-purple-400">@pytest.hookimpl</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_configure</span>(self, config):
+        <span class="text-slate-500"># Programmatically register the custom marker to eliminate unknown-marker warnings</span>
+        config.addinivalue_line(
+            <span class="text-amber-300">"markers"</span>,
+            <span class="text-amber-300">"compliance(code, risk): Mark test with statutory regulatory governance metadata"</span>
+        )
+        config.addinivalue_line(
+            <span class="text-amber-300">"markers"</span>,
+            <span class="text-amber-300">"functional: Interface tests for CLI and web endpoints"</span>
+        )
+
+    <span class="text-purple-400">@pytest.hookimpl</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_collection_modifyitems</span>(self, config, items):
+        <span class="text-purple-400">if not</span> config.getoption(<span class="text-amber-300">"--enforce-compliance"</span>):
+            <span class="text-purple-400">return</span>
+
+        missing_compliance = []
+        <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> items:
+            <span class="text-slate-500"># Verify tests touching core financial transactions declare compliance</span>
+            <span class="text-purple-400">if</span> <span class="text-amber-300">"ledger"</span> <span class="text-purple-400">in</span> item.nodeid <span class="text-purple-400">or</span> <span class="text-amber-300">"settlement"</span> <span class="text-purple-400">in</span> item.nodeid:
+                <span class="text-purple-400">if not</span> item.get_closest_marker(<span class="text-amber-300">"compliance"</span>):
+                    missing_compliance.append(item.nodeid)
+
+        <span class="text-purple-400">if</span> missing_compliance:
+            pytest.exit(
+                f<span class="text-rose-400">"REGULATORY FAILURE: Mandatory @pytest.mark.compliance missing on: {missing_compliance[:2]}"</span>,
+                returncode=1
+            )
+
+    <span class="text-purple-400">@pytest.hookimpl</span>(hookwrapper=<span class="text-rose-400">True</span>)
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_runtest_makereport</span>(self, item, call):
+        outcome = <span class="text-purple-400">yield</span>
+        report = outcome.get_result()
+
+        <span class="text-purple-400">if</span> report.when == <span class="text-amber-300">"call"</span>:
+            marker = item.get_closest_marker(<span class="text-amber-300">"compliance"</span>)
+            entry = {
+                <span class="text-amber-300">"test_id"</span>: item.nodeid,
+                <span class="text-amber-300">"status"</span>: report.outcome.upper(),
+                <span class="text-amber-300">"duration_ms"</span>: round(call.duration * 1000, 2),
+                <span class="text-amber-300">"compliance_code"</span>: marker.kwargs.get(<span class="text-amber-300">"code"</span>) <span class="text-purple-400">if</span> marker <span class="text-purple-400">else</span> <span class="text-amber-300">"UNMARKED"</span>,
+                <span class="text-amber-300">"risk_tier"</span>: marker.kwargs.get(<span class="text-amber-300">"risk"</span>, <span class="text-amber-300">"UNRATED"</span>) <span class="text-purple-400">if</span> marker <span class="text-purple-400">else</span> <span class="text-amber-300">"UNRATED"</span>
+            }
+            self.audit_records.append(entry)
+
+    <span class="text-purple-400">@pytest.hookimpl</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_terminal_summary</span>(self, terminalreporter, exitstatus, config):
+        report_path = config.getoption(<span class="text-amber-300">"--compliance-report"</span>)
+        <span class="text-purple-400">if not</span> report_path:
+            <span class="text-purple-400">return</span>
+
+        total_audited = len(self.audit_records)
+        passed = sum(1 <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> self.audit_records <span class="text-purple-400">if</span> r[<span class="text-amber-300">"status"</span>] == <span class="text-amber-300">"PASSED"</span>)
+        
+        payload = {
+            <span class="text-amber-300">"audit_timestamp_utc"</span>: time.strftime(<span class="text-amber-300">"%Y-%m-%dT%H:%M:%SZ"</span>, time.gmtime()),
+            <span class="text-amber-300">"total_tests_audited"</span>: total_audited,
+            <span class="text-amber-300">"compliance_pass_rate"</span>: f<span class="text-amber-300">"&#123;(passed / total_audited) * 100:.2f&#125;%"</span> <span class="text-purple-400">if</span> total_audited <span class="text-purple-400">else</span> <span class="text-amber-300">"0%"</span>,
+            <span class="text-amber-300">"records"</span>: self.audit_records
+        }
+
+        raw_json = json.dumps(payload, indent=2)
+        <span class="text-slate-500"># Compute SHA-256 seal of the report to guarantee immutability</span>
+        payload[<span class="text-amber-300">"sha256_cryptographic_seal"</span>] = hashlib.sha256(raw_json.encode(<span class="text-amber-300">"utf-8"</span>)).hexdigest()
+
+        target = Path(report_path)
+        target.parent.mkdir(parents=<span class="text-rose-400">True</span>, exist_ok=<span class="text-rose-400">True</span>)
+        target.write_text(json.dumps(payload, indent=2), encoding=<span class="text-amber-300">"utf-8"</span>)
+
+        terminalreporter.write_sep(<span class="text-amber-300">"="</span>, <span class="text-amber-300">"VAULTFLOW REGULATORY AUDIT LEDGER GENERATED"</span>, bold=<span class="text-rose-400">True</span>, green=<span class="text-rose-400">True</span>)
+        terminalreporter.write_line(f<span class="text-amber-300">"Audit report written to: &#123;target.resolve()&#125;"</span>)
+        terminalreporter.write_line(f<span class="text-amber-300">"Cryptographic Seal:     &#123;payload['sha256_cryptographic_seal']&#125;"</span>)</pre>
+            </div>
+
+            <!-- File 2: tests/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Registering the Plugin: <code class="text-purple-700">tests/conftest.py</code></span>
+                    <span class="text-slate-400">Framework Registration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In tests/conftest.py: Register custom audit plugin singleton</span>
+<span class="text-purple-400">from</span> vaultflow.plugins.audit_plugin <span class="text-purple-400">import</span> VaultFlowAuditPlugin
+
+<span class="text-slate-500"># Register plugin into PyTest's internal PluginManager</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pytest_configure</span>(config):
+    plugin = VaultFlowAuditPlugin()
+    config.pluginmanager.register(plugin, name=<span class="text-amber-300">"vaultflow_audit_plugin"</span>)</pre>
+            </div>
+
+            <!-- File 3: tests/unit/test_compliance_ledger.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Compliance-Tagged Financial Tests: <code class="text-purple-700">tests/unit/test_compliance_ledger.py</code></span>
+                    <span class="text-slate-400">Tagged Financial Execution</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - Statutory Governance Audits (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money
+<span class="text-purple-400">from</span> vaultflow.core.ledger <span class="text-purple-400">import</span> Account, AccountType, JournalEntry, Posting
+
+<span class="text-purple-400">@pytest.mark.unit</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestRegulatoryComplianceLedger</span>:
+    <span class="text-slate-500">"""Financial tests annotated with formal regulatory audit metadata."""</span>
+
+    <span class="text-purple-400">@pytest.mark.compliance</span>(code=<span class="text-amber-300">"SOX-404-SEGREGATION"</span>, risk=<span class="text-amber-300">"CRITICAL"</span>)
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_segregation_of_customer_and_firm_reserves</span>(self, empty_ledger):
+        firm_vault = Account(<span class="text-amber-300">"FIRM_VAULT"</span>, AccountType.ASSET, Money(Decimal(<span class="text-amber-300">"500000.0000"</span>), <span class="text-amber-300">"USD"</span>))
+        cust_deposit = Account(<span class="text-amber-300">"CUST_DEPOSIT"</span>, AccountType.LIABILITY, Money(Decimal(<span class="text-amber-300">"500000.0000"</span>), <span class="text-amber-300">"USD"</span>))
+        
+        empty_ledger.register_account(firm_vault)
+        empty_ledger.register_account(cust_deposit)
+
+        assert firm_vault.balance.amount == cust_deposit.balance.amount
+
+    <span class="text-purple-400">@pytest.mark.compliance</span>(code=<span class="text-amber-300">"BASEL-III-LIQUIDITY"</span>, risk=<span class="text-amber-300">"HIGH"</span>)
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_liquidity_coverage_ratio_buffer_preservation</span>(self, empty_ledger):
+        reserve = Account(<span class="text-amber-300">"HIGH_QUALITY_LIQUID_ASSET"</span>, AccountType.ASSET, Money(Decimal(<span class="text-amber-300">"100000.0000"</span>), <span class="text-amber-300">"USD"</span>))
+        empty_ledger.register_account(reserve)
+        assert reserve.balance.amount &gt;= Decimal(<span class="text-amber-300">"100000.0000"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Heavy I/O in Hot-Path Hook Wrappers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">requests.post("https://audit-server", json=report)</code> directly inside <code class="font-mono text-rose-900">pytest_runtest_makereport</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys test suites:</strong> <code class="font-mono">makereport</code> executes 3 times for <em>every single test item</em> (setup, call, teardown). If an HTTP network call takes 50ms, a suite of 400 tests will experience <strong>60 seconds of pure idle network delay</strong>!
+                        <strong>Fix:</strong> Buffer metrics in memory during <code class="font-mono">makereport</code>, and write the report once inside <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">pytest_terminal_summary</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Missing config.addinivalue_line for Markers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Annotating tests with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">@pytest.mark.compliance</code> without registering the marker in <code class="font-mono text-rose-900">pytest_configure</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes CI failures:</strong> When enterprise CI runs with <code class="font-mono">--strict-markers</code> enabled, PyTest immediately aborts the test run if it encounters any marker that was not registered via <code class="font-mono">config.addinivalue_line("markers", ...)</code> or <code class="font-mono">pyproject.toml</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the custom plugin, generate the cryptographic audit ledger, and verify compliance enforcement:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run with Compliance Reporting -->
+                <div>
+                    <span class="text-slate-500"># 1. Run unit suite and generate immutable JSON regulatory audit report:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_compliance_ledger.py -v --compliance-report=build/reports/sox_audit.json
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe terminal output: Notice custom banner "VAULTFLOW REGULATORY AUDIT LEDGER GENERATED" with SHA-256 seal!
+                    </span>
+                </div>
+
+                <!-- Step 2: Inspect Generated Audit Artifact -->
+                <div>
+                    <span class="text-slate-500"># 2. Inspect the generated JSON audit ledger artifact:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        cat build/reports/sox_audit.json
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output reflects structured pass rates, duration breakdown, regulatory codes, and cryptographic hash seal.
+                    </span>
+                </div>
+
+                <!-- Step 3: Verify Enforcement Flag -->
+                <div>
+                    <span class="text-slate-500"># 3. Test compliance guardrail flag (rejects unmarked financial tests):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_compliance_ledger.py --enforce-compliance
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates that all financial ledger tests have satisfied statutory governance rules.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Enterprise CI/CD Pipeline &bull; Distributed Sharding, Flakiness Quarantine &amp; The Staff Audit</h4>
+                <p class="text-xs text-slate-500 font-sans">Deploying VaultFlow to production: Distributed multi-core parallel execution with <code class="font-mono">pytest-xdist</code>, quarantine policies for flaky tests, test impact analysis with <code class="font-mono">pytest-testmon</code>, and the 10-Point Staff Test Suite Audit.</p>
+            </div>
+            <a href="Chapter 10 - Enterprise CI-CD Pipeline - Distributed Sharding, Flakiness Quarantine and The Staff Audit.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

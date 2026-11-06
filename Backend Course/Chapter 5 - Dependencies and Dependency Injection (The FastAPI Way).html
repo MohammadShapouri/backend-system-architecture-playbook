@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 5: Dependencies &amp; Dependency Injection (The FastAPI Way)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 05 - Decoupled Dependency Graph)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Inversion of Control &amp; Testing Architecture
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Dependencies &amp; Dependency Injection: The FastAPI Way
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling your application: How FastAPI constructs a Directed Acyclic Graph (DAG) to resolve dependencies, managing teardown lifecycles using <code class="font-mono text-emerald-400">yield</code>, preventing database connection exhaustion, and hot-swapping data stores during tests.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 05: Extracting the Service Layer</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        Until now, our routes imported <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">NOTE_DATABASE</code> directly from global scope—a classic tight-coupling anti-pattern. In this milestone, we introduce <code class="font-mono text-purple-300">app/dependencies.py</code> and a repository-style datastore provider. We then inject this provider into our routes using <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Depends()</code>, preparing our application for real SQLAlchemy transactions in Chapter 6.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Inversion of Control (IoC) &amp; DI</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The DAG Resolution Tree</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The <code class="text-purple-300">yield</code> teardown context manager</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-leak connection pool rules</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">dependency_overrides</code> for Pytest</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Inversion of Control (IoC) -->
+        <section id="cs-di-ioc" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Design Patterns: Inversion of Control (IoC)</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In traditional procedural software, a function directly instantiates its own dependencies. If function <code class="font-mono text-xs text-slate-800">get_notes()</code> needs a database, it imports the database driver and opens a socket. This approach is called <strong>tight coupling</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Tightly Coupled -->
+                <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl space-y-3">
+                    <h3 class="text-base font-bold text-rose-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-rose-200 text-rose-800 flex items-center justify-center text-xs font-mono font-bold">&cross;</span>
+                        Tightly Coupled (The Anti-Pattern)
+                    </h3>
+                    <p class="text-xs text-rose-800 leading-relaxed">
+                        The controller assumes full responsibility for creating, maintaining, and closing external resources:
+                    </p>
+                    <pre class="bg-slate-900 text-rose-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/notes"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">read_notes</span>():
+    <span class="text-slate-500"># Direct instantiation inside the controller</span>
+    db = PostgresDatabasePool.get_connection()
+    notes = db.query(...)
+    db.close()
+    <span class="text-purple-400">return</span> notes</pre>
+                    <div class="text-[11px] text-rose-900 space-y-1">
+                        <p><strong>Fatal Flaws:</strong></p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li><strong>Untestable:</strong> You cannot run a unit test without launching a live PostgreSQL instance.</li>
+                            <li><strong>Leaky:</strong> If <code class="font-mono">db.query()</code> raises an exception, <code class="font-mono">db.close()</code> never executes, leaking network sockets.</li>
+                            <li><strong>Rigid:</strong> You cannot swap storage backends without modifying all your route files.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Inverted Control -->
+                <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl space-y-3">
+                    <h3 class="text-base font-bold text-emerald-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-emerald-200 text-emerald-800 flex items-center justify-center text-xs font-mono font-bold">&check;</span>
+                        Inversion of Control (The DI Way)
+                    </h3>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        The controller declares its requirements in its function parameters. The framework injects the dependency from the outside:
+                    </p>
+                    <pre class="bg-slate-900 text-emerald-300 p-3.5 rounded-xl font-mono text-xs overflow-x-auto">
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/notes"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">read_notes</span>(db: NoteStore = Depends(get_db)):
+    <span class="text-slate-500"># The route only cares about using the store</span>
+    <span class="text-purple-400">return</span> db.get_all()</pre>
+                    <div class="text-[11px] text-emerald-900 space-y-1">
+                        <p><strong>Architectural Benefits:</strong></p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li><strong>Single Responsibility:</strong> The route focuses strictly on HTTP handling and response formatting.</li>
+                            <li><strong>Guaranteed Cleanup:</strong> The framework manages setup and teardown, even if crashes occur.</li>
+                            <li><strong>Mockable:</strong> In test files, <code class="font-mono">get_db</code> can be swapped for an in-memory test double without altering production code.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Dependency Graph: DAG Resolution & Caching -->
+        <section id="dag-resolution" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Directed Acyclic Graph (DAG)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI’s dependency injection system is hierarchical. Dependencies can themselves depend on other dependencies. When a request arrives, FastAPI inspects the route's parameters using Python's standard <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">inspect</code> module, builds a <strong>Directed Acyclic Graph (DAG)</strong>, and resolves dependencies from the bottom up.
+            </p>
+
+            <!-- DAG Flow Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-mono font-bold uppercase tracking-widest text-emerald-400">Dependency Resolution Tree</span>
+                    <p class="text-slate-400 text-xs mt-1">FastAPI builds and executes this graph for each incoming request</p>
+                </div>
+
+                <div class="flex flex-col items-center gap-3 font-mono text-xs max-w-xl mx-auto">
+                    <!-- Layer 0: Root Controller -->
+                    <div class="w-full p-3.5 bg-emerald-950 border border-emerald-500 rounded-2xl text-center shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">Target Route Handler: update_note(...)</span>
+                        <span class="text-[10px] text-emerald-400">Receives fully resolved: (note_id, current_user, db_session)</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&uarr; Injects resolved values</div>
+
+                    <!-- Layer 1: Sub-dependencies -->
+                    <div class="grid grid-cols-2 gap-4 w-full">
+                        <div class="p-3 bg-purple-950 border border-purple-600 rounded-xl text-center">
+                            <span class="text-purple-300 font-bold block">get_current_user</span>
+                            <span class="text-[10px] text-slate-400">Depends on: token, db_session</span>
+                        </div>
+                        <div class="p-3 bg-sky-950 border border-sky-600 rounded-xl text-center">
+                            <span class="text-sky-300 font-bold block">get_db_session</span>
+                            <span class="text-[10px] text-slate-400">Depends on: engine connection pool</span>
+                        </div>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&uarr; Resolves dependencies first</div>
+
+                    <!-- Layer 2: Leaf dependencies -->
+                    <div class="grid grid-cols-2 gap-4 w-full">
+                        <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl text-center">
+                            <span class="text-amber-300 font-bold block">oauth2_scheme</span>
+                            <span class="text-[10px] text-slate-400">Parses Authorization header</span>
+                        </div>
+                        <div class="p-3 bg-slate-800 border border-slate-700 rounded-xl text-center">
+                            <span class="text-amber-300 font-bold block">get_settings</span>
+                            <span class="text-[10px] text-slate-400">Cached config (LRU Cache)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-slate-400 font-mono text-center">
+                    FastAPI computes the topological sort of this graph, guaranteeing that prerequisite tasks (such as token extraction or connection acquisition) execute in the correct order.
+                </p>
+            </div>
+
+            <!-- Per-Request Caching / use_cache Note -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-mono font-bold">Documentation Note</span>
+                    Per-Request Dependency Result Caching (<code>use_cache=True</code>)
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    Notice in our DAG that both <code class="font-mono text-slate-800">update_note</code> and <code class="font-mono text-slate-800">get_current_user</code> require <code class="font-mono text-slate-800">get_db_session</code>. Does FastAPI execute <code class="font-mono text-slate-800">get_db_session()</code> twice?
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    <strong>No.</strong> By default, FastAPI calls dependencies with <code class="font-mono text-purple-700">Depends(dependency, use_cache=True)</code>. During a single HTTP request lifecycle, the first time <code class="font-mono text-slate-800">get_db_session</code> executes, FastAPI caches its return value in an internal dictionary scoped to that request. Subsequent references within the same request retrieve the cached instance, preventing duplicate database sessions.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Resource Lifecycles: Yield vs Return & Connection Pooling -->
+        <section id="yield-lifecycle-deepdive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Resource Lifecycles: The <code>yield</code> Context Manager</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Standard functions use <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">return</code> to return a value and terminate execution. However, stateful backend resources (like database sessions, network sockets, or file locks) require a two-phase lifecycle: setup before the request runs, and cleanup after the response is sent.
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 space-y-4">
+                <div class="text-emerald-400 font-bold">// Anatomy of a Yielding Dependency</div>
+                <pre class="text-slate-200">
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_db_session</span>():
+    <span class="text-slate-500"># =========================================================================</span>
+    <span class="text-slate-500"># PHASE 1: SETUP (Executes BEFORE your route controller logic runs)</span>
+    <span class="text-slate-500"># =========================================================================</span>
+    session = SessionFactory()  <span class="text-slate-500"># Check out a session from the connection pool</span>
+    <span class="text-purple-400">try</span>:
+        <span class="text-slate-500"># FastAPI pauses get_db_session right here!</span>
+        <span class="text-slate-500"># It hands 'session' to your route and lets the route execute.</span>
+        <span class="text-purple-400">yield</span> session
+    <span class="text-purple-400">finally</span>:
+        <span class="text-slate-500"># =====================================================================</span>
+        <span class="text-slate-500"># PHASE 2: TEARDOWN (GUARANTEED to run AFTER the route finishes)</span>
+        <span class="text-slate-500"># =====================================================================</span>
+        <span class="text-slate-500"># Code inside finally runs even if your controller raises an uncaught exception!</span>
+        session.close()  <span class="text-slate-500"># Returns connection back to pool for other requests</span></pre>
+            </div>
+
+            <!-- Connection Pooling Warning -->
+            <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-rose-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    The Connection Pooling Trap: Sessions vs. Engines
+                </h3>
+                <p class="text-xs text-rose-800 leading-relaxed">
+                    A common mistake among backend engineers is confusing a <strong>Database Engine (Pool)</strong> with a <strong>Database Session (Transaction Sandbox)</strong>.
+                </p>
+                <p class="text-xs text-rose-900 leading-relaxed">
+                    Opening a physical TCP connection to PostgreSQL or MySQL takes 20 to 100 milliseconds due to the TCP handshake and TLS negotiation. If your dependency creates a brand-new <code class="font-mono text-rose-950 font-bold">create_engine()</code> inside <code class="font-mono text-rose-950">get_db()</code> on every HTTP request, your database will quickly reject connections with <code class="font-mono text-rose-950">FATAL: too many connections</code> under load.
+                </p>
+                <p class="text-xs text-rose-800 italic">
+                    <strong>Rule:</strong> The Engine and Connection Pool must be created <em>once</em> at application startup. Your yielding dependency should only check out a lightweight <em>Session</em> from that shared pool, and return it inside <code class="font-mono font-bold">finally: session.close()</code>.
+                </p>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: Building NoteVault Milestone 05 -->
+        <section id="notevault-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 05: The Repository Pattern &amp; DI</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now refactor NoteVault to use Dependency Injection. We'll introduce a new file, <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/dependencies.py</code>, containing an isolated repository class called <code class="font-mono text-xs text-purple-700 font-bold">NoteRepository</code>. We will also introduce modern <code class="font-mono text-xs text-purple-700 font-bold">typing.Annotated</code> aliases to keep our route signatures clean and readable.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── __init__.py</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── schemas.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">dependencies.py</span>         <span class="text-slate-500"># NEW: Repository service, yielding DI, pagination</span></div>
+                <div>│   ├── routers/</div>
+                <div>│   │   ├── notes.py            <span class="text-slate-500"># Refactored: Uses Annotated[NoteRepository, Depends()]</span></div>
+                <div>│   │   └── views.py</div>
+                <div>│   └── main.py</div>
+                <div>└── templates/</div>
+            </div>
+
+            <!-- File 1: app/dependencies.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Dependency Registry: <code class="text-purple-700">app/dependencies.py</code></span>
+                    <span class="text-slate-400">Decoupled Repository &amp; Providers</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Dependencies &amp; Repositories (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Annotated, Generator, Optional, List, Dict
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> Depends, Query
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 1. NoteRepository: Encapsulates storage logic (The Unit of Work pattern)</span>
+<span class="text-slate-500"># In Chapter 06, this class will interface directly with SQLAlchemy Sessions.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">NoteRepository</span>:
+    <span class="text-slate-500"># Module-level storage simulation</span>
+    _datastore: Dict[int, dict] = {
+        1: {
+            <span class="text-amber-300">"id"</span>: 1,
+            <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"FastAPI Architecture Rules"</span>,
+            <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Always validate input boundaries; keep business logic modular."</span>,
+            <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"backend"</span>, <span class="text-amber-300">"python"</span>],
+            <span class="text-amber-300">"priority"</span>: 2,
+            <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+            <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+            <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+        }
+    }
+    _id_counter: int = 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+        self, 
+        search: Optional[str] = <span class="text-rose-400">None</span>, 
+        include_archived: bool = <span class="text-rose-400">False</span>, 
+        limit: int = 10, 
+        skip: int = 0
+    ) -> List[dict]:
+        records = list(self._datastore.values())
+        <span class="text-purple-400">if not</span> include_archived:
+            records = [r <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> records <span class="text-purple-400">if not</span> r[<span class="text-amber-300">"is_archived"</span>]]
+
+        <span class="text-purple-400">if</span> search:
+            q = search.lower()
+            records = [
+                r <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> records 
+                <span class="text-purple-400">if</span> q <span class="text-purple-400">in</span> r[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> q <span class="text-purple-400">in</span> r[<span class="text-amber-300">"content"</span>].lower()
+            ]
+        <span class="text-purple-400">return</span> records[skip : skip + limit]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_by_id</span>(self, note_id: int) -> Optional[dict]:
+        <span class="text-purple-400">return</span> self._datastore.get(note_id)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create</span>(self, data: dict) -> dict:
+        self._id_counter += 1
+        new_record = {
+            **data,
+            <span class="text-amber-300">"id"</span>: self._id_counter,
+            <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+            <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+            <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+        }
+        self._datastore[self._id_counter] = new_record
+        <span class="text-purple-400">return</span> new_record
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">update</span>(self, note_id: int, updates: dict) -> Optional[dict]:
+        record = self._datastore.get(note_id)
+        <span class="text-purple-400">if not</span> record:
+            <span class="text-purple-400">return</span> <span class="text-rose-400">None</span>
+        <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> updates.items():
+            record[k] = v
+        record[<span class="text-amber-300">"updated_at"</span>] = datetime.now(timezone.utc)
+        self._datastore[note_id] = record
+        <span class="text-purple-400">return</span> record
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 2. Dependency Providers with Lifecycle Hooks</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_note_repo</span>() -> Generator[NoteRepository, <span class="text-rose-400">None</span>, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""
+    Yields an active repository handle.
+    Guarantees clean exit block execution upon request termination.
+    """</span>
+    repo = NoteRepository()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">yield</span> repo
+    <span class="text-purple-400">finally</span>:
+        <span class="text-slate-500"># Future: session.close(), metrics increment, audit log flushes</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 3. Composite Query Parameter Dependency</span>
+<span class="text-slate-500"># Encapsulates reusable pagination parameters across any listing endpoint</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PaginationParams</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        skip: int = Query(0, ge=0, description=<span class="text-amber-300">"Number of records to skip."</span>),
+        limit: int = Query(10, ge=1, le=100, description=<span class="text-amber-300">"Max records to return."</span>)
+    ):
+        self.skip = skip
+        self.limit = limit
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 4. Modern Python 3.10+ Annotated Dependency Aliases</span>
+<span class="text-slate-500"># Cleans up route signatures, avoiding verbose `= Depends(...)` repetition</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+NoteRepoDep = Annotated[NoteRepository, Depends(get_note_repo)]
+PaginationDep = Annotated[PaginationParams, Depends()]</pre>
+            </div>
+
+            <!-- File 2: app/routers/notes.py Refactor -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Refactored Router: <code class="text-purple-700">app/routers/notes.py</code></span>
+                    <span class="text-slate-400">Clean Controller Inversion</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Notes API Router (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> NoteCreate, NoteUpdate, NoteResponse
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> NoteRepoDep, PaginationDep
+
+router = APIRouter()
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Create a new note"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_note</span>(payload: NoteCreate, repo: NoteRepoDep):
+    <span class="text-slate-500">"""
+    The route controller is now decoupled from the storage layer.
+    The repository is injected into 'repo' via NoteRepoDep.
+    """</span>
+    new_note = repo.create(payload.model_dump())
+    <span class="text-purple-400">return</span> new_note
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=List[NoteResponse],
+    summary=<span class="text-amber-300">"List notes with injected pagination"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    repo: NoteRepoDep,
+    pagination: PaginationDep,
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>, min_length=2, max_length=50),
+    include_archived: bool = Query(<span class="text-rose-400">False</span>),
+):
+    <span class="text-slate-500"># Reusable pagination parameters injected seamlessly</span>
+    <span class="text-purple-400">return</span> repo.list_notes(
+        search=search,
+        include_archived=include_archived,
+        limit=pagination.limit,
+        skip=pagination.skip
+    )
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, response_model=NoteResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_note</span>(
+    note_id: int = Path(..., ge=1),
+    repo: NoteRepoDep = ...
+):
+    record = repo.get_by_id(note_id)
+    <span class="text-purple-400">if not</span> record:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+    <span class="text-purple-400">return</span> record
+
+
+<span class="text-purple-400">@router.patch</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, response_model=NoteResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">update_note</span>(
+    note_id: int = Path(..., ge=1),
+    payload: NoteUpdate = ...,
+    repo: NoteRepoDep = ...
+):
+    updates = payload.model_dump(exclude_unset=<span class="text-rose-400">True</span>)
+    updated = repo.update(note_id, updates)
+    <span class="text-purple-400">if not</span> updated:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+    <span class="text-purple-400">return</span> updated</pre>
+            </div>
+        </section>
+
+        <!-- 5. Mocking and Testing: The app.dependency_overrides Superpower -->
+        <section id="testing-overrides" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Testing: Hot-Swapping with <code>dependency_overrides</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The primary reason enterprise engineering teams adopt Dependency Injection is <strong>isolated testability</strong>.
+                FastAPI applications expose a dictionary called <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">app.dependency_overrides</code>. During a test suite run, you can override any production dependency with a mock or test double without modifying your route code.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">How Pytest Swaps the Database in Memory</h3>
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> fastapi.testclient <span class="text-purple-400">import</span> TestClient
+<span class="text-purple-400">from</span> app.main <span class="text-purple-400">import</span> app
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> get_note_repo, NoteRepository
+
+<span class="text-slate-500"># 1. Define an isolated, ephemeral mock repository for the test suite</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MockNoteRepository</span>(NoteRepository):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Fresh, isolated sandbox state for each test run</span>
+        self._datastore = {
+            999: {<span class="text-amber-300">"id"</span>: 999, <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"Mock Test"</span>, <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Test doubles in action"</span>, <span class="text-amber-300">"tags"</span>: [], <span class="text-amber-300">"priority"</span>: 1, <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>}
+        }
+        self._id_counter = 999
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">override_get_note_repo</span>():
+    <span class="text-purple-400">return</span> MockNoteRepository()
+
+<span class="text-slate-500"># 2. Tell FastAPI to swap the production dependency for our mock</span>
+app.dependency_overrides[get_note_repo] = override_get_note_repo
+
+client = TestClient(app)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_read_note_mocked</span>():
+    response = client.get(<span class="text-amber-300">"/api/v1/notes/999"</span>)
+    <span class="text-purple-400">assert</span> response.status_code == 200
+    <span class="text-purple-400">assert</span> response.json()[<span class="text-amber-300">"title"</span>] == <span class="text-amber-300">"Mock Test"</span>
+
+<span class="text-slate-500"># 3. Clean up overrides after testing finishes</span>
+app.dependency_overrides.clear()</pre>
+
+                <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded-r-xl text-xs text-sky-900">
+                    <p class="font-bold">Notice the Separation:</p>
+                    <p class="text-sky-800 text-[11px] leading-relaxed">
+                        The test verifies the HTTP routing, serialization, and status codes, but runs entirely in memory without writing to a live database or making external network calls.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Omitting the Try...Finally Block</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">def get_db(): db = Session(); yield db; db.close()</code> without wrapping it in a <code class="font-mono text-rose-900">try...finally</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is dangerous:</strong> If an exception is raised inside your route handler or a response serialization fails, Python jumps out of the execution context immediately. Any cleanup lines placed after a bare <code class="font-mono">yield</code> are skipped. Always wrap the yield statement in a <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">try...finally</code> block to ensure cleanup runs.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Calling Dependencies Directly in Routes</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">async def read_notes(): db = get_db()</code> inside a route handler.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this fails:</strong> Calling a yielding dependency function directly simply returns a Python generator object (<code class="font-mono">&lt;generator object get_db at 0x...&gt;</code>). It bypasses FastAPI’s DI engine, so the dependency isn't resolved, cached, or cleaned up. Always declare dependencies in parameters using <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">Depends()</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Start Uvicorn and verify your refactored repository dependencies and pagination injection:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Check 1: Injected Pagination -->
+                <div>
+                    <span class="text-slate-500"># 1. Fetch notes using our new injected PaginationParams dependency (skip=0, limit=5):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i "http://127.0.0.1:8000/api/v1/notes?skip=0&amp;limit=5"
+                    </div>
+                </div>
+
+                <!-- Check 2: Validation of Pagination Bounds -->
+                <div>
+                    <span class="text-slate-500"># 2. Verify that pagination parameters enforce schema constraints (limit must be &lt;= 100):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-amber-300 mt-1 overflow-x-auto">
+                        curl -i "http://127.0.0.1:8000/api/v1/notes?limit=500"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected output: HTTP 422 Unprocessable Entity ("less than or equal to 100").</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 6 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Data Persistence with SQLAlchemy &amp; Alembic Migrations</h4>
+                <p class="text-xs text-slate-500">Moving beyond ephemeral in-memory storage: Engine creation, session lifecycles, and database migrations with Alembic.</p>
+            </div>
+            <a href="chapter6_persistence.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 6 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

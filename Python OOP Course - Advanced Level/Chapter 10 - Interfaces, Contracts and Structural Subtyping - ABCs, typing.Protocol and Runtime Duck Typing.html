@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 10: Interfaces, Contracts &amp; Structural Subtyping - ABCs, typing.Protocol &amp; Runtime Duck Typing</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 10 - Contracts, Protocols &amp; Inversion of Control)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 10 &bull; Structural Typing &amp; Interfaces
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 10: Interfaces, Contracts &amp; Structural Subtyping - ABCs, typing.Protocol &amp; Runtime Duck Typing
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling domain logic from concrete implementations: Comparing Nominal Subtyping (<code class="font-mono text-emerald-400">abc.ABC</code>) with Structural Subtyping (<code class="font-mono text-emerald-400">typing.Protocol</code>), navigating the CPython instantiation block via <code class="font-mono text-emerald-400">__isabstractmethod__</code>, mastering virtual subclasses with <code class="font-mono text-emerald-400">__subclasshook__</code>, strict decorator ordering rules, and architecting an Inversion of Control (IoC) persistence layer for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Culmination</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 10: Inversion of Control &amp; Storage Protocols</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 08 and 09, we proved that tight inheritance hierarchies cause fragile base classes, refactoring domain entities into composed aggregates and cooperative plugin chains. In Milestone 10, we establish the boundary contracts of our system. High-performance domain services must never depend directly on concrete database drivers (such as raw PostgreSQL, SQLite, or Redis drivers). We construct a decoupled <strong>Repository Protocol</strong> using PEP 544 <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">typing.Protocol</code> and an <strong>Event Dispatcher Contract</strong> using <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">abc.ABC</code>, allowing arbitrary storage adapters to satisfy interface requirements without inheriting a single line of framework code.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 10 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Nominal Subtyping (<code class="text-purple-300">abc.ABC</code>) vs. Structural Subtyping (<code class="text-purple-300">Protocol</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython Instantiation Blocking via <code class="text-purple-300">__abstractmethods__</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Virtual Subclasses with <code class="text-purple-300">__subclasshook__</code> &amp; <code class="text-purple-300">register()</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Runtime Duck Typing with <code class="text-purple-300">@runtime_checkable</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Strict Decorator Ordering (<code class="text-purple-300">@classmethod</code> + <code class="text-purple-300">@abstractmethod</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">RepositoryProtocol</code> &amp; Inversion of Control</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Interface Paradigms -->
+        <section id="nominal-vs-structural" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Nominal Subtyping vs. Structural Subtyping</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In type systems, an <strong>Interface</strong> defines a contract: a specification of methods, arguments, and return types that an implementing class must provide. In software architecture, there are two distinct ways a type checker or runtime verifies that a class satisfies an interface:
+            </p>
+
+            <!-- Nominal vs Structural Visual Comparison (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Interface Topologies: Nominal Subtyping vs. Structural Subtyping (Duck Typing)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Comparing explicit inheritance trees against shape-based protocol compatibility</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 items-stretch">
+                    <!-- Nominal Subtyping (ABC) -->
+                    <div class="p-5 bg-slate-950 border border-purple-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">1. Nominal Subtyping (abc.ABC)</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-300 px-2 py-0.5 rounded font-bold border border-purple-800">Explicit Heritage</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="p-3 bg-slate-900 border border-purple-700/60 rounded-xl text-center">
+                                <span class="text-purple-300 font-bold block text-sm">class EventDispatcher(ABC):</span>
+                                <span class="text-[10px] text-slate-400 font-sans">@abstractmethod def publish(...)</span>
+                            </div>
+                            
+                            <div class="flex flex-col items-center text-purple-400 py-1">
+                                <div class="w-0.5 h-6 bg-purple-500/80"></div>
+                                <span class="text-[10px] text-slate-400 font-sans">must explicitly subclass</span>
+                            </div>
+
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">class RedisDispatcher(EventDispatcher):</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Implements .publish()</span>
+                            </div>
+                        </div>
+
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1.5 leading-relaxed">
+                            <li><strong class="text-purple-300">Explicit Lineage:</strong> A class is recognized as a subtype <em>if and only if</em> it explicitly inherits from the base class in its definition.</li>
+                            <li><strong class="text-rose-400">Coupling Cost:</strong> The third-party or adapter class is tightly coupled to your framework's module imports.</li>
+                            <li><strong class="text-purple-300">Runtime Enforcement:</strong> CPython blocks class instantiation at runtime if any <code class="font-mono text-purple-300">@abstractmethod</code> is missing!</li>
+                        </ul>
+                    </div>
+
+                    <!-- Structural Subtyping (Protocol) -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Structural Subtyping (typing.Protocol)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">Static Duck Typing</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="p-3 bg-slate-900 border border-emerald-700/60 rounded-xl text-center">
+                                <span class="text-emerald-300 font-bold block text-sm">class Repository(Protocol):</span>
+                                <span class="text-[10px] text-slate-400 font-sans">def save(entity: T) -> None: ...</span>
+                            </div>
+                            
+                            <div class="flex flex-col items-center text-emerald-400 py-1">
+                                <div class="w-0.5 h-6 border-l-2 border-dashed border-emerald-500"></div>
+                                <span class="text-[10px] text-slate-400 font-sans">zero inheritance required!</span>
+                            </div>
+
+                            <div class="p-3 bg-slate-900 border border-slate-700 rounded-xl text-center">
+                                <span class="text-slate-200 font-bold block text-sm">class SQLiteStorage:</span>
+                                <span class="text-[10px] text-slate-400 font-sans">Defines matching .save() method</span>
+                            </div>
+                        </div>
+
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1.5 leading-relaxed">
+                            <li><strong class="text-emerald-300">Shape-Based Equivalence:</strong> "If it walks like a duck and quacks like a duck, it's a duck." Compatibility is proven purely by method names and type signatures.</li>
+                            <li><strong class="text-emerald-300">Zero Coupling:</strong> The concrete storage class does not import, inherit, or even know about <code class="font-mono text-emerald-300">Repository</code>!</li>
+                            <li><strong class="text-emerald-300">Compile-Time Verification:</strong> Static analyzers (<code class="font-mono text-slate-200">mypy</code>, <code class="font-mono text-slate-200">pyright</code>) verify protocol conformance prior to deployment.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Under the Hood: ABCMeta & Instantiation Blocking -->
+        <section id="abcmeta-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: ABCMeta &amp; Instantiation Blocking</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                How does Python physically prevent you from instantiating an abstract class? In Python, functions are first-class objects. Decorating a method with <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@abstractmethod</code> does not raise an error at definition time; it sets an internal boolean flag: <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">func.__isabstractmethod__ = True</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When a class inherits from <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">abc.ABC</code> (which uses the metaclass <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">abc.ABCMeta</code>), CPython inspects the class dictionary during type construction:
+            </p>
+
+            <!-- CPython ABCMeta Pipeline Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <span class="text-emerald-400 font-bold block text-sm uppercase tracking-wider">// CPython's Abstract Instantiation Guard Pipeline</span>
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] leading-relaxed">
+                    <div>1. <strong>Class Creation:</strong> <code class="text-purple-300">ABCMeta.__new__</code> scans the class and its MRO ancestors.</div>
+                    <div>2. <strong>Set Calculation:</strong> It collects every method where <code class="text-purple-300">__isabstractmethod__ == True</code> that has not been overridden by a concrete implementation.</div>
+                    <div>3. <strong>Frozenset Population:</strong> It stores these names in <code class="text-sky-300">cls.__abstractmethods__ = frozenset({'save', 'delete', ...})</code>.</div>
+                    <div>4. <strong>Instantiation Interception:</strong> When caller writes <code class="text-amber-300">repo = BaseRepository()</code>, CPython's <code class="text-purple-300">type.__call__</code> checks:
+                        <div class="pl-4 text-rose-400 font-mono font-bold mt-1">
+                            if cls.__abstractmethods__:<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;raise TypeError(f"Can't instantiate abstract class {cls.__name__} with abstract methods {cls.__abstractmethods__}")
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Virtual Subclasses & __subclasshook__ -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-xs">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">Virtual Subclassing</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">The __subclasshook__ Magic Protocol</h3>
+                <p class="text-slate-600 leading-relaxed">
+                    How does <code class="font-mono text-slate-800">isinstance([], collections.abc.Sequence)</code> return <code class="font-mono text-emerald-700 font-bold">True</code> when built-in <code class="font-mono text-slate-800">list</code> does not inherit from <code class="font-mono text-slate-800">Sequence</code>?
+                </p>
+                <p class="text-slate-600 leading-relaxed">
+                    ABCs can define a classmethod called <code class="font-mono text-purple-700 font-bold">__subclasshook__(cls, subclass)</code>. When <code class="font-mono text-slate-800">isinstance(obj, MyABC)</code> or <code class="font-mono text-slate-800">issubclass(Candidate, MyABC)</code> is evaluated, CPython calls this hook, allowing the ABC to dynamically inspect the candidate's MRO attributes:
+                </p>
+                <pre class="bg-slate-900 text-emerald-300 p-4 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SizedContract</span>(ABC):
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__subclasshook__</span>(cls, C: type) -> bool:
+        <span class="text-purple-400">if</span> cls <span class="text-purple-400">is</span> SizedContract:
+            <span class="text-slate-500"># Return True if any class in the candidate's MRO defines '__len__'</span>
+            <span class="text-purple-400">if</span> any(<span class="text-amber-300">"__len__"</span> <span class="text-purple-400">in</span> B.__dict__ <span class="text-purple-400">for</span> B <span class="text-purple-400">in</span> C.__mro__):
+                <span class="text-purple-400">return True</span>
+        <span class="text-purple-400">return</span> NotImplemented</pre>
+            </div>
+        </section>
+
+        <!-- 3. Strict Decorator Stacking Order -->
+        <section id="decorator-stacking-order" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architecture Invariant: Strict Decorator Stacking Order</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When combining <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@abstractmethod</code> with other built-in decorators (such as <code class="font-mono text-slate-800">@classmethod</code>, <code class="font-mono text-slate-800">@staticmethod</code>, or <code class="font-mono text-slate-800">@property</code>), <strong>the order of decorator application is critical</strong>.
+            </p>
+
+            <!-- Decorator Stacking Visual Diagram (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Correct Stacking -->
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-emerald-200 pb-2">
+                        <span class="font-bold text-emerald-900 font-mono text-sm">&check; Correct Decorator Stacking</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">CPython Rule</span>
+                    </div>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-slate-500"># 1. Abstract Classmethod:</span>
+<span class="text-purple-400">@classmethod</span>
+<span class="text-purple-400">@abstractmethod</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">factory</span>(cls, config: dict) -> Self: ...
+
+<span class="text-slate-500"># 2. Abstract Read-Only Property:</span>
+<span class="text-purple-400">@property</span>
+<span class="text-purple-400">@abstractmethod</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">connection_string</span>(self) -> str: ...</pre>
+                    <p class="text-xs text-emerald-900 leading-relaxed">
+                        <strong>The Rule:</strong> <code class="font-mono text-emerald-950 font-bold">@abstractmethod</code> must sit as the <strong>innermost decorator</strong>, immediately adjacent to the function definition (<code class="font-mono">def</code>).
+                    </p>
+                </div>
+
+                <!-- Broken Stacking -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-rose-200 pb-2">
+                        <span class="font-bold text-rose-900 font-mono text-sm">&cross; Fatal Inverted Stacking</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">Broken Lookup</span>
+                    </div>
+                    <pre class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-slate-500"># FATAL: @classmethod wraps outside @abstractmethod</span>
+<span class="text-purple-400">@abstractmethod</span>
+<span class="text-purple-400">@classmethod</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">broken_factory</span>(cls, config: dict): ...</pre>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this fails silently:</strong> <code class="font-mono">@classmethod</code> returns a descriptor object. If <code class="font-mono">@abstractmethod</code> wraps on the outside, it attempts to set <code class="font-mono">__isabstractmethod__</code> on the descriptor instead of the function, which older CPython versions ignore, allowing subclasses to instantiate without implementing the method!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Architectural Decision Matrix: ABC vs. Protocol -->
+        <section id="abc-vs-protocol-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architectural Decision Matrix: ABC vs. Protocol vs. Concrete Class</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Senior architects choose the exact typing mechanism that minimizes coupling while maximizing static safety:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Mechanism</th>
+                                <th class="py-2 px-2 font-bold font-sans">Typing Paradigm</th>
+                                <th class="py-2 px-2 font-bold font-sans">Coupling Level</th>
+                                <th class="py-2 px-2 font-bold font-sans">Ideal Architectural Use Case</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-emerald-700">typing.Protocol (PEP 544)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Structural (Static Duck Typing)</td>
+                                <td class="py-3 px-2 font-bold text-emerald-700">Zero Coupling</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    <strong>Default choice for interfaces.</strong> Adapters, database repositories, pluggable drivers, serializers where you want consumers to satisfy contracts without subclassing.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">@runtime_checkable Protocol</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Structural + Runtime Check</td>
+                                <td class="py-3 px-2 font-bold text-emerald-700">Zero Coupling</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    When you need structural typing, but also need to perform runtime <code class="font-mono text-slate-800">isinstance(adapter, Protocol)</code> checks at system initialization boundaries.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-sky-700">abc.ABC + @abstractmethod</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">Nominal Subtyping</td>
+                                <td class="py-3 px-2 font-bold text-amber-700">Tight Coupling</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Framework base classes where you provide <strong>partial shared implementation</strong> alongside abstract methods (Template Method Pattern).
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 10 -->
+        <section id="entityforge-milestone-10" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 10: Inversion of Control &amp; Storage Contracts</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 10 of <strong>EntityForge</strong>: constructing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/contracts.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">RepositoryProtocol[T]</code>: A PEP 544 structural protocol decorated with <code class="font-mono text-purple-700 font-bold">@runtime_checkable</code> defining persistence operations (<code class="font-mono text-slate-800">save</code>, <code class="font-mono text-slate-800">get_by_id</code>, <code class="font-mono text-slate-800">delete</code>).</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">EventDispatcherContract</code>: An Abstract Base Class (<code class="font-mono text-slate-800">abc.ABC</code>) defining the event emission contract.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">InMemoryEntityRepository</code>: A concrete storage driver satisfying <code class="font-mono text-slate-800">RepositoryProtocol</code> via <strong>pure structural duck typing without inheriting from the protocol</strong>.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">DomainEntityService</code>: An orchestrated business service accepting the repository protocol and event dispatcher via <strong>Dependency Injection</strong>.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 10)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           ├── collections.py            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>│           ├── execution.py              <span class="text-slate-500"># Milestone 07: Callable Steps &amp; Reentrant Guards</span></div>
+                <div>│           ├── aggregate.py              <span class="text-slate-500"># Milestone 08: Aggregate Roots, Composition &amp; Mixins</span></div>
+                <div>│           ├── plugin.py                 <span class="text-slate-500"># Milestone 09: Cooperative Plugins &amp; C3 Linearization</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">contracts.py</span>              <span class="text-slate-500"># Milestone 10: Protocols, ABCs &amp; Dependency Injection</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_collections.py       <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_execution.py         <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        ├── test_aggregate.py         <span class="text-slate-500"># Milestone 08 Tests</span></div>
+                <div>        ├── test_plugin.py            <span class="text-slate-500"># Milestone 09 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_contracts.py</span>         <span class="text-slate-500"># Milestone 10: Structural Subtyping &amp; IoC Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/contracts.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Contracts Core: <code class="text-purple-700">src/entityforge/core/contracts.py</code></span>
+                    <span class="text-slate-400">Protocols &amp; Abstract Contracts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Interfaces, Protocols &amp; Structural Subtyping (Milestone 10)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Generic, List, Optional, Protocol, TypeVar, runtime_checkable
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity
+
+T = TypeVar(<span class="text-amber-300">"T"</span>, bound=BaseEntity)
+
+
+<span class="text-purple-400">@runtime_checkable</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RepositoryProtocol</span>(Protocol[T]):
+    <span class="text-slate-500">"""
+    PEP 544 STRUCTURAL SUBTYPING PROTOCOL:
+    Defines the persistence contract for domain entities.
+    Any class implementing save, get_by_id, and delete satisfies this protocol
+    WITHOUT needing to inherit from RepositoryProtocol!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save</span>(self, entity: T) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Persists an entity into storage."""</span>
+        ...
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_by_id</span>(self, entity_id: str) -> Optional[T]:
+        <span class="text-slate-500">"""Retrieves an entity by its string UUID, or None if absent."""</span>
+        ...
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">delete</span>(self, entity_id: str) -> bool:
+        <span class="text-slate-500">"""Deletes entity by ID, returning True on success."""</span>
+        ...
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EventDispatcherContract</span>(ABC):
+    <span class="text-slate-500">"""
+    NOMINAL ABSTRACT BASE CLASS (ABC):
+    Enforces implementation of domain event publication across concrete adapters.
+    CPython will block instantiation of any subclass omitting @abstractmethod!
+    """</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">publish</span>(self, event_type: str, payload: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Publishes a structured domain event to message brokers or listeners."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">InMemoryEntityRepository</span>(Generic[T]):
+    <span class="text-slate-500">"""
+    CONCRETE STORAGE ADAPTER (Pure Structural Duck Typing):
+    Notice: Does NOT inherit from RepositoryProtocol!
+    Satisfies RepositoryProtocol purely by matching method signatures.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self) -> <span class="text-rose-400">None</span>:
+        self._storage: Dict[str, T] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save</span>(self, entity: T) -> <span class="text-rose-400">None</span>:
+        self._storage[str(entity.id)] = entity
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_by_id</span>(self, entity_id: str) -> Optional[T]:
+        <span class="text-purple-400">return</span> self._storage.get(entity_id)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">delete</span>(self, entity_id: str) -> bool:
+        <span class="text-purple-400">if</span> entity_id <span class="text-purple-400">in</span> self._storage:
+            <span class="text-purple-400">del</span> self._storage[entity_id]
+            <span class="text-purple-400">return True</span>
+        <span class="text-purple-400">return False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">count</span>(self) -> int:
+        <span class="text-purple-400">return</span> len(self._storage)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">InMemoryEventDispatcher</span>(EventDispatcherContract):
+    <span class="text-slate-500">"""
+    CONCRETE DISPATCHER ADAPTER (Nominal Inheritance):
+    Explicitly subclasses EventDispatcherContract, fulfilling abstract methods.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self) -> <span class="text-rose-400">None</span>:
+        self.dispatched_events: List[Dict[str, Any]] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">publish</span>(self, event_type: str, payload: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+        self.dispatched_events.append({<span class="text-amber-300">"type"</span>: event_type, <span class="text-amber-300">"payload"</span>: payload})
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DomainEntityService</span>(Generic[T]):
+    <span class="text-slate-500">"""
+    DEPENDENCY INVERSION PRINCIPLE (DIP):
+    High-level business service depends strictly on abstractions (Protocols &amp; ABCs),
+    never on concrete database or message broker implementations!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        repository: RepositoryProtocol[T],
+        dispatcher: EventDispatcherContract
+    ) -> <span class="text-rose-400">None</span>:
+        self._repo = repository
+        self._dispatcher = dispatcher
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_entity</span>(self, entity: T) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Executes business workflow: Persists entity and broadcasts domain event."""</span>
+        self._repo.save(entity)
+        self._dispatcher.publish(
+            event_type=<span class="text-amber-300">"ENTITY_REGISTERED"</span>,
+            payload={<span class="text-amber-300">"id"</span>: str(entity.id), <span class="text-amber-300">"class"</span>: entity.__class__.__name__}
+        )</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_contracts.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_contracts.py</code></span>
+                    <span class="text-slate-400">Protocols &amp; Subtyping Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Protocols &amp; Subtyping Verification (Milestone 10)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity
+<span class="text-purple-400">from</span> entityforge.core.contracts <span class="text-purple-400">import</span> (
+    RepositoryProtocol,
+    EventDispatcherContract,
+    InMemoryEntityRepository,
+    InMemoryEventDispatcher,
+    DomainEntityService,
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SampleUser</span>(BaseEntity):
+    <span class="text-slate-500">"""Domain entity for testing repository persistence."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IncompleteDispatcher</span>(EventDispatcherContract):
+    <span class="text-slate-500">"""Broken subclass that fails to implement the abstract publish() method."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestContractsAndProtocols</span>:
+    <span class="text-slate-500">"""Unit tests asserting structural typing, ABC instantiation guards, and IoC orchestration."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_structural_duck_typing_protocol_satisfaction</span>(self):
+        repo = InMemoryEntityRepository[SampleUser]()
+
+        # 1. Structural Subtyping Invariant:
+        # InMemoryEntityRepository does NOT inherit from RepositoryProtocol,
+        # but satisfies it structurally!
+        assert isinstance(repo, RepositoryProtocol)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_abc_blocks_instantiation_when_abstract_methods_unimplemented</span>(self):
+        # CPython ABCMeta MUST block instantiation of incomplete subclasses!
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"Can't instantiate abstract class"</span>):
+            _ = IncompleteDispatcher()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_complete_dispatcher_instantiates_and_fulfills_contract</span>(self):
+        dispatcher = InMemoryEventDispatcher()
+        assert isinstance(dispatcher, EventDispatcherContract)
+
+        dispatcher.publish(<span class="text-amber-300">"TEST_EVENT"</span>, {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"OK"</span>})
+        assert len(dispatcher.dispatched_events) == 1
+        assert dispatcher.dispatched_events[0][<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"TEST_EVENT"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dependency_inversion_orchestration_service</span>(self):
+        # Decoupled components wired together via Dependency Injection
+        repo = InMemoryEntityRepository[SampleUser]()
+        dispatcher = InMemoryEventDispatcher()
+        service = DomainEntityService[SampleUser](repository=repo, dispatcher=dispatcher)
+
+        user = SampleUser.create_new(username=<span class="text-amber-300">"alice_contract"</span>)
+        service.register_entity(user)
+
+        # 1. Verify entity saved in repository
+        retrieved = repo.get_by_id(str(user.id))
+        assert retrieved is <span class="text-purple-400">not None</span>
+        assert retrieved.username == <span class="text-amber-300">"alice_contract"</span>
+
+        # 2. Verify event published
+        assert len(dispatcher.dispatched_events) == 1
+        assert dispatcher.dispatched_events[0][<span class="text-amber-300">"payload"</span>][<span class="text-amber-300">"id"</span>] == str(user.id)</pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The 'I' Prefix Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Naming interfaces <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">IRepository</code>, <code class="font-mono text-rose-900 font-bold">IUserService</code>, or <code class="font-mono text-rose-900 font-bold">IEventDispatcher</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is unpythonic:</strong> The <code class="font-mono">I</code> prefix is a Hungarian notation relic from C# and Java. In Python, interfaces should be named for what they represent (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">Repository</code>) or suffixed with their mechanism (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">RepositoryProtocol</code>, <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">EventDispatcherContract</code>), while concrete classes are qualified by their implementation (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">PostgresRepository</code>).
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Over-Inheriting from ABCs</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Creating monolithic abstract base classes with 25 abstract methods that every adapter must inherit.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this violates Interface Segregation (ISP):</strong> It couples all adapters to a rigid nominal hierarchy. If an adapter only needs to support read operations, forcing it to inherit and implement 20 write methods violates clean code. Use lean, focused <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">typing.Protocol</code> definitions instead!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Inverted Abstract Decorator Stacking</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Placing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">@abstractmethod</code> on the outside: <code class="font-mono text-rose-900 font-bold">@abstractmethod @classmethod</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks runtime checks:</strong> <code class="font-mono">@abstractmethod</code> must wrap the underlying function directly. If inverted, it sets <code class="font-mono">__isabstractmethod__</code> on the descriptor object, which CPython ignores, allowing subclasses to instantiate without fulfilling the contract! Always make <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">@abstractmethod</code> the innermost decorator.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Assuming @runtime_checkable Validates Signatures</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Assuming <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">isinstance(obj, MyProtocol)</code> verifies method parameter types at runtime.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this creates false confidence:</strong> At runtime, <code class="font-mono">@runtime_checkable</code> only verifies that the method or attribute <em>name exists</em> on the class! It does <strong>not</strong> check argument counts, parameter types, or return types at runtime! Full type safety requires running static type checkers (<code class="font-mono text-slate-800">mypy</code> / <code class="font-mono text-slate-800">pyright</code>).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 10</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the structural subtyping test battery and verify interface contracts:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge contracts and protocols unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_contracts.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.06s. Confirms Protocol structural duck typing, ABC instantiation blocking, and Inversion of Control.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 10:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweights, slotted state, diagnostic renderers, value objects, collections, execution guards, aggregates, cooperative plugins, and protocols with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify structural duck typing with runtime_checkable:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from typing import Protocol, runtime_checkable
+@runtime_checkable
+class Speaker(Protocol):
+    def speak(self) -> str: ...
+class Dog:
+    def speak(self): return 'Woof!'
+print('Does Dog inherit Speaker?', issubclass(Dog, Speaker))
+print('Is Dog instance a Speaker?', isinstance(Dog(), Speaker))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that Dog is recognized as a Speaker without inheriting from it!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 11 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 11: The Descriptor Protocol &amp; ORM Mechanics - __get__, __set__, __set_name__ &amp; Validation Engines</h4>
+                <p class="text-xs text-slate-500 font-sans">Unlocking Python's secret engine: How the Descriptor Protocol powers properties, methods, and ORMs. Mastering Data vs Non-Data descriptors, capturing field names with PEP 487 __set_name__, and engineering an ORM-style validation engine.</p>
+            </div>
+            <a href="Chapter 11 - The Descriptor Protocol and ORM Mechanics - __get__, __set__, __set_name__ and Validation Engines.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 11 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

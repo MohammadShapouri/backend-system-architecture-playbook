@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Stampede Defense &amp; Failure Engineering: Probabilistic Expiration (XFetch), Mutexes &amp; Thundering Herds</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Caching &amp; Edge Acceleration Series &bull; Senior Engineering Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">CacheForge (Milestone 05 - Stampede Defense &amp; XFetch Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; High Concurrency &amp; Probabilistic Caching
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Stampede Defense &amp; Failure Engineering: Probabilistic Expiration (XFetch), Mutexes &amp; Thundering Herds
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Neutralizing high-traffic cache breakdown: The mechanics of the Dogpiling stampede, the limits of distributed mutex locking, eliminating redundant backend queries with asynchronous SingleFlight request coalescing, implementing Vattani, Chierichetti, &amp; Lowenstein's VLDB <strong>XFetch algorithm</strong> for probabilistic early recomputation, and hardening the resilience core of <strong>CacheForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">CacheForge Milestone 05: Stampede Prevention &amp; XFetch Probabilistic Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 04, we implemented Cache-Aside orchestration, Bloom filters, and randomized TTL jitter to defend against cache penetration and bulk avalanches. In Milestone 05, we solve the most dangerous hotspot failure mode in high-traffic web architectures: <strong>The Cache Stampede (Thundering Herd / Dogpiling)</strong>. When a resource queried by 10,000 concurrent requests per second expires, every incoming reader simultaneously observes a miss and fires duplicate database queries, knocking down downstream infrastructure. We engineer two complementary defenses: an asynchronous <strong>SingleFlight request coalescer</strong> that merges concurrent in-flight coroutines, and the mathematically optimal <strong>XFetch algorithm</strong> that refreshes expiring hot keys in the background before they ever expire.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Cache Stampede Concurrency Collapse</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Distributed Mutexes vs. In-Process SingleFlight</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Vattani et al. VLDB XFetch Formulation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Continuous Probabilistic Early Expiration Engine</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Async SingleFlight Request Coalescer in Python</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> 100-Concurrent-Worker Stampede Test Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Anatomy of a Cache Stampede: Concurrency Collapses -->
+        <section id="cs-cache-stampede" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Anatomy of the Cache Stampede (Dogpiling)</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In web architectures handling high concurrency, the health of downstream storage relies on an implicit assumption: <em>the cache absorbs 95% to 99% of incoming traffic</em>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When a heavily requested hot key expires in a standard Cache-Aside setup, that assumption instantly evaporates. Consider a popular e-commerce product or breaking news headline receiving <strong>5,000 requests per second</strong> with a database query execution time of <strong>200ms</strong> ($0.2\text{s}$):
+            </p>
+
+            <!-- Cache Stampede Cascade Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">The 200ms Window of Vulnerability (The Dogpile Collapse)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">What happens when a hot key expires at $T=0\text{s}$</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-amber-400 font-bold block text-sm">1. Key Expiration (T=0.000s)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            Key <code class="text-amber-300 font-mono">product:deal_of_day</code> TTL expires in Redis.
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-[10px] text-rose-300 border border-slate-800">
+                            State: Key Evicted<br>
+                            Incoming Rate: 5,000 req/sec
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="p-4 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-2">
+                        <span class="text-rose-400 font-bold block text-sm">2. Parallel Query Flood (T=0 to 0.2s)</span>
+                        <div class="text-[10px] text-rose-200 font-sans">
+                            In 200ms, <strong>1,000 requests arrive</strong>. Every single request observes a cache miss!
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-[10px] text-rose-400 border border-rose-900 font-bold">
+                            1,000 identical SQL queries<br>fired concurrently at PostgreSQL!
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="p-4 bg-rose-950 border border-rose-600 rounded-2xl space-y-2">
+                        <span class="text-rose-300 font-bold block text-sm">3. Cascading Outage (T &ge; 0.200s)</span>
+                        <div class="text-[10px] text-rose-200 font-sans">
+                            SQL connection pool (max 100) saturates. Remaining 900 queries queue up and timeout.
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded text-[10px] text-rose-300 border border-rose-700 font-bold">
+                            504 Gateway Timeouts<br>DB CPU hits 100% &bull; Pods Crash!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-rose-400 font-mono text-xs">// The Mathematical Core of the Problem:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The number of redundant backend queries generated during a stampede is directly proportional to request arrival velocity ($R$) and computation latency ($\delta$):
+                    </p>
+                    <div class="bg-slate-900 p-2 rounded text-center font-mono text-sky-300 border border-slate-800">
+                        N_{\text{redundant}} = R \times \delta = 5,000 \text{ req/sec} \times 0.2\text{s} = \mathbf{1,000 \text{ redundant expensive queries}}
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Even if the database survives, the server wastes 99.9% of its I/O executing 999 duplicate computations that yield the identical result!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Deterministic Stampede Defenses: Mutexes vs. SingleFlight -->
+        <section id="mutex-vs-singleflight" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Deterministic Defenses: Distributed Mutexes vs. In-Process SingleFlight</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To prevent thousands of identical recomputations, systems historically implemented **Mutex Locking**. When a reader observes a cache miss, it acquires a mutual exclusion lock before querying the database. Subsequent readers must wait until the lock holder finishes and populates the cache.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, in distributed web services, locking introduces significant trade-offs:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Distributed Mutex (Redis) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">1. Distributed Mutex (Redis SETNX)</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Cross-Node Barrier</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Worker acquires an exclusive lock in Redis: <code class="font-mono text-slate-800">SET lock:product:42 token NX EX 10</code>.
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Pros:</strong> Only exactly 1 worker across the entire Kubernetes cluster executes the database query.</li>
+                        <li><strong>The Lock Wait Convoy:</strong> Waiting requests must spin-poll (<code class="font-mono text-slate-800">while True: await sleep(0.05)</code>) or block. Every waiting client absorbs the full 200ms database latency!</li>
+                        <li><strong>Deadlock Risk:</strong> If the worker container gets OOM-killed mid-query, waiting requests hang until the lock lease expires.</li>
+                    </ul>
+                </div>
+
+                <!-- SingleFlight (In-Process Coalescing) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">2. In-Process SingleFlight (Coalescing)</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Zero-Lock Coalescer</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Originally popularized by Go's <code class="font-mono text-slate-800">singleflight</code> package. Tracks in-flight asynchronous operations using shared futures.
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Pros:</strong> Zero polling loops, zero Redis lock overhead. Concurrent requests on the same pod latch onto the active <code class="font-mono text-slate-800">asyncio.Future</code>.</li>
+                        <li><strong>Mechanism:</strong> Request 1 starts query &rarr; Requests 2 through 100 await the exact same future object. When Request 1 completes, all 100 coroutines resolve simultaneously!</li>
+                        <li><strong>Scope:</strong> Operates within a single process. Across 10 pods, at most 10 database queries occur instead of 1,000.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- SingleFlight Architecture Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Async SingleFlight Request Coalescing Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Stage 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. Request A Arrives</span>
+                        <div class="text-[10px] text-slate-400 font-sans">First cache miss observed</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-200">
+                            Creates asyncio.Future()<br>Dispatches DB query
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; in-flight &rarr;</div>
+
+                    <!-- Stage 2 -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">2. Requests B, C, D Arrive</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Concurrent hits on same key</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            Attach to existing Future!<br>Zero new DB queries!
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; resolves &rarr;</div>
+
+                    <!-- Stage 3 -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Shared Resolution</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Query finishes once</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            All 4 callers receive result<br>simultaneously in 0.2s!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The In-Process Latency Benefit:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        SingleFlight eliminates 99% of database pressure during a stampede without requiring network coordination, Redis scripts, or distributed lease negotiations.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Gold Standard: The XFetch Algorithm (Optimal Probabilistic Early Expiration) -->
+        <section id="xfetch-deep-dive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Gold Standard: Vattani, Chierichetti &amp; Lowenstein's XFetch Algorithm</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Even with SingleFlight and distributed mutexes, one fundamental problem remains: <strong>when the key expires, the reader that triggers the recomputation must wait for the database query to finish</strong>. If that query takes 2 seconds, that user experiences a noticeable 2-second delay.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In 2015, Andrea Vattani, Flavio Chierichetti, and Kevin Lowenstein published their landmark VLDB research paper: <em>"Optimal Probabilistic Cache Stampede Prevention"</em>. They formulated an algorithm known as <strong>XFetch</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Instead of waiting for a key to expire at $t = \text{expiry}$, <strong>XFetch calculates a probabilistic early recomputation check on every read</strong>:
+            </p>
+
+            <!-- XFetch Formula & Probability Curve Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The XFetch Probabilistic Recomputation Formula</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">VLDB 2015 &bull; Andrea Vattani, Flavio Chierichetti, Kevin Lowenstein</p>
+                </div>
+
+                <!-- Equation Container -->
+                <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-center space-y-2">
+                    <span class="text-slate-400 text-[11px] block">Trigger Recomputation Condition:</span>
+                    <div class="text-sm md:text-base text-emerald-300 font-bold tracking-wider">
+                        \text{time()} - (\beta \times \delta \times \ln(\text{rand}())) > \text{expiry}
+                    </div>
+                    <div class="text-[10px] text-sky-300 font-sans">
+                        Where <code class="text-amber-300 font-mono">\delta</code> (delta) is the computation duration in seconds, <code class="text-amber-300 font-mono">\beta > 0</code> is an aggressive multiplier (default 1.0), and <code class="text-amber-300 font-mono">\text{rand}() \in (0, 1]</code> is a uniform random float.
+                    </div>
+                </div>
+
+                <!-- Step-by-Step Probability Behavior Timeline -->
+                <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-sky-300 font-bold text-sm">Dynamic Probability Evolution Over Time</span>
+                        <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded font-bold">Key TTL: 60s &bull; Query Time &delta;: 2.0s</span>
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-3 text-center text-[11px]">
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                            <span class="text-emerald-400 font-bold block">T = 10s (50s Remaining)</span>
+                            <div class="text-slate-400 text-[10px]">&minus;2.0 &times; 1.0 &times; ln(rand) vs 50s</div>
+                            <div class="text-emerald-300 font-bold text-xs">P(Refresh) &approx; 0.000001%</div>
+                            <p class="text-[10px] text-slate-500 font-sans">Virtually zero chance of early refresh. Instant cache hit!</p>
+                        </div>
+
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                            <span class="text-amber-400 font-bold block">T = 56s (4s Remaining)</span>
+                            <div class="text-slate-400 text-[10px]">&minus;2.0 &times; 1.0 &times; ln(rand) vs 4s</div>
+                            <div class="text-amber-300 font-bold text-xs">P(Refresh) &approx; 13.5%</div>
+                            <p class="text-[10px] text-slate-500 font-sans">Probability begins rising. Readers still get cached data!</p>
+                        </div>
+
+                        <div class="p-3 bg-slate-900 rounded-xl border border-rose-800 rounded-xl space-y-1">
+                            <span class="text-rose-400 font-bold block">T = 59s (1s Remaining)</span>
+                            <div class="text-slate-400 text-[10px]">&minus;2.0 &times; 1.0 &times; ln(rand) vs 1s</div>
+                            <div class="text-rose-300 font-bold text-xs">P(Refresh) &approx; 60.6%</div>
+                            <p class="text-[10px] text-slate-500 font-sans">High probability: ONE reader triggers background refresh!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">// The XFetch Invariant: 0ms Cache Miss Penalty</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Notice the elegance of this mathematical proof:
+                    </p>
+                    <ul class="list-disc pl-5 text-slate-400 text-[11px] space-y-1">
+                        <li>The client that triggers the recomputation <strong>still returns the cached value immediately</strong>!</li>
+                        <li>The recomputation executes as an asynchronous background task.</li>
+                        <li>By the time the key officially expires at second 60, the fresh value has already been computed and written to the cache.</li>
+                        <li><strong>Under heavy traffic, the cache hit ratio is virtually 100%, and read latency remains at memory speed (0ms miss penalty)!</strong></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: CacheForge Milestone 05 -->
+        <section id="cacheforge-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">CacheForge Milestone 05: Stampede Defense Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 05 for <strong>CacheForge</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/patterns/singleflight.py</code>: the asynchronous in-flight request coalescer.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/patterns/xfetch.py</code>: the VLDB XFetch probabilistic early refresh engine with execution time tracking ($\delta$).</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_stampede.py</code>: firing 100 concurrent asynchronous tasks at an expiring key to verify that only 1 recomputation occurs.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated CacheForge Hierarchy (Milestone 05)</div>
+                <div>cacheforge/</div>
+                <div>├── src/</div>
+                <div>│   └── cacheforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── serialization/</div>
+                <div>│       ├── storage/</div>
+                <div>│       └── patterns/</div>
+                <div>│           ├── bloom.py</div>
+                <div>│           ├── cache_aside.py</div>
+                <div>│           ├── write_behind.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">singleflight.py</span>          <span class="text-slate-500"># Milestone 05: In-Flight Request Coalescing</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">xfetch.py</span>                <span class="text-slate-500"># Milestone 05: XFetch Probabilistic Engine</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_lru.py</div>
+                <div>        ├── test_arc.py</div>
+                <div>        ├── test_patterns.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_stampede.py</span>            <span class="text-slate-500"># Milestone 05: 100-Concurrent-Worker Stampede Battery</span></div>
+            </div>
+
+            <!-- File 1: src/cacheforge/patterns/singleflight.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Asynchronous SingleFlight Coalescer: <code class="text-purple-700">src/cacheforge/patterns/singleflight.py</code></span>
+                    <span class="text-slate-400">Zero-Lock In-Flight Grouping</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Patterns - Async SingleFlight Coalescer (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Dict, Awaitable
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SingleFlight</span>:
+    <span class="text-slate-500">"""
+    IN-PROCESS REQUEST COALESCER:
+    Suppresses duplicate concurrent operations.
+    If 50 coroutines invoke do(key, fn) simultaneously, 'fn' executes EXACTLY ONCE.
+    All 50 callers await the identical asyncio.Future and receive the shared result.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        self._in_flight: Dict[str, asyncio.Future] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">do</span>(self, key: str, fn: Callable[[], Awaitable[Any]]) -> Any:
+        <span class="text-slate-500"># 1. Critical section: check or register in-flight future</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> self._in_flight:
+                future = self._in_flight[key]
+                <span class="text-slate-500"># Another worker already started! Latch onto their future outside the lock</span>
+                is_leader = <span class="text-rose-400">False</span>
+            <span class="text-purple-400">else</span>:
+                loop = asyncio.get_running_loop()
+                future = loop.create_future()
+                self._in_flight[key] = future
+                is_leader = <span class="text-rose-400">True</span>
+
+        <span class="text-slate-500"># 2. Leader executes the underlying asynchronous work</span>
+        <span class="text-purple-400">if</span> is_leader:
+            <span class="text-purple-400">try</span>:
+                result = <span class="text-purple-400">await</span> fn()
+                future.set_result(result)
+                <span class="text-purple-400">return</span> result
+            <span class="text-purple-400">except</span> BaseException <span class="text-purple-400">as</span> exc:
+                future.set_exception(exc)
+                <span class="text-purple-400">raise</span>
+            <span class="text-purple-400">finally</span>:
+                <span class="text-purple-400">async with</span> self._lock:
+                    <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> self._in_flight:
+                        del self._in_flight[key]
+
+        <span class="text-slate-500"># 3. Followers await the leader's resolution</span>
+        <span class="text-purple-400">return await</span> asyncio.shield(future)</pre>
+            </div>
+
+            <!-- File 2: src/cacheforge/patterns/xfetch.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Optimal XFetch Probabilistic Engine: <code class="text-purple-700">src/cacheforge/patterns/xfetch.py</code></span>
+                    <span class="text-slate-400">VLDB 2015 Formulation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Patterns - XFetch Probabilistic Cache Engine (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> math
+<span class="text-purple-400">import</span> random
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Dict, Optional, Awaitable
+<span class="text-purple-400">from</span> cacheforge.storage.remote_client <span class="text-purple-400">import</span> RemoteCacheDriver
+<span class="text-purple-400">from</span> cacheforge.patterns.singleflight <span class="text-purple-400">import</span> SingleFlight
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">XFetchCache</span>:
+    <span class="text-slate-500">"""
+    XFETCH OPTIMAL PROBABILISTIC CACHE:
+    Implements Vattani, Chierichetti, &amp; Lowenstein (VLDB 2015).
+    Envelope Structure Stored in Cache:
+      {
+        "val": &lt;actual_payload&gt;,
+        "delta": &lt;computation_time_seconds&gt;,
+        "expiry": &lt;absolute_unix_expiry_timestamp&gt;
+      }
+    Decision Invariant:
+      now - (beta * delta * ln(random())) &gt; expiry
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        driver: RemoteCacheDriver,
+        beta: float = 1.0,
+        singleflight: Optional[SingleFlight] = <span class="text-rose-400">None</span>
+    ):
+        self.driver = driver
+        self.beta = beta
+        self.sf = singleflight <span class="text-purple-400">or</span> SingleFlight()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_or_compute</span>(
+        self,
+        key: str,
+        ttl_seconds: int,
+        compute_fn: Callable[[], Awaitable[Any]]
+    ) -> Any:
+        now = time.time()
+        envelope = <span class="text-purple-400">await</span> self.driver.get(key)
+
+        <span class="text-slate-500"># 1. EVALUATION CHECK</span>
+        <span class="text-purple-400">if</span> envelope <span class="text-purple-400">is not None</span>:
+            val = envelope.get(<span class="text-amber-300">"val"</span>)
+            delta = float(envelope.get(<span class="text-amber-300">"delta"</span>, 0.05))
+            expiry = float(envelope.get(<span class="text-amber-300">"expiry"</span>, now + ttl_seconds))
+
+            <span class="text-slate-500"># XFETCH MATHEMATICAL INVARIANT</span>
+            <span class="text-slate-500"># rand() in (0, 1] &rarr; math.log(r) is always negative</span>
+            r = random.random()
+            <span class="text-purple-400">if</span> r == 0:
+                r = 0.0000001
+
+            probabilistic_delta = self.beta * delta * math.log(r)
+
+            <span class="text-purple-400">if</span> (now - probabilistic_delta) &lt;= expiry:
+                <span class="text-slate-500"># Cache hit &amp; no early refresh triggered! Return immediately (0ms latency)</span>
+                <span class="text-purple-400">return</span> val
+
+            <span class="text-slate-500"># 2. XFETCH TRIGGERED: Early background recomputation!</span>
+            <span class="text-slate-500"># Dispatch background refresh task protected by SingleFlight</span>
+            asyncio.create_task(
+                self.sf.do(
+                    f<span class="text-amber-300">"refresh:&#123;key&#125;"</span>,
+                    <span class="text-purple-400">lambda</span>: self._compute_and_store(key, ttl_seconds, compute_fn)
+                )
+            )
+
+            <span class="text-slate-500"># CRITICAL: Current caller STILL returns the cached value instantly! Zero waiting!</span>
+            <span class="text-purple-400">return</span> val
+
+        <span class="text-slate-500"># 3. Total Cache Miss: Execute synchronously via SingleFlight</span>
+        <span class="text-purple-400">return await</span> self.sf.do(
+            f<span class="text-amber-300">"miss:&#123;key&#125;"</span>,
+            <span class="text-purple-400">lambda</span>: self._compute_and_store(key, ttl_seconds, compute_fn)
+        )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_compute_and_store</span>(
+        self,
+        key: str,
+        ttl_seconds: int,
+        compute_fn: Callable[[], Awaitable[Any]]
+    ) -> Any:
+        <span class="text-slate-500">"""Executes query, measures delta (duration), and stores wrapped envelope."""</span>
+        t0 = time.perf_counter()
+        computed_val = <span class="text-purple-400">await</span> compute_fn()
+        delta = time.perf_counter() - t0
+
+        expiry = time.time() + ttl_seconds
+        envelope = {
+            <span class="text-amber-300">"val"</span>: computed_val,
+            <span class="text-amber-300">"delta"</span>: delta,
+            <span class="text-amber-300">"expiry"</span>: expiry
+        }
+
+        <span class="text-slate-500"># Set physical TTL slightly longer than logical expiry to allow early refresh margin</span>
+        physical_ttl = ttl_seconds * 2
+        <span class="text-purple-400">await</span> self.driver.set(key, envelope, ttl_seconds=physical_ttl)
+
+        <span class="text-purple-400">return</span> computed_val</pre>
+            </div>
+
+            <!-- File 3: tests/unit/test_stampede.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. 100-Concurrent-Worker Stampede Battery: <code class="text-purple-700">tests/unit/test_stampede.py</code></span>
+                    <span class="text-slate-400">Proving Stampede Elimination</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> cacheforge.patterns.singleflight <span class="text-purple-400">import</span> SingleFlight
+<span class="text-purple-400">from</span> cacheforge.patterns.xfetch <span class="text-purple-400">import</span> XFetchCache
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestStampedeDefense</span>:
+    <span class="text-slate-500">"""Verifies SingleFlight request coalescing and XFetch early recomputation under load."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_singleflight_coalesces_100_concurrent_requests_into_1_db_query</span>(self):
+        sf = SingleFlight()
+        execution_count = 0
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">expensive_database_query</span>():
+            nonlocal execution_count
+            execution_count += 1
+            <span class="text-purple-400">await</span> asyncio.sleep(0.05)  <span class="text-slate-500"># 50ms simulation</span>
+            <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"hot_deal"</span>, <span class="text-amber-300">"price"</span>: 99.0}
+
+        <span class="text-slate-500"># 100 concurrent workers invoke SingleFlight simultaneously on the same key</span>
+        tasks = [
+            sf.do(<span class="text-amber-300">"deal:hot_item"</span>, expensive_database_query)
+            <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(100)
+        ]
+        results = <span class="text-purple-400">await</span> asyncio.gather(*tasks)
+
+        <span class="text-slate-500"># STAMPEDE ELIMINATED: Exactly 1 database query executed!</span>
+        assert execution_count == 1
+        assert len(results) == 100
+        assert all(r[<span class="text-amber-300">"price"</span>] == 99.0 <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> results)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_xfetch_early_refresh_trigger</span>(self, mocker):
+        mock_driver = mocker.AsyncMock()
+
+        <span class="text-slate-500"># Simulate envelope with 0.1s remaining before expiration</span>
+        fake_envelope = {
+            <span class="text-amber-300">"val"</span>: <span class="text-amber-300">"stale_cached_value"</span>,
+            <span class="text-amber-300">"delta"</span>: 1.0,  <span class="text-slate-500"># delta = 1.0s</span>
+            <span class="text-amber-300">"expiry"</span>: 1000.1
+        }
+        mock_driver.get.return_value = fake_envelope
+
+        <span class="text-slate-500"># Freeze time at 1000.0 (0.1s before expiry)</span>
+        mocker.patch(<span class="text-amber-300">"time.time"</span>, return_value=1000.0)
+        <span class="text-slate-500"># Force random float to trigger probabilistic branch</span>
+        mocker.patch(<span class="text-amber-300">"random.random"</span>, return_value=0.5)
+
+        xfetch = XFetchCache(driver=mock_driver, beta=1.0)
+        compute_fn = mocker.AsyncMock(return_value=<span class="text-amber-300">"fresh_computed_value"</span>)
+
+        <span class="text-slate-500"># Call get_or_compute</span>
+        result = <span class="text-purple-400">await</span> xfetch.get_or_compute(<span class="text-amber-300">"expiring_key"</span>, ttl_seconds=60, compute_fn=compute_fn)
+
+        <span class="text-slate-500"># 1. Caller received the cached value IMMEDIATELY (0ms delay)</span>
+        assert result == <span class="text-amber-300">"stale_cached_value"</span>
+
+        <span class="text-slate-500"># 2. Allow event loop to process background refresh task</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.01)
+
+        <span class="text-slate-500"># 3. Background recomputation was triggered!</span>
+        assert compute_fn.call_count == 1</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Spin-Polling on Distributed Mutexes</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">while not lock.acquire(): await sleep(0.05)</code> when cache misses occur under high concurrency.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes full gateway latency collapse:</strong> If 5,000 requests per second hit an expired key, 4,999 coroutines enter an active spin-polling loop. Redis is flooded with 100,000 <code class="font-mono">SETNX</code> checks per second, and FastAPI event loop scheduling latency degrades to seconds! Use <strong>SingleFlight</strong> to latch onto a shared future without network polling loops.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Hard Deadlines on Hotspot Keys</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Allowing high-traffic dashboard aggregations to expire abruptly with no probabilistic early refresh or pre-expiration warming.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this hurts user experience:</strong> Even with mutexes, at least one reader must stall for the full 2–5 seconds while the heavy SQL query computes. Under continuous user traffic, hot keys should never be allowed to run cold. Implement the <strong>XFetch algorithm</strong> to refresh keys in the background before expiration.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating CacheForge Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the 100-worker stampede verification battery and benchmark SingleFlight request coalescing:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the stampede and XFetch verification suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_stampede.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.08s. Confirms 100 concurrent requests coalesce into exactly 1 database query!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Benchmark SingleFlight coalescing in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from cacheforge.patterns.singleflight import SingleFlight; sf=SingleFlight(); count=0; async def q(): nonlocal count; count+=1; await asyncio.sleep(0.02); return 'ok'; async def main(): await asyncio.gather(*[sf.do('k', q) for _ in range(500)]); print(f'Executed {count} query for 500 callers'); asyncio.run(main())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output: <code class="text-emerald-400 font-mono">Executed 1 query for 500 callers</code>.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Multi-Tier Coherency (L1/L2): In-Memory Near-Caches, Redis Pub/Sub Invalidation &amp; Split-Brain Drift</h4>
+                <p class="text-xs text-slate-500 font-sans">Hierarchical caching: Pairing local process RAM (L1) with centralized Redis clusters (L2), real-time invalidation bus topologies via Redis Pub/Sub, and bounding eventual consistency drift across distributed pods.</p>
+            </div>
+            <a href="Chapter 06 - Multi-Tier Coherency L1-L2 - In-Memory Near-Caches, Redis Pub-Sub Invalidation and Split-Brain Drift.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

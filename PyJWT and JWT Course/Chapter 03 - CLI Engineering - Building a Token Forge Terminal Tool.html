@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 03: CLI Engineering &bull; Building a Token Forge Terminal Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyJWT Architecture &amp; Token Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">TokenForge (Milestone 03 - Admin Terminal Tool &amp; Diagnostic Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 03 &bull; Operator Tooling &amp; Diagnostic Inspection
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                CLI Engineering: Building a Token Forge Terminal Tool
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Empowering DevOps, SecOps, and SREs: Building an administrative command-line utility with Typer, reading unverified token headers (<code class="font-mono text-emerald-400">jwt.get_unverified_header</code>) for dynamic key discovery, managing POSIX filesystem permissions on private PEM keys, enforcing scriptable UNIX exit codes, and testing CLI execution workflows with PyTest's <code class="font-mono text-emerald-400">CliRunner</code>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">TokenForge Milestone 03: The Operator Terminal &amp; Diagnostic Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 and 02, we built our programmatic cryptographic engine and claims validator. However, in enterprise microservice operations, engineers cannot write custom Python scripts every time they need to generate keypairs, issue manual break-glass maintenance tokens, debug production JWT headers, or verify a token during an incident. In Milestone 03, we construct <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">tokenforge-cli</code>: a type-safe terminal tool that generates RSA-2048 keypairs, issues tokens with registered claims, validates signatures with standardized UNIX exit codes, and safely inspects raw payloads without verifying signatures.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 03 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Typer Terminal Architecture &amp; Type Hints</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Key ID Resolution via <code class="text-purple-300">get_unverified_header</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Diagnostic Inspection (<code class="text-purple-300">verify_signature: False</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Secure PEM Filesystem Permissions (<code class="text-purple-300">0o600</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Standardized UNIX Exit Codes (0, 1, 2, 3)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> End-to-End CLI Testing with <code class="text-purple-300">CliRunner</code></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Security CLI Design -->
+        <section id="cs-cli-design" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Security CLI Architecture &amp; The UNIX Philosophy</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A common anti-pattern among backend developers is treating CLI scripts as disposable throwaway code. In production security engineering, command-line tools are the primary interface for <strong>automation scripts, Kubernetes initialization jobs, and incident response runbooks</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Following the <strong>UNIX Philosophy</strong>, a professional cryptographic CLI must fulfill three core invariants:
+            </p>
+
+            <!-- UNIX Philosophy Cards -->
+            <div class="grid md:grid-cols-3 gap-6 font-mono text-xs">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-sky-700 font-bold block text-sm">1. Silence is Golden</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Emit only the requested output to <code class="font-mono text-slate-800">stdout</code> (e.g. printing only the raw token string on <code class="font-mono text-slate-800">issue</code>). Logging, status banners, and diagnostics belong on <code class="font-mono text-slate-800">stderr</code> so outputs can be piped directly into <code class="font-mono text-slate-800">curl</code>, <code class="font-mono text-slate-800">jq</code>, or shell variables.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-purple-700 font-bold block text-sm">2. Semantic Exit Codes</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Never return an exit code of <code class="font-mono text-emerald-700 font-bold">0</code> when an error occurs! CI pipelines and bash scripts evaluate process return codes. If a token is expired or tampered with, the CLI must return distinct non-zero exit codes.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-emerald-700 font-bold block text-sm">3. Least Privilege Files</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        When generating private cryptographic keys to disk, writing files with default world-readable permissions (<code class="font-mono text-rose-700">0o644</code>) exposes secrets to other local users. Keys must be created atomically with owner-only access (<code class="font-mono text-emerald-700 font-bold">0o600</code>).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Terminal Flow Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    TokenForge CLI Command Topology &amp; Exit Code Dispatch
+                </div>
+
+                <div class="grid md:grid-cols-4 gap-3 text-center">
+                    <!-- keygen -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block">tokenforge keygen</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Generates RSA-2048 Pair</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-emerald-400">
+                            Writes: priv.pem (0o600)<br>Writes: pub.pem (0o644)
+                        </div>
+                        <span class="text-[10px] text-slate-500 font-bold block">Exit: 0</span>
+                    </div>
+
+                    <!-- issue -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-purple-300 font-bold block">tokenforge issue</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Signs Registered Claims</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-purple-300">
+                            Input: sub, aud, iss, key<br>Output: stdout (raw JWT)
+                        </div>
+                        <span class="text-[10px] text-slate-500 font-bold block">Exit: 0</span>
+                    </div>
+
+                    <!-- verify -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-emerald-300 font-bold block">tokenforge verify</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Validates Cryptography</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            Checks: Signature &bull; Claims<br>Exit: 0 (OK) / 2 (Invalid) / 3 (Expired)
+                        </div>
+                        <span class="text-[10px] text-slate-500 font-bold block">Exit: 0, 2, 3</span>
+                    </div>
+
+                    <!-- inspect -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-amber-300 font-bold block">tokenforge inspect</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Diagnostic Triage</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            Unverified header &amp; payload<br>Dumps pretty JSON to stdout
+                        </div>
+                        <span class="text-[10px] text-slate-500 font-bold block">Exit: 0</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Low-Level Diagnostic APIs in PyJWT -->
+        <section id="pyjwt-diagnostic-apis" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Diagnostic Inspection &amp; Key ID Discovery</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When building terminal tools or complex identity gateways, you frequently encounter a "chicken-and-egg" dilemma: <strong>How do you know which public key to verify a token with before you verify the token?</strong>
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In multi-tenant or rotating key ecosystems, tokens include a <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">kid</code> (Key ID) attribute inside their <strong>Header segment</strong>. PyJWT provides specialized low-level functions designed specifically for header inspection and diagnostic decoding:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- get_unverified_header -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">jwt.get_unverified_header()</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">RFC 7515 Header</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Extracts and parses only the first Base64URL segment of a JWT string into a dictionary, completely ignoring the payload and signature:
+                    </p>
+                    <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+header = jwt.get_unverified_header(raw_token)
+<span class="text-slate-500"># Output: {"alg": "RS256", "typ": "JWT", "kid": "key_2026_q4"}</span>
+key_id = header.get(<span class="text-amber-300">"kid"</span>)
+<span class="text-slate-500"># Downstream services use key_id to fetch the matching public key!</span></pre>
+                </div>
+
+                <!-- unverified decode -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-amber-700 text-sm">options={"verify_signature": False}</span>
+                        <span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono font-bold">Diagnostic Only</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Decodes the second Base64URL segment (Payload) into JSON without performing cryptographic signature math:
+                    </p>
+                    <pre class="bg-slate-900 text-amber-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+unverified_claims = jwt.decode(
+    raw_token, 
+    options={<span class="text-amber-300">"verify_signature"</span>: <span class="text-rose-400">False</span>}
+)
+<span class="text-slate-500"># Ideal for CLI inspection: view 'sub' or 'exp' even on expired tokens!</span></pre>
+                </div>
+            </div>
+
+            <!-- Warning Callout -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 space-y-1">
+                <p class="font-bold">Architectural Boundary Rule:</p>
+                <p class="text-amber-800 text-[11px] leading-relaxed">
+                    Unverified extraction is legitimate <strong>ONLY</strong> for CLI diagnostic inspection tools or extracting the <code class="font-mono">kid</code> header to resolve which public key to verify against. <strong>Never</strong> make authorization decisions (such as checking <code class="font-mono">claims["role"] == "admin"</code>) on an unverified payload in application services!
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Secure Filesystem Management for PEM Keys -->
+        <section id="filesystem-security" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Filesystem Security: POSIX Permissions on Secret Keys</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When a CLI tool generates cryptographic keypairs to disk, standard Python functions like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">open(path, "w")</code> create files respecting the operating system's default <code class="font-mono text-xs text-slate-800">umask</code> (typically yielding <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">0o644 / -rw-r--r--</code>).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In shared Linux environments (multi-tenant bastion hosts, developer workstations, shared CI runners), a world-readable private key permits any unprivileged user or malicious background daemon to read your signing credentials!
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Production Standard: Atomic File Creation with Restricted POSIX Modes</div>
+                <pre>
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save_private_key_securely</span>(path: Path, pem_content: str) -> <span class="text-rose-400">None</span>:
+    <span class="text-slate-500"># 1. Use os.open to atomically enforce 0o600 (-rw-------) before file creation!</span>
+    <span class="text-slate-500"># Prevents race conditions where a file exists as world-readable before chmod is applied.</span>
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    mode = 0o600  <span class="text-slate-500"># Strictly readable/writable ONLY by the owning user</span>
+
+    fd = os.open(path, flags, mode)
+    <span class="text-purple-400">with</span> open(fd, <span class="text-amber-300">"w"</span>, encoding=<span class="text-amber-300">"utf-8"</span>) <span class="text-purple-400">as</span> f:
+        f.write(pem_content)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">save_public_key</span>(path: Path, pem_content: str) -> <span class="text-rose-400">None</span>:
+    <span class="text-slate-500"># Public keys contain zero secret data and are safe with standard 0o644 (-rw-r--r--)</span>
+    path.write_text(pem_content, encoding=<span class="text-amber-300">"utf-8"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: TokenForge Milestone 03 -->
+        <section id="tokenforge-milestone-03" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">TokenForge Milestone 03: Full CLI Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 03: building <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/tokenforge/cli/main.py</code> using <strong>Typer</strong>, providing four core operational commands: <code class="font-mono text-purple-700 font-bold">keygen</code>, <code class="font-mono text-purple-700 font-bold">issue</code>, <code class="font-mono text-purple-700 font-bold">verify</code>, and <code class="font-mono text-purple-700 font-bold">inspect</code>. We then write an end-to-end functional test suite using PyTest's <code class="font-mono text-purple-700 font-bold">CliRunner</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 03)</div>
+                <div>tokenforge/</div>
+                <div>├── src/</div>
+                <div>│   └── tokenforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── services/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">cli/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">main.py</span>                <span class="text-slate-500"># Milestone 03: Typer Terminal Application</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── <span class="text-purple-300 font-bold">functional/</span></div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_cli.py</span>            <span class="text-slate-500"># Milestone 03: CliRunner End-to-End Suite</span></div>
+            </div>
+
+            <!-- File 1: src/tokenforge/cli/main.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Admin Terminal Command Suite: <code class="text-purple-700">src/tokenforge/cli/main.py</code></span>
+                    <span class="text-slate-400">Typer Operator Application</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge CLI - Administrative Operator Terminal (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> sys
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">import</span> typer
+
+<span class="text-purple-400">from</span> tokenforge.core.crypto <span class="text-purple-400">import</span> KeyManager, TokenEngine
+<span class="text-purple-400">from</span> tokenforge.services.validator <span class="text-purple-400">import</span> (
+    TokenValidator, 
+    TokenExpiredError, 
+    TokenSecurityError, 
+    AudienceMismatchError
+)
+
+cli_app = typer.Typer(name=<span class="text-amber-300">"tokenforge"</span>, help=<span class="text-amber-300">"TokenForge Cryptographic Operator Utility"</span>)
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Command 1: Key Generation (keygen)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-purple-400">@cli_app.command</span>(<span class="text-amber-300">"keygen"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_keys</span>(
+    private_out: Path = typer.Option(..., <span class="text-amber-300">"--out-private"</span>, <span class="text-amber-300">"-p"</span>, help=<span class="text-amber-300">"Destination path for Private Key PEM"</span>),
+    public_out: Path = typer.Option(..., <span class="text-amber-300">"--out-public"</span>, <span class="text-amber-300">"-u"</span>, help=<span class="text-amber-300">"Destination path for Public Key PEM"</span>),
+    bits: int = typer.Option(2048, <span class="text-amber-300">"--bits"</span>, <span class="text-amber-300">"-b"</span>, help=<span class="text-amber-300">"Modulus size (min 2048)"</span>)
+):
+    <span class="text-slate-500">"""Generates a secure RSA keypair and saves to disk with restricted permissions."""</span>
+    typer.secho(f<span class="text-amber-300">"Generating &#123;bits&#125;-bit RSA Keypair..."</span>, fg=typer.colors.BLUE, err=<span class="text-rose-400">True</span>)
+    priv_pem, pub_pem = KeyManager.generate_rsa_keypair(key_size=bits)
+
+    <span class="text-slate-500"># 1. Save Private Key atomically with POSIX 0o600 (Owner Read/Write ONLY)</span>
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(private_out, flags, 0o600)
+    <span class="text-purple-400">with</span> open(fd, <span class="text-amber-300">"w"</span>, encoding=<span class="text-amber-300">"utf-8"</span>) <span class="text-purple-400">as</span> f:
+        f.write(priv_pem)
+
+    <span class="text-slate-500"># 2. Save Public Key with standard 0o644 (World Readable)</span>
+    public_out.write_text(pub_pem, encoding=<span class="text-amber-300">"utf-8"</span>)
+
+    typer.secho(f<span class="text-amber-300">"&check; Private Key written to: &#123;private_out&#125; (Mode: 0600)"</span>, fg=typer.colors.GREEN, err=<span class="text-rose-400">True</span>)
+    typer.secho(f<span class="text-amber-300">"&check; Public Key written to:  &#123;public_out&#125; (Mode: 0644)"</span>, fg=typer.colors.GREEN, err=<span class="text-rose-400">True</span>)
+
+
+<span class="text-purple-400">@cli_app.command</span>(<span class="text-amber-300">"issue"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">issue_token</span>(
+    subject: str = typer.Option(..., <span class="text-amber-300">"--sub"</span>, help=<span class="text-amber-300">"User ID / Principal"</span>),
+    audience: str = typer.Option(..., <span class="text-amber-300">"--aud"</span>, help=<span class="text-amber-300">"Target service audience"</span>),
+    issuer: str = typer.Option(<span class="text-amber-300">"https://iam.tokenforge.internal"</span>, <span class="text-amber-300">"--iss"</span>),
+    ttl: int = typer.Option(300, <span class="text-amber-300">"--ttl"</span>, help=<span class="text-amber-300">"Time to live in seconds"</span>),
+    private_key_path: Path = typer.Option(..., <span class="text-amber-300">"--key"</span>, <span class="text-amber-300">"-k"</span>, help=<span class="text-amber-300">"Path to Private Key PEM"</span>)
+):
+    <span class="text-slate-500">"""Issues a signed RS256 token and prints the raw string to stdout."""</span>
+    <span class="text-purple-400">if not</span> private_key_path.exists():
+        typer.secho(f<span class="text-amber-300">"ERROR: Key file &#123;private_key_path&#125; not found."</span>, fg=typer.colors.RED, err=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">raise</span> typer.Exit(code=1)
+
+    private_pem = private_key_path.read_text(encoding=<span class="text-amber-300">"utf-8"</span>)
+    engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=private_pem)
+
+    now = int(time.time())
+    claims = {
+        <span class="text-amber-300">"iss"</span>: issuer,
+        <span class="text-amber-300">"sub"</span>: subject,
+        <span class="text-amber-300">"aud"</span>: audience,
+        <span class="text-amber-300">"iat"</span>: now,
+        <span class="text-amber-300">"exp"</span>: now + ttl,
+    }
+
+    token = engine.issue_token(claims)
+    <span class="text-slate-500"># UNIX Standard: Emit ONLY the token string to stdout for piping</span>
+    typer.echo(token)
+
+
+<span class="text-purple-400">@cli_app.command</span>(<span class="text-amber-300">"verify"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_token</span>(
+    token: str = typer.Option(..., <span class="text-amber-300">"--token"</span>, <span class="text-amber-300">"-t"</span>, help=<span class="text-amber-300">"Raw JWT token string"</span>),
+    public_key_path: Path = typer.Option(..., <span class="text-amber-300">"--key"</span>, <span class="text-amber-300">"-k"</span>, help=<span class="text-amber-300">"Path to Public Key PEM"</span>),
+    expected_aud: str = typer.Option(..., <span class="text-amber-300">"--aud"</span>, help=<span class="text-amber-300">"Expected audience"</span>),
+    expected_iss: str = typer.Option(<span class="text-amber-300">"https://iam.tokenforge.internal"</span>, <span class="text-amber-300">"--iss"</span>)
+):
+    <span class="text-slate-500">"""
+    Verifies token validity using exit codes:
+    Exit 0: Valid &bull; Exit 2: Invalid/Tampered &bull; Exit 3: Expired
+    """</span>
+    <span class="text-purple-400">if not</span> public_key_path.exists():
+        typer.secho(f<span class="text-amber-300">"ERROR: Key file &#123;public_key_path&#125; not found."</span>, fg=typer.colors.RED, err=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">raise</span> typer.Exit(code=1)
+
+    public_pem = public_key_path.read_text(encoding=<span class="text-amber-300">"utf-8"</span>)
+    validator = TokenValidator(
+        verification_key=public_pem,
+        expected_issuer=expected_iss,
+        expected_audience=expected_aud
+    )
+
+    <span class="text-purple-400">try</span>:
+        validated = validator.decode_and_validate(token)
+        typer.secho(<span class="text-amber-300">"&check; TOKEN VALID"</span>, fg=typer.colors.GREEN, err=<span class="text-rose-400">True</span>)
+        typer.echo(json.dumps(validated.claims, indent=2))
+        <span class="text-purple-400">raise</span> typer.Exit(code=0)
+    <span class="text-purple-400">except</span> TokenExpiredError <span class="text-purple-400">as</span> e:
+        typer.secho(f<span class="text-amber-300">"&cross; REJECTED: &#123;e&#125;"</span>, fg=typer.colors.RED, err=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">raise</span> typer.Exit(code=3)
+    <span class="text-purple-400">except</span> TokenSecurityError <span class="text-purple-400">as</span> e:
+        typer.secho(f<span class="text-amber-300">"&cross; REJECTED: &#123;e&#125;"</span>, fg=typer.colors.RED, err=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">raise</span> typer.Exit(code=2)
+
+
+<span class="text-purple-400">@cli_app.command</span>(<span class="text-amber-300">"inspect"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">inspect_token</span>(
+    token: str = typer.Option(..., <span class="text-amber-300">"--token"</span>, <span class="text-amber-300">"-t"</span>, help=<span class="text-amber-300">"Raw JWT string"</span>)
+):
+    <span class="text-slate-500">"""Dumps unverified headers and payload for incident triage and debugging."""</span>
+    <span class="text-purple-400">try</span>:
+        header = jwt.get_unverified_header(token)
+        payload = jwt.decode(token, options={<span class="text-amber-300">"verify_signature"</span>: <span class="text-rose-400">False</span>})
+        
+        output = {
+            <span class="text-amber-300">"unverified_header"</span>: header,
+            <span class="text-amber-300">"unverified_payload"</span>: payload
+        }
+        typer.echo(json.dumps(output, indent=2))
+    <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+        typer.secho(f<span class="text-amber-300">"Failed to parse token segments: &#123;exc&#125;"</span>, fg=typer.colors.RED, err=<span class="text-rose-400">True</span>)
+        <span class="text-purple-400">raise</span> typer.Exit(code=1)</pre>
+            </div>
+
+            <!-- File 2: tests/functional/test_cli.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. CLI Functional Test Suite: <code class="text-purple-700">tests/functional/test_cli.py</code></span>
+                    <span class="text-slate-400">CliRunner End-to-End Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Test Suite - CLI Functional Testing (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> stat
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> typer.testing <span class="text-purple-400">import</span> CliRunner
+<span class="text-purple-400">from</span> tokenforge.cli.main <span class="text-purple-400">import</span> cli_app
+
+runner = CliRunner()
+
+<span class="text-purple-400">@pytest.mark.functional</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestTokenForgeCLI</span>:
+    <span class="text-slate-500">"""Verifies terminal commands, exit codes, output streams, and POSIX permissions."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_full_lifecycle_keygen_issue_verify_cycle</span>(self, tmp_path):
+        priv_key = tmp_path / <span class="text-amber-300">"id_rsa"</span>
+        pub_key = tmp_path / <span class="text-amber-300">"id_rsa.pub"</span>
+
+        <span class="text-slate-500"># 1. Test Keygen: verify files created and permissions strictly 0o600 on private key</span>
+        res_keygen = runner.invoke(cli_app, [<span class="text-amber-300">"keygen"</span>, <span class="text-amber-300">"-p"</span>, str(priv_key), <span class="text-amber-300">"-u"</span>, str(pub_key)])
+        assert res_keygen.exit_code == 0
+        assert priv_key.exists()
+        assert pub_key.exists()
+
+        <span class="text-slate-500"># POSIX Mode Verification: File must NOT be world-readable!</span>
+        file_mode = stat.S_IMODE(priv_key.stat().st_mode)
+        assert file_mode == 0o600
+
+        <span class="text-slate-500"># 2. Test Issue: emits raw JWT string to stdout</span>
+        res_issue = runner.invoke(cli_app, [
+            <span class="text-amber-300">"issue"</span>,
+            <span class="text-amber-300">"--sub"</span>, <span class="text-amber-300">"operator_01"</span>,
+            <span class="text-amber-300">"--aud"</span>, <span class="text-amber-300">"clearing-engine"</span>,
+            <span class="text-amber-300">"--key"</span>, str(priv_key),
+            <span class="text-amber-300">"--ttl"</span>, <span class="text-amber-300">"600"</span>
+        ])
+        assert res_issue.exit_code == 0
+        jwt_token = res_issue.stdout.strip()
+        assert len(jwt_token.split(<span class="text-amber-300">"."</span>)) == 3
+
+        <span class="text-slate-500"># 3. Test Verify: verifies valid token returns exit code 0</span>
+        res_verify = runner.invoke(cli_app, [
+            <span class="text-amber-300">"verify"</span>,
+            <span class="text-amber-300">"--token"</span>, jwt_token,
+            <span class="text-amber-300">"--key"</span>, str(pub_key),
+            <span class="text-amber-300">"--aud"</span>, <span class="text-amber-300">"clearing-engine"</span>
+        ])
+        assert res_verify.exit_code == 0
+        assert <span class="text-amber-300">"operator_01"</span> <span class="text-purple-400">in</span> res_verify.stdout
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_verify_returns_exit_code_2_on_tampered_token</span>(self, tmp_path):
+        priv_key = tmp_path / <span class="text-amber-300">"priv.pem"</span>
+        pub_key = tmp_path / <span class="text-amber-300">"pub.pem"</span>
+        runner.invoke(cli_app, [<span class="text-amber-300">"keygen"</span>, <span class="text-amber-300">"-p"</span>, str(priv_key), <span class="text-amber-300">"-u"</span>, str(pub_key)])
+        
+        res_issue = runner.invoke(cli_app, [<span class="text-amber-300">"issue"</span>, <span class="text-amber-300">"--sub"</span>, <span class="text-amber-300">"alice"</span>, <span class="text-amber-300">"--aud"</span>, <span class="text-amber-300">"app"</span>, <span class="text-amber-300">"--key"</span>, str(priv_key)])
+        token = res_issue.stdout.strip()
+
+        <span class="text-slate-500"># Tamper with signature segment</span>
+        tampered = token[:-6] + <span class="text-amber-300">"AAAAAA"</span>
+
+        res_verify = runner.invoke(cli_app, [<span class="text-amber-300">"verify"</span>, <span class="text-amber-300">"--token"</span>, tampered, <span class="text-amber-300">"--key"</span>, str(pub_key), <span class="text-amber-300">"--aud"</span>, <span class="text-amber-300">"app"</span>])
+        
+        <span class="text-slate-500"># Semantic Exit Code: 2 represents cryptographic verification failure</span>
+        assert res_verify.exit_code == 2
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_inspect_dumps_unverified_header_and_payload</span>(self):
+        <span class="text-slate-500"># A token signed with arbitrary payload</span>
+        sample_token = (
+            <span class="text-amber-300">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Rfa2V5In0."</span>
+            <span class="text-amber-300">"eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsaWNlIFRlc3RlciIsImlhdCI6MTUxNjIzOTAyMn0."</span>
+            <span class="text-amber-300">"SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"</span>
+        )
+
+        res = runner.invoke(cli_app, [<span class="text-amber-300">"inspect"</span>, <span class="text-amber-300">"--token"</span>, sample_token])
+        assert res.exit_code == 0
+        assert <span class="text-amber-300">"test_key"</span> <span class="text-purple-400">in</span> res.stdout
+        assert <span class="text-amber-300">"Alice Tester"</span> <span class="text-purple-400">in</span> res.stdout</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Exit Code 0 on Cryptographic Failures</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">except TokenSecurityError: print("Verification failed")</code> without raising <code class="font-mono text-rose-900">typer.Exit(code=2)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes security breaches:</strong> Automated scripts and deployment pipelines (such as bash <code class="font-mono">tokenforge verify || exit 1</code>) rely exclusively on the OS return code. If your CLI prints an error message but returns exit code 0, downstream deployment scripts assume the token is 100% authentic and deploy untrusted configuration!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Printing Keys to Stdout</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">typer.echo(f"Generated Private Key: {priv_pem}")</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is hazardous:</strong> Anything written to stdout in a CI runner or developer terminal is captured by centralized log aggregators (Datadog, Loki, CloudWatch), permanently leaking the authority's root signing key to anyone with log read access. Private keys must be written directly to restricted filesystem paths.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating TokenForge Milestone 03</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to generate RSA keys via the CLI, issue signed tokens, and execute the functional test suite:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install Typer CLI framework:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install "typer[all]&gt;=0.9.0"
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Functional Test Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the CLI functional test suite with PyTest:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/functional/test_cli.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.14s. Confirms keygen file modes, exit codes, and unverified inspection.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Run -->
+                <div>
+                    <span class="text-slate-500"># 3. Generate keys and issue a token directly from terminal:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -m tokenforge.cli.main keygen -p priv.pem -u pub.pem<br>
+                        TOKEN=$(python -m tokenforge.cli.main issue --sub "alice" --aud "finance-app" --key priv.pem)<br>
+                        python -m tokenforge.cli.main inspect --token "$TOKEN"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates generation, issuance, and unverified JSON inspection in seconds.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 04 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 04: FastAPI Integration &bull; Dual-Mode Asymmetric &amp; Symmetric Auth</h4>
+                <p class="text-xs text-slate-500 font-sans">Bringing cryptography to the web: Building the IAM token issuer service and resource verifier microservices with FastAPI dependency injection, OAuth2 bearer extraction, and zero-network-hop verification.</p>
+            </div>
+            <a href="Chapter 04 - FastAPI Integration - Dual-Mode Asymmetric and Symmetric Auth.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 04 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

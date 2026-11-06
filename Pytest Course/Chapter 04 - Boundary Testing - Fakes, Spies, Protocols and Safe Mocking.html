@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: Boundary Testing: Fakes, Spies, Protocols &amp; Safe Mocking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 04 - Rates Oracle, Circuit Breaker &amp; Zero-Cost Mocks)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Boundary Testing &amp; Zero-Cost Mocking
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Boundary Testing: Fakes, Spies, Protocols &amp; Safe Mocking
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Architectural isolation at the I/O edge: Navigating Gerard Meszaros's Test Double taxonomy, eliminating "mock drift" with <code class="font-mono text-emerald-400">typing.Protocol</code> and <code class="font-mono text-emerald-400">autospec=True</code>, mastering Python's import namespace lookup rules, intercepting expensive paid financial APIs (Bloomberg B-PIPE, SWIFT rails) at the transport layer with <code class="font-mono text-emerald-400">respx</code>, enforcing hard socket lockouts in CI, and verifying the stateful circuit-breaker engine of <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">VaultFlow Milestone 04: The Resilient Rates Oracle &amp; Circuit Breaker</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Milestone 03, VaultFlow’s FX Conversion Engine assumed static exchange rates. In production, institutional clearinghouses ingest real-time spot feeds from external market oracles (e.g., Bloomberg, Refinitiv, or central bank gateways). These third-party APIs charge <strong>$0.10+ per HTTP request</strong>, enforce brutal rate limits (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">HTTP 429 Too Many Requests</code>), and experience latency spikes. In Milestone 04, we engineer the <code class="font-mono text-purple-300">RatesOracle</code>: a network client protected by a stateful <strong>Circuit Breaker</strong> (<code class="font-mono text-slate-300">CLOSED</code>, <code class="font-mono text-slate-300">OPEN</code>, <code class="font-mono text-slate-300">HALF_OPEN</code>) and multi-provider failover. We build a zero-cost, 100% offline test harness guaranteeing zero network leakage in CI.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Test Double Taxonomy: Fakes vs. Mocks vs. Spies</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Import Namespace Lookup Rules (<code class="text-purple-300">mocker.patch</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Eliminating Mock Drift with <code class="text-purple-300">autospec=True</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Cost API Interception with <code class="text-purple-300">respx</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Behavioral Spying with <code class="text-purple-300">mocker.spy</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> State-Machine Circuit Breaker &amp; Failover Logic</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Test Doubles: Meszaros Taxonomy & Protocols -->
+        <section id="test-double-taxonomy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Test Double Taxonomy &amp; Protocol Boundaries</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In software engineering, the term "mock" is casually used to describe any replacement of a production dependency. However, conflating different test doubles leads to brittle test architectures. Gerard Meszaros formalized the canonical <strong>Test Double Taxonomy</strong> in <em>xUnit Test Patterns</em>:
+            </p>
+
+            <!-- Test Double Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-5 gap-3 font-mono text-xs">
+                <!-- Dummy -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-slate-700 text-xs">Dummy</span>
+                            <span class="text-[9px] bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded font-bold">Placeholder</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Objects passed around to satisfy signature parameters, but never actually invoked or inspected (e.g., an unreferenced token).
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Zero behavior &bull; Static filler
+                    </div>
+                </div>
+
+                <!-- Stub -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-sky-700 text-xs">Stub</span>
+                            <span class="text-[9px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">Canned Data</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Provides hardcoded answers to calls made during the test. Responds deterministically without verifying interaction counts.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Provides indirect inputs
+                    </div>
+                </div>
+
+                <!-- Spy -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-indigo-700 text-xs">Spy</span>
+                            <span class="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold">Observer</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Wraps a real object to secretly record invocation metadata (arguments, call counts, return values) while executing real code.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Real logic + Telemetry
+                    </div>
+                </div>
+
+                <!-- Mock -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-purple-700 text-xs">Mock</span>
+                            <span class="text-[9px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">Expectation</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Pre-programmed with strict expectations of which calls it must receive. Fails the test if calls happen out of order or with wrong arguments.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Behavioral verification
+                    </div>
+                </div>
+
+                <!-- Fake -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between border-emerald-300 ring-1 ring-emerald-300">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-emerald-700 text-xs">Fake</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Senior Choice</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Has a working business implementation, but takes shortcuts making it unsuitable for production (e.g., in-memory dictionary rates).
+                        </p>
+                    </div>
+                    <div class="bg-emerald-50 p-1.5 rounded text-[9px] text-emerald-800 font-sans border border-emerald-200 font-bold">
+                        Most robust &bull; Zero drift
+                    </div>
+                </div>
+            </div>
+
+            <!-- Architectural Comparison Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Architectural Paradigm: Mockist vs. Classicist (Protocol-Driven Fakes)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Why Staff Engineers Decouple Interfaces with typing.Protocol</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- The Mockist Trap -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Brittle Mockist Approach</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">High Maintenance</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Tests mock low-level private methods or direct HTTP client instances:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>mocker.patch("httpx.AsyncClient.get")</div>
+                            <div>assert mock_client.get.call_count == 1</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li>Couples tests directly to third-party library implementation details.</li>
+                            <li>If HTTPX is swapped for a gRPC client, <strong>100% of your tests break</strong> even if the business logic works!</li>
+                            <li>Subject to "Mock Drift" (mock returns structures that production APIs no longer send).</li>
+                        </ul>
+                    </div>
+
+                    <!-- The Protocol + Fake Standard -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Staff Standard: Protocol + Fake Adapter</span>
+                            <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">Refactor-Proof</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Define a structural subtyping interface (<code class="text-emerald-300">typing.Protocol</code>) for the boundary:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>class RatesProvider(Protocol): async def get_rate(...)</div>
+                            <div>class FakeRatesProvider(RatesProvider): # in-memory dict</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li>Domain services depend strictly on the abstract <code class="text-emerald-300">Protocol</code>.</li>
+                            <li>Tests inject <code class="text-emerald-300">FakeRatesProvider</code>: runs in 0.001ms, $0 cost, zero network flakiness.</li>
+                            <li>Mypy statically enforces that the Fake and Real clients never drift!</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Mechanics of Safe Mocking: Namespace Lookups & autospec=True -->
+        <section id="namespace-mocking" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Mechanics of Safe Mocking: Namespaces &amp; <code>autospec=True</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you must use mocks (for example, testing network error conditions or verifying telemetry calls), using Python's standard <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">unittest.mock.patch</code> directly is dangerous: manual patches can leak across test boundaries if an exception halts cleanup. We mandate the <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">pytest-mock</code> plugin (via the <code class="font-mono text-xs text-purple-700 font-bold">mocker</code> fixture), which guarantees LIFO teardown.
+            </p>
+
+            <!-- Namespace Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    The Golden Rule of Patching: Patch Where an Object is Looked Up, Not Where Defined!
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Wrong Namespace -->
+                    <div class="p-4 bg-slate-950 border border-rose-800 rounded-xl space-y-2">
+                        <span class="text-rose-400 font-bold block text-sm">&cross; The Where-Defined Mistake</span>
+                        <div class="text-[10px] text-slate-300 font-sans">
+                            Suppose <code class="text-white font-mono">vaultflow.services.rates_oracle</code> executes:
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-rose-300 text-[10px]">
+                            from httpx import AsyncClient
+                        </div>
+                        <div class="text-[10px] text-slate-300 font-sans">
+                            If your test patches where it was defined:
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-rose-300 text-[10px]">
+                            mocker.patch("httpx.AsyncClient")
+                        </div>
+                        <p class="text-rose-400 text-[10px] font-sans">
+                            <strong>FAILURE:</strong> <code class="text-white font-mono">rates_oracle</code> already holds a direct reference to the original <code class="text-white font-mono">AsyncClient</code> in its local namespace! The patch has zero effect; live HTTP calls continue leaking.
+                        </p>
+                    </div>
+
+                    <!-- Correct Namespace -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800 rounded-xl space-y-2">
+                        <span class="text-emerald-400 font-bold block text-sm">&check; The Where-Looked-Up Rule</span>
+                        <div class="text-[10px] text-slate-300 font-sans">
+                            Patch the reference inside the target consumer's module namespace:
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-emerald-300 text-[10px]">
+                            mocker.patch("vaultflow.services.rates_oracle.AsyncClient")
+                        </div>
+                        <p class="text-emerald-300 text-[10px] font-sans">
+                            <strong>SUCCESS:</strong> PyTest intercepts the symbol lookup inside <code class="text-white font-mono">rates_oracle</code>. When the service instantiates the client, it receives the mock instance cleanly.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Autospec Explanation Box -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">Eliminating Mock Drift with autospec=True:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        By default, Python's <code class="text-white font-mono">MagicMock</code> accepts <em>any attribute or method call whatsoever</em>. If an engineer renames a production method from <code class="text-white font-mono">fetch_spot_rate()</code> to <code class="text-white font-mono">get_spot_quote()</code>, but forgets to update the test suite, a naive mock will happily accept the old call without raising an error!
+                    </p>
+                    <div class="bg-slate-900 p-2.5 rounded font-mono text-[10px] text-amber-300 border border-slate-800">
+                        mocker.patch("vaultflow.services.rates_oracle.BloombergClient", autospec=True)
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        With <code class="text-emerald-400 font-mono">autospec=True</code>, PyTest inspects the real class's signature. If your test or application invokes a method that does not exist or passes incorrect argument counts, PyTest immediately raises an informative <code class="text-rose-400 font-mono">AttributeError</code> or <code class="text-rose-400 font-mono">TypeError</code>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Zero-Cost Network Testing: respx Transport Interception -->
+        <section id="respx-interception" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Zero-Cost Network Testing: Transport Interception via <code>respx</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When testing an HTTP client that communicates with paid external oracles (e.g., Bloomberg B-PIPE, Refinitiv, or a SWIFT gateway), mocking the client class itself bypasses your serialization, deserialization, headers, and error handling logic. 
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The senior standard is **Network-Level Transport Interception** using <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">respx</code>. <code class="font-mono text-xs">respx</code> hooks directly into HTTPX's transport layer. The real production client runs, real JSON parsers execute, real headers are evaluated—but outgoing TCP network packets are intercepted in memory:
+            </p>
+
+            <!-- Transport Interception Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The In-Memory HTTP Transport Interception Architecture
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Layer 1: App Client -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">1. BloombergClient</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Executes real httpx.AsyncClient.get()</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; ASGI Transport &rarr;</div>
+
+                    <!-- Layer 2: respx Interceptor -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. respx Mock Router</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Matches URL pattern &bull; Intercepts raw TCP socket</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; In-Memory Stream &rarr;</div>
+
+                    <!-- Layer 3: Simulated Wire -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. Deterministic Wire</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">Returns 200 OK, 429 Too Many Requests, or Timeout in 0ms!</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl overflow-x-auto leading-relaxed border border-slate-800">
+                    <pre>
+<span class="text-slate-500"># Intercepting Bloomberg Rate API with zero live network calls:</span>
+<span class="text-purple-400">import</span> respx
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> Response
+
+<span class="text-purple-400">@respx.mock</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_rate_feed_resilience_under_rate_limiting</span>():
+    <span class="text-slate-500"># 1. Setup mock route returning HTTP 429 Too Many Requests</span>
+    route = respx.get(<span class="text-amber-300">"https://api.bloomberg.test/v1/fx/spot"</span>).mock(
+        return_value=Response(429, headers={<span class="text-amber-300">"Retry-After"</span>: <span class="text-amber-300">"30"</span>})
+    )
+
+    client = BloombergRatesClient(base_url=<span class="text-amber-300">"https://api.bloomberg.test"</span>)
+    
+    <span class="text-slate-500"># 2. Assert client handles rate limits gracefully without crashing</span>
+    <span class="text-purple-400">with</span> pytest.raises(RateLimitExceededError):
+        <span class="text-purple-400">await</span> client.fetch_live_rate(<span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"USD"</span>)
+
+    assert route.called
+    assert route.call_count == 1</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Behavioral Verification: mocker.spy & Circuit Breakers -->
+        <section id="spies-circuit-breaker" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Behavioral Telemetry: Spying on State-Machine Circuit Breakers</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In high-frequency clearing systems, when an external oracle experiences an outage, continuing to fire HTTP calls causes cascading request timeouts and thread exhaustion. A **Circuit Breaker** monitors boundary failures and transitions across three states:
+            </p>
+
+            <!-- State Machine Diagram (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-emerald-900 text-sm">1. CLOSED</span>
+                        <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Normal</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        All requests pass through to the primary provider. Failures increment an internal error counter.
+                    </p>
+                </div>
+
+                <div class="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-rose-900 text-sm">2. OPEN</span>
+                        <span class="text-[9px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-bold">Tripped</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        After $N$ consecutive failures (e.g., 3), the circuit trips! Outgoing calls are aborted instantly, routing traffic to a secondary backup feed.
+                    </p>
+                </div>
+
+                <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-amber-900 text-sm">3. HALF_OPEN</span>
+                        <span class="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Testing</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        After a recovery cooldown, a single probe request is permitted. If successful, resets to <code class="text-emerald-700 font-bold">CLOSED</code>; if it fails, reverts to <code class="text-rose-700 font-bold">OPEN</code>.
+                    </p>
+                </div>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To test a circuit breaker, replacing it with a mock defeats the purpose—you need the real state machine to execute! We use <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">mocker.spy</code>: it wraps the production method, allowing real state transitions while providing assertion capabilities over invocation history.
+            </p>
+        </section>
+
+        <!-- 5. Project Implementation: VaultFlow Milestone 04 -->
+        <section id="vaultflow-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 04: The Resilient Rates Oracle Build</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 04 for <strong>VaultFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/vaultflow/services/rates_oracle.py</code>: defining the <code class="font-mono text-purple-700 font-bold">RatesProviderProtocol</code>, stateful <code class="font-mono text-purple-700 font-bold">CircuitBreaker</code>, and live <code class="font-mono text-purple-700 font-bold">BloombergLiveRatesClient</code>.</li>
+                <li>We build an in-memory <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">FakeRatesProvider</code> for fast unit tests.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_rates_oracle.py</code> using <code class="font-mono text-purple-700 font-bold">respx</code> and <code class="font-mono text-purple-700 font-bold">mocker.spy</code> to test 429 rate limits, circuit breaker trips, and automated fallback failover.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 04)</div>
+                <div>vaultflow/</div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       ├── core/</div>
+                <div>│       └── services/</div>
+                <div>│           ├── fx.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">rates_oracle.py</span>        <span class="text-slate-500"># Milestone 04: Protocol, CircuitBreaker &amp; HTTP Client</span></div>
+                <div>└── tests/</div>
+                <div>    ├── conftest.py</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_money.py</div>
+                <div>        ├── test_ledger.py</div>
+                <div>        ├── test_fx_engine.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_rates_oracle.py</span>      <span class="text-slate-500"># Milestone 04: respx &amp; mocker.spy Boundary Suite</span></div>
+            </div>
+
+            <!-- File 1: src/vaultflow/services/rates_oracle.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Rates Oracle &amp; Circuit Breaker: <code class="text-purple-700">src/vaultflow/services/rates_oracle.py</code></span>
+                    <span class="text-slate-400">Boundary Architecture</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Services - Resilient Rates Oracle &amp; Circuit Breaker (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Protocol, Dict, Optional
+<span class="text-purple-400">import</span> httpx
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> FinancialDomainError
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">OracleConnectionError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when an external rates gateway is unreachable or timing out."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">RateLimitExceededError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when the third-party oracle returns HTTP 429 Too Many Requests."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">CircuitBreakerOpenError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when operations are rejected due to an OPEN tripped circuit breaker."""</span>
+    pass
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># STRUCTURAL SUBTYPING: The Rates Provider Interface</span>
+<span class="text-slate-500"># Eliminates mock drift by enabling Mypy to verify Fakes and Real Clients!</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RatesProviderProtocol</span>(Protocol):
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_spot_rate</span>(self, base_currency: str, quote_currency: str) -> Decimal:
+        ...
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CircuitState</span>(Enum):
+    CLOSED = <span class="text-amber-300">"CLOSED"</span>        <span class="text-slate-500"># Healthy: calls pass through</span>
+    OPEN = <span class="text-amber-300">"OPEN"</span>            <span class="text-slate-500"># Tripped: calls fail fast</span>
+    HALF_OPEN = <span class="text-amber-300">"HALF_OPEN"</span>  <span class="text-slate-500"># Cooldown: testing recovery with probe</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CircuitBreaker</span>:
+    <span class="text-slate-500">"""State-machine protecting downstream services from cascading network outages."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, failure_threshold: int = 3, recovery_timeout_seconds: float = 30.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout_seconds = recovery_timeout_seconds
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.last_state_change = time.monotonic()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_success</span>(self) -> <span class="text-rose-400">None</span>:
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_failure</span>(self) -> <span class="text-rose-400">None</span>:
+        self.failure_count += 1
+        <span class="text-purple-400">if</span> self.failure_count &gt;= self.failure_threshold:
+            self.state = CircuitState.OPEN
+            self.last_state_change = time.monotonic()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">before_execution</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> self.state == CircuitState.OPEN:
+            elapsed = time.monotonic() - self.last_state_change
+            <span class="text-purple-400">if</span> elapsed &gt;= self.recovery_timeout_seconds:
+                self.state = CircuitState.HALF_OPEN
+            <span class="text-purple-400">else</span>:
+                <span class="text-purple-400">raise</span> CircuitBreakerOpenError(f<span class="text-amber-300">"Circuit breaker is OPEN. Cooldown remaining: &#123;self.recovery_timeout_seconds - elapsed:.1f&#125;s"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BloombergLiveRatesClient</span>:
+    <span class="text-slate-500">"""Production client communicating over HTTP to paid market oracles."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, base_url: str = <span class="text-amber-300">"https://api.bloomberg.test"</span>, timeout: float = 2.0):
+        self.base_url = base_url
+        self.timeout = timeout
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_spot_rate</span>(self, base_currency: str, quote_currency: str) -> Decimal:
+        url = f<span class="text-amber-300">"&#123;self.base_url&#125;/v1/fx/spot/&#123;base_currency&#125;&#123;quote_currency&#125;"</span>
+        <span class="text-purple-400">async with</span> httpx.AsyncClient(timeout=self.timeout) <span class="text-purple-400">as</span> client:
+            <span class="text-purple-400">try</span>:
+                response = <span class="text-purple-400">await</span> client.get(url)
+            <span class="text-purple-400">except</span> (httpx.TimeoutException, httpx.NetworkError) <span class="text-purple-400">as</span> exc:
+                <span class="text-purple-400">raise</span> OracleConnectionError(f<span class="text-amber-300">"Connection failed to &#123;url&#125;"</span>) <span class="text-purple-400">from</span> exc
+
+        <span class="text-purple-400">if</span> response.status_code == 429:
+            <span class="text-purple-400">raise</span> RateLimitExceededError(<span class="text-amber-300">"Bloomberg rate limit exceeded (HTTP 429)"</span>)
+        <span class="text-purple-400">if</span> response.status_code != 200:
+            <span class="text-purple-400">raise</span> OracleConnectionError(f<span class="text-amber-300">"Oracle returned unexpected HTTP status: &#123;response.status_code&#125;"</span>)
+
+        payload = response.json()
+        <span class="text-purple-400">return</span> Decimal(str(payload[<span class="text-amber-300">"rate"</span>]))
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ResilientRatesService</span>:
+    <span class="text-slate-500">"""Orchestrator wrapping primary provider with circuit breaker &amp; fallback feed."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        primary_provider: RatesProviderProtocol,
+        fallback_provider: RatesProviderProtocol,
+        circuit_breaker: Optional[CircuitBreaker] = <span class="text-rose-400">None</span>
+    ):
+        self.primary = primary_provider
+        self.fallback = fallback_provider
+        self.breaker = circuit_breaker <span class="text-purple-400">or</span> CircuitBreaker()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_rate</span>(self, base_currency: str, quote_currency: str) -> Decimal:
+        <span class="text-purple-400">try</span>:
+            self.breaker.before_execution()
+            rate = <span class="text-purple-400">await</span> self.primary.get_spot_rate(base_currency, quote_currency)
+            self.breaker.record_success()
+            <span class="text-purple-400">return</span> rate
+        <span class="text-purple-400">except</span> (OracleConnectionError, RateLimitExceededError, CircuitBreakerOpenError):
+            <span class="text-slate-500"># Primary failed or circuit tripped: trip breaker &amp; route to fallback feed!</span>
+            self.breaker.record_failure()
+            <span class="text-purple-400">return await</span> self.fallback.get_spot_rate(base_currency, quote_currency)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_rates_oracle.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Boundary Test Battery: <code class="text-purple-700">tests/unit/test_rates_oracle.py</code></span>
+                    <span class="text-slate-400">respx, Spies &amp; In-Memory Fakes</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - Rates Oracle Boundary Tests (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> respx
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> Response
+<span class="text-purple-400">from</span> vaultflow.services.rates_oracle <span class="text-purple-400">import</span> (
+    RatesProviderProtocol,
+    BloombergLiveRatesClient,
+    ResilientRatesService,
+    CircuitBreaker,
+    CircuitState,
+    RateLimitExceededError,
+    OracleConnectionError
+)
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># IN-MEMORY FAKE ADAPTER: Conforms strictly to RatesProviderProtocol</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FakeRatesProvider</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, canned_rates: dict[str, Decimal]):
+        self.rates = canned_rates
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_spot_rate</span>(self, base_currency: str, quote_currency: str) -> Decimal:
+        pair = f<span class="text-amber-300">"&#123;base_currency&#125;&#123;quote_currency&#125;"</span>
+        <span class="text-purple-400">if</span> pair <span class="text-purple-400">not in</span> self.rates:
+            <span class="text-purple-400">raise</span> OracleConnectionError(f<span class="text-amber-300">"No rate for &#123;pair&#125;"</span>)
+        <span class="text-purple-400">return</span> self.rates[pair]
+
+
+<span class="text-purple-400">@pytest.mark.unit</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestRatesOracleBoundaries</span>:
+    <span class="text-slate-500">"""Validates network boundary isolation, respx mocking, and circuit breakers."""</span>
+
+    <span class="text-purple-400">@respx.mock</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_bloomberg_client_parses_wire_rate_successfully</span>(self):
+        <span class="text-slate-500"># Intercept wire HTTP call: returns simulated EURUSD = 1.0850 without live network!</span>
+        respx.get(<span class="text-amber-300">"https://api.bloomberg.test/v1/fx/spot/EURUSD"</span>).mock(
+            return_value=Response(200, json={<span class="text-amber-300">"rate"</span>: <span class="text-amber-300">"1.0850"</span>, <span class="text-amber-300">"timestamp"</span>: <span class="text-purple-300">1700000000</span>})
+        )
+
+        client = BloombergLiveRatesClient(base_url=<span class="text-amber-300">"https://api.bloomberg.test"</span>)
+        rate = <span class="text-purple-400">await</span> client.get_spot_rate(<span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"USD"</span>)
+
+        assert rate == Decimal(<span class="text-amber-300">"1.0850"</span>)
+
+    <span class="text-purple-400">@respx.mock</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_bloomberg_client_translates_429_to_domain_exception</span>(self):
+        respx.get(<span class="text-amber-300">"https://api.bloomberg.test/v1/fx/spot/EURUSD"</span>).mock(
+            return_value=Response(429, json={<span class="text-amber-300">"error"</span>: <span class="text-amber-300">"rate_limit_exceeded"</span>})
+        )
+
+        client = BloombergLiveRatesClient(base_url=<span class="text-amber-300">"https://api.bloomberg.test"</span>)
+        
+        <span class="text-purple-400">with</span> pytest.raises(RateLimitExceededError, match=<span class="text-amber-300">r"Bloomberg rate limit exceeded"</span>):
+            <span class="text-purple-400">await</span> client.get_spot_rate(<span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"USD"</span>)
+
+    <span class="text-purple-400">@respx.mock</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_circuit_breaker_trips_to_open_and_falls_back</span>(self, mocker):
+        <span class="text-slate-500"># 1. Arrange: Primary Bloomberg mock returns repeated 503 Server Errors</span>
+        respx.get(<span class="text-amber-300">"https://api.bloomberg.test/v1/fx/spot/EURUSD"</span>).mock(
+            return_value=Response(503, text=<span class="text-amber-300">"Service Unavailable"</span>)
+        )
+        primary_client = BloombergLiveRatesClient(base_url=<span class="text-amber-300">"https://api.bloomberg.test"</span>)
+        
+        <span class="text-slate-500"># Fallback provider holds offline contingency rate: 1.0800</span>
+        fallback_fake = FakeRatesProvider(canned_rates={<span class="text-amber-300">"EURUSD"</span>: Decimal(<span class="text-amber-300">"1.0800"</span>)})
+
+        <span class="text-slate-500"># Spy on the real state machine using mocker.spy!</span>
+        breaker = CircuitBreaker(failure_threshold=3, recovery_timeout_seconds=60.0)
+        spy_record_failure = mocker.spy(breaker, <span class="text-amber-300">"record_failure"</span>)
+
+        service = ResilientRatesService(
+            primary_provider=primary_client,
+            fallback_provider=fallback_fake,
+            circuit_breaker=breaker
+        )
+
+        <span class="text-slate-500"># 2. Act: Trigger 3 failures to trip the circuit</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(3):
+            rate = <span class="text-purple-400">await</span> service.get_rate(<span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"USD"</span>)
+            <span class="text-slate-500"># Verify fallback answered seamlessly without crashing callers</span>
+            assert rate == Decimal(<span class="text-amber-300">"1.0800"</span>)
+
+        <span class="text-slate-500"># 3. Assert: Verify Breaker state and spy metrics</span>
+        assert breaker.state == CircuitState.OPEN
+        assert spy_record_failure.call_count == 3
+
+        <span class="text-slate-500"># 4. 4th Call: Must fail-fast on primary (zero HTTP calls!) and route directly to fallback</span>
+        rate_4 = <span class="text-purple-400">await</span> service.get_rate(<span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"USD"</span>)
+        assert rate_4 == Decimal(<span class="text-amber-300">"1.0800"</span>)
+        <span class="text-slate-500"># HTTP route was called exactly 3 times, NOT 4! Breaker blocked 4th call!</span>
+        assert len(respx.calls) == 3</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Over-Mocked Fantasy" Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">mocker.patch.object(service, "_calculate_spread", return_value=5)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes production outages:</strong> Mocking internal private helper methods locks your tests to volatile implementation details. If you refactor <code class="font-mono">_calculate_spread</code>, your tests pass 100% green while production crashes.
+                        <strong>Rule:</strong> Never mock private methods. Mock only structural boundaries (network I/O, disk writes, time).
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Unrestricted Network Leaks in CI</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Allowing integration tests to invoke live external APIs without socket guards.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is dangerous:</strong> A developer creates an infinite loop or tests run on 8 parallel CI workers, executing 10,000 live calls against a paid financial gateway ($1,000+ cloud bill) or triggering an IP ban.
+                        <strong>Fix:</strong> Use socket-blocking fixtures (such as <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">pytest-socket</code>) to ensure tests crash if real network calls are attempted!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to install boundary testing dependencies (<code class="font-mono text-emerald-400">pytest-mock</code>, <code class="font-mono text-emerald-400">respx</code>), execute the offline rates oracle battery, and prove zero live network packets escape:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install mock and transport interception libraries:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install pytest-mock respx httpx
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Boundary Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the boundary test suite with verbose mock assertions:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_rates_oracle.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe output: All tests execute in ~0.03s. Zero real HTTP calls reach the outside internet!
+                    </span>
+                </div>
+
+                <!-- Step 3: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 3. Run all unit and boundary tests across Milestones 01 to 04:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest -m unit --durations=5
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Full suite executes in &lt; 0.08s. All external boundaries operate entirely in memory.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Asynchronous Systems, Concurrency Hazards &amp; Event-Loop Determinism</h4>
+                <p class="text-xs text-slate-500 font-sans">Testing non-blocking settlement pipelines: Mastering <code class="font-mono">pytest-asyncio</code> execution modes, preventing event-loop deadlocks, testing race conditions with <code class="font-mono">asyncio.gather</code>, and eliminating flaky sleep delays with <code class="font-mono">time-machine</code>.</p>
+            </div>
+            <a href="Chapter 05 - Asynchronous Systems, Concurrency Hazards and Event-Loop Determinism.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

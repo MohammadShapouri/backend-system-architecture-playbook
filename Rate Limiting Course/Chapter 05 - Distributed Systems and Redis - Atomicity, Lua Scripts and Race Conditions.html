@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Distributed Systems &amp; Redis: Atomicity, Lua Scripts &amp; Race Conditions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 05 - Distributed Redis &amp; Atomic Lua Scripts)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Distributed Systems &amp; Concurrency Control
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Distributed Systems &amp; Redis: Atomicity, Lua Scripts &amp; Race Conditions
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Scaling rate limiting across Kubernetes replicas: Deconstructing the Read-Modify-Write concurrency trap, why optimistic transactions (<code class="font-mono text-emerald-400">WATCH/MULTI</code>) collapse under high contention, executing single-threaded atomic operations with Redis Lua scripts, eliminating network round-trip penalties with <code class="font-mono text-emerald-400">EVALSHA</code>, and implementing the distributed storage engine of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 05: Distributed Redis &amp; Lua Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 04, our rate-limiting algorithms executed purely in local process memory. In Milestone 05, we scale SentinelFlow across distributed server clusters. When 20 FastAPI replicas run behind a round-robin load balancer, in-memory state is splintered: a client with a limit of 100 req/min can send 2,000 requests because each pod maintains its own isolated counter. We migrate our state layer to <strong>Redis 7+</strong>. We dissect the catastrophic Read-Modify-Write race condition and replace multi-step network round-trips with **atomic Redis Lua scripts** that execute in a single non-preemptible CPU cycle.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Multi-Instance In-Memory Splintering Bug</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Read-Modify-Write Concurrency Leak</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Atomic Execution via Redis Lua Engine</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Bandwidth Optimization: <code class="text-purple-300">SCRIPT LOAD</code> &amp; <code class="text-purple-300">EVALSHA</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Atomic Token Bucket &amp; Sliding Counter Lua Scripts</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Real Dockerized Redis Integration Tests</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Distributed Rate Limiting -->
+        <section id="cs-distributed-splintering" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Multi-Instance In-Memory Splintering Trap</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In a monolithic application running as a single process on a single virtual machine, in-memory rate limiting works reliably. The Python process holds a single dictionary in RAM, and all incoming requests mutate that centralized data structure.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, modern cloud deployments run on container orchestrators (Kubernetes, AWS ECS, GCP Cloud Run) that scale applications horizontally across multiple worker pods behind a load balancer. If your rate limiter stores state in Python dictionaries, **your rate limit is multiplied by the number of pods**:
+            </p>
+
+            <!-- Memory Splintering Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Memory Splintering Flaw Across Replicas</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Target Limit: 100 requests per minute &bull; 10 Active Kubernetes Pods</p>
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Load Balancer -->
+                    <div class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
+                        <span class="text-sky-300 font-bold">Cloud Load Balancer (Round-Robin Ingress)</span>
+                        <div class="text-[10px] text-slate-500 font-sans">Client distributes 1,000 requests across available pods</div>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; traffic dispersed &darr;</div>
+
+                    <!-- Pod Grid -->
+                    <div class="grid grid-cols-3 gap-3 w-full">
+                        <div class="p-3 bg-rose-950/60 border border-rose-800 rounded-xl text-center space-y-1">
+                            <span class="text-rose-300 font-bold block">Pod 1 (RAM)</span>
+                            <span class="text-[10px] text-slate-400">Counter: 100/100</span>
+                            <span class="text-[9px] bg-emerald-950 text-emerald-400 px-1 py-0.5 rounded block">Allowed: 100</span>
+                        </div>
+                        <div class="p-3 bg-rose-950/60 border border-rose-800 rounded-xl text-center space-y-1">
+                            <span class="text-rose-300 font-bold block">Pod 2 (RAM)</span>
+                            <span class="text-[10px] text-slate-400">Counter: 100/100</span>
+                            <span class="text-[9px] bg-emerald-950 text-emerald-400 px-1 py-0.5 rounded block">Allowed: 100</span>
+                        </div>
+                        <div class="p-3 bg-rose-950/60 border border-rose-800 rounded-xl text-center space-y-1">
+                            <span class="text-rose-300 font-bold block">... Pod 10 (RAM)</span>
+                            <span class="text-[10px] text-slate-400">Counter: 100/100</span>
+                            <span class="text-[9px] bg-emerald-950 text-emerald-400 px-1 py-0.5 rounded block">Allowed: 100</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-rose-950/60 p-4 rounded-xl border border-rose-800 text-[11px] text-rose-200 space-y-1 font-sans text-center">
+                    <strong>&cross; Total Permitted Requests = 1,000 Requests!</strong><br>
+                    Because memory is not shared across pods, the client bypassed the quota by a factor of $10\times$, taking down the backend database!
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Read-Modify-Write Concurrency Leak -->
+        <section id="read-modify-write" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Read-Modify-Write Concurrency Leak</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To fix memory splintering, developers move state to a centralized database: **Redis**. Redis is chosen because it operates entirely in RAM and delivers sub-millisecond key-value operations.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, naive distributed implementations written in Python introduce a severe concurrency vulnerability known as the <strong>Read-Modify-Write Race Condition</strong>:
+            </p>
+
+            <!-- Race Condition Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    The Read-Modify-Write Race Condition Across Network Sockets
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <!-- Pod 1 -->
+                    <div class="p-3 bg-sky-950/70 border border-sky-600 rounded-xl space-y-1.5">
+                        <span class="text-sky-300 font-bold block">Pod 1 (Worker A)</span>
+                        <div class="text-[10px] text-slate-300">T=0ms: Runs <code>redis.get("user:42")</code></div>
+                        <div class="text-[10px] text-slate-400">Receives count = 9</div>
+                        <div class="text-[10px] text-emerald-400 font-bold">9 &lt; 10 &rarr; APPROVES REQUEST!</div>
+                        <div class="text-[10px] text-slate-300">T=3ms: Runs <code>redis.incr("user:42")</code></div>
+                    </div>
+
+                    <!-- Pod 2 -->
+                    <div class="p-3 bg-purple-950/70 border border-purple-600 rounded-xl space-y-1.5">
+                        <span class="text-purple-300 font-bold block">Pod 2 (Worker B)</span>
+                        <div class="text-[10px] text-slate-300">T=1ms: Runs <code>redis.get("user:42")</code></div>
+                        <div class="text-[10px] text-rose-400 font-bold">Receives count = 9! (Before A's incr)</div>
+                        <div class="text-[10px] text-emerald-400 font-bold">9 &lt; 10 &rarr; APPROVES REQUEST!</div>
+                        <div class="text-[10px] text-slate-300">T=4ms: Runs <code>redis.incr("user:42")</code></div>
+                    </div>
+
+                    <!-- The Redis State -->
+                    <div class="p-3 bg-rose-950/70 border border-rose-600 rounded-xl space-y-1.5">
+                        <span class="text-rose-300 font-bold block">Redis Server Key State</span>
+                        <div class="text-[10px] text-slate-400">Initial State: count = 9</div>
+                        <div class="text-[10px] text-rose-300">After Pod 1: count = 10</div>
+                        <div class="text-[10px] text-rose-300">After Pod 2: count = 11!</div>
+                        <div class="text-[10px] text-rose-400 font-bold">11 &gt; Limit of 10! LEAK OCCURRED!</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-rose-400 font-mono">&#9888; Why Python-Level Logic Cannot Fix This:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Because network transit takes time (1–3ms per socket trip), multiple application servers observe the exact same stale counter simultaneously. Under concurrent traffic bursts, dozens or hundreds of requests slip past your rate limit.
+                    </p>
+                    <p class="text-slate-400 leading-relaxed">
+                        Furthermore, this multi-step approach wastes <strong>3 network round-trips per HTTP request</strong>:
+                        <code class="text-white font-mono">1. GET count &rarr; 2. INCR count &rarr; 3. EXPIRE count 60</code>.
+                        If each Redis round-trip takes 2ms, your rate limiter adds <strong>6ms of pure latency</strong> to every API call!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Solution: Redis Lua Scripting & EVALSHA -->
+        <section id="redis-lua-solution" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Industrial Solution: Atomic Redis Lua Scripts &amp; <code>EVALSHA</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To eliminate both race conditions and network round-trip overhead, modern infrastructure executes rate-limiting logic directly inside the Redis engine using <strong>Lua scripts</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Redis executes Lua scripts in a <strong>single-threaded atomic context</strong>. While a Lua script is executing, no other Redis command or script can run. The entire rate-limiting decision (fetching state, calculating elapsed time, incrementing counters, and setting expiration) executes as <strong>one atomic operation in a single network round-trip</strong>:
+            </p>
+
+            <!-- Python Multi-Roundtrip vs Lua Roundtrip (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    Network Round-Trip Optimization: Multi-Command vs. Atomic Lua
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Multi-Step -->
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <span class="text-rose-700 font-bold block text-sm">Naive Python Multi-Command (3 Round-Trips)</span>
+                        <div class="space-y-1 text-[10px] text-slate-600 font-sans">
+                            <div class="p-1.5 bg-white rounded border border-slate-200">1. Client &rarr; <code>GET user:42</code> &rarr; Redis &rarr; Client (2ms)</div>
+                            <div class="p-1.5 bg-white rounded border border-slate-200">2. Client &rarr; <code>INCR user:42</code> &rarr; Redis &rarr; Client (2ms)</div>
+                            <div class="p-1.5 bg-white rounded border border-slate-200">3. Client &rarr; <code>EXPIRE user:42 60</code> &rarr; Redis &rarr; Client (2ms)</div>
+                            <div class="text-rose-700 font-bold pt-1">&cross; Total Overhead: ~6.0ms &bull; Vulnerable to race conditions!</div>
+                        </div>
+                    </div>
+
+                    <!-- Single Lua -->
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                        <span class="text-emerald-800 font-bold block text-sm">Atomic Redis Lua Script (1 Round-Trip)</span>
+                        <div class="space-y-1 text-[10px] text-emerald-900 font-sans">
+                            <div class="p-3 bg-white rounded border border-emerald-200 leading-relaxed">
+                                <strong>Single Execution:</strong> Client &rarr; <code>EVALSHA &lt;hash&gt; key limit cost</code> &rarr; Redis &rarr; Client<br>
+                                <span class="text-[10px] text-slate-500">Redis executes get, check, increment, and expire atomically in memory.</span>
+                            </div>
+                            <div class="text-emerald-700 font-bold pt-1">&check; Total Overhead: ~1.2ms &bull; Mathematically immune to race conditions!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EVALSHA Bandwidth Optimization Box -->
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl leading-relaxed border border-slate-800 space-y-2">
+                    <span class="text-emerald-400 font-bold text-xs">// Production Bandwidth Optimization: EVAL vs. EVALSHA</span>
+                    <p class="text-slate-300 font-sans text-xs">
+                        If you execute scripts using raw <code class="text-amber-300 font-mono">EVAL &lt;script_string&gt;</code>, your application transmits 500–1,000 bytes of Lua source text over the network for <em>every single HTTP request</em>.
+                    </p>
+                    <p class="text-slate-300 font-sans text-xs">
+                        The production standard is <code class="text-emerald-300 font-mono">SCRIPT LOAD</code>: during application startup, your backend registers the Lua script with Redis once. Redis compiles it and returns a 40-character SHA-1 hash. During runtime, requests execute via <code class="text-emerald-300 font-mono">EVALSHA &lt;sha1_hash&gt;</code>, transmitting only 20 bytes over the wire!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Production Lua Scripts: Token Bucket & Sliding Counter -->
+        <section id="lua-scripts-breakdown" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Production Script Engineering: Token Bucket &amp; Sliding Counter in Lua</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now write the exact, production-hardened Lua scripts that execute inside Redis for <strong>SentinelFlow</strong>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Script 1: Token Bucket -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-purple-700 text-sm">1. Distributed Token Bucket (Lua)</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Burst Handling</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Tracks token accumulation and monotonic epoch time in a Redis Hash, calculating refills on the fly and setting an automated TTL:
+                    </p>
+                    <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500">-- KEYS[1]: Rate limit key (e.g. "sf:tb:tenant_1:user_42")</span>
+<span class="text-slate-500">-- ARGV[1]: Capacity (burst limit)</span>
+<span class="text-slate-500">-- ARGV[2]: Refill rate per second</span>
+<span class="text-slate-500">-- ARGV[3]: Cost</span>
+<span class="text-slate-500">-- ARGV[4]: Current timestamp (seconds.microseconds)</span>
+
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local rate = tonumber(ARGV[2])
+local cost = tonumber(ARGV[3])
+local now = tonumber(ARGV[4])
+
+local data = redis.call("HMGET", key, "tokens", "last_updated")
+local tokens = tonumber(data[1])
+local last_updated = tonumber(data[2])
+
+if tokens == nil then
+    tokens = capacity
+    last_updated = now
+else
+    local delta = math.max(0, now - last_updated)
+    tokens = math.min(capacity, tokens + (delta * rate))
+    last_updated = now
+end
+
+if tokens &gt;= cost then
+    tokens = tokens - cost
+    redis.call("HMSET", key, "tokens", tokens, "last_updated", last_updated)
+    local ttl = math.ceil(capacity / rate) * 2
+    redis.call("EXPIRE", key, ttl)
+    return {1, math.floor(tokens)} -- Allowed
+else
+    redis.call("HMSET", key, "tokens", tokens, "last_updated", last_updated)
+    local wait_time = (cost - tokens) / rate
+    return {0, math.ceil(wait_time)} -- Rejected
+end</pre>
+                </div>
+
+                <!-- Script 2: Sliding Window Counter -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-700 text-sm">2. Sliding Window Counter (Lua)</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">O(1) Memory</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Executes Cloudflare's weighted interpolation formula atomically in Redis, managing window rollover cleanly:
+                    </p>
+                    <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500">-- KEYS[1]: Base key (e.g. "sf:swc:user_42")</span>
+<span class="text-slate-500">-- ARGV[1]: Limit</span>
+<span class="text-slate-500">-- ARGV[2]: Window size in seconds</span>
+<span class="text-slate-500">-- ARGV[3]: Current timestamp (seconds)</span>
+<span class="text-slate-500">-- ARGV[4]: Cost</span>
+
+local base_key = KEYS[1]
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local cost = tonumber(ARGV[4])
+
+local current_window = math.floor(now / window)
+local current_key = base_key .. ":" .. current_window
+local previous_key = base_key .. ":" .. (current_window - 1)
+
+local current_count = tonumber(redis.call("GET", current_key) or 0)
+local previous_count = tonumber(redis.call("GET", previous_key) or 0)
+
+local time_into_current = now % window
+local weight = (window - time_into_current) / window
+local estimated = current_count + (previous_count * weight)
+
+if estimated + cost &lt;= limit then
+    redis.call("INCRBY", current_key, cost)
+    redis.call("EXPIRE", current_key, math.ceil(window * 2))
+    local remaining = math.max(0, math.floor(limit - (estimated + cost)))
+    return {1, remaining} -- Allowed
+else
+    local reset_after = math.ceil(window - time_into_current)
+    return {0, reset_after} -- Rejected
+end</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: SentinelFlow Milestone 05 -->
+        <section id="sentinelflow-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 05: Distributed Redis Storage Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 05 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We place our production Lua scripts inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/storage/lua/</code>.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/storage/redis_manager.py</code>: an asynchronous Redis storage manager using <code class="font-mono text-purple-700 font-bold">redis.asyncio</code> with connection pooling and automated <code class="font-mono text-purple-700 font-bold">EVALSHA</code> execution.</li>
+                <li>We build an integration test suite in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_redis_lua.py</code> that fires 50 concurrent asynchronous tasks to prove that <strong>zero race conditions slip past the limit</strong>.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 05)</div>
+                <div>sentinelflow/</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── config/</div>
+                <div>│       ├── core/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">storage/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">redis_manager.py</span>        <span class="text-slate-500"># Milestone 05: Async Redis Client &amp; EVALSHA Manager</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">lua/</span></div>
+                <div>│               ├── <span class="text-emerald-300 font-bold">token_bucket.lua</span>    <span class="text-slate-500"># Milestone 05: Atomic Token Bucket Lua Script</span></div>
+                <div>│               └── <span class="text-emerald-300 font-bold">sliding_counter.lua</span> <span class="text-slate-500"># Milestone 05: Atomic Sliding Counter Lua Script</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── <span class="text-purple-300 font-bold">integration/</span></div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_redis_lua.py</span>           <span class="text-slate-500"># Milestone 05: Real Redis Concurrency Tests</span></div>
+            </div>
+
+            <!-- File 1: src/sentinelflow/storage/redis_manager.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Asynchronous Redis Storage Manager: <code class="text-purple-700">src/sentinelflow/storage/redis_manager.py</code></span>
+                    <span class="text-slate-400">Connection Pool &amp; EVALSHA Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Storage - Async Redis Storage Manager (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> pathlib <span class="text-purple-400">import</span> Path
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">import</span> redis.asyncio <span class="text-purple-400">as</span> aioredis
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+LUA_DIR = Path(__file__).parent / <span class="text-amber-300">"lua"</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RedisRateLimiter</span>:
+    <span class="text-slate-500">"""
+    DISTRIBUTED REDIS RATE LIMITER:
+    Pre-compiles Lua scripts via SCRIPT LOAD and executes with EVALSHA.
+    Eliminates network latency round-trips and guarantees strict atomicity.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, redis_url: str = <span class="text-amber-300">"redis://localhost:6379/0"</span>):
+        self.redis_url = redis_url
+        <span class="text-slate-500"># Sized Connection Pool for async performance</span>
+        self.pool = aioredis.ConnectionPool.from_url(
+            self.redis_url, 
+            max_connections=50, 
+            decode_responses=<span class="text-rose-400">True</span>
+        )
+        self.client = aioredis.Redis(connection_pool=self.pool)
+        self._token_bucket_sha: Optional[str] = <span class="text-rose-400">None</span>
+        self._sliding_counter_sha: Optional[str] = <span class="text-rose-400">None</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">initialize</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        STARTUP HOOK: Pre-loads Lua scripts into Redis RAM.
+        Stores the resulting SHA-1 hashes for EVALSHA execution.
+        """</span>
+        tb_script = (LUA_DIR / <span class="text-amber-300">"token_bucket.lua"</span>).read_text(encoding=<span class="text-amber-300">"utf-8"</span>)
+        swc_script = (LUA_DIR / <span class="text-amber-300">"sliding_counter.lua"</span>).read_text(encoding=<span class="text-amber-300">"utf-8"</span>)
+
+        self._token_bucket_sha = <span class="text-purple-400">await</span> self.client.script_load(tb_script)
+        self._sliding_counter_sha = <span class="text-purple-400">await</span> self.client.script_load(swc_script)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">close</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">await</span> self.client.aclose()
+        <span class="text-purple-400">await</span> self.pool.disconnect()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_token_bucket</span>(
+        self, key: str, capacity: int, refill_rate_per_sec: float, cost: int = 1
+    ) -> RateLimitResult:
+        <span class="text-slate-500">"""Executes the distributed Token Bucket Lua script atomically."""</span>
+        now = time.time()
+        redis_key = f<span class="text-amber-300">"sf:tb:&#123;key&#125;"</span>
+
+        <span class="text-slate-500"># EVALSHA executes compiled bytecode in 1 network round trip!</span>
+        res = <span class="text-purple-400">await</span> self.client.evalsha(
+            self._token_bucket_sha,
+            1,  <span class="text-slate-500"># Number of keys</span>
+            redis_key,
+            capacity,
+            refill_rate_per_sec,
+            cost,
+            now
+        )
+        allowed_flag, metric = res[0], res[1]
+
+        <span class="text-purple-400">if</span> allowed_flag == 1:
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=capacity,
+                remaining=metric,
+                reset_after_seconds=0.0,
+                reset_epoch_seconds=int(now)
+            )
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=capacity,
+            remaining=0,
+            reset_after_seconds=float(metric),
+            reset_epoch_seconds=int(now + metric)
+        )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_sliding_counter</span>(
+        self, key: str, limit: int, window_seconds: float, cost: int = 1
+    ) -> RateLimitResult:
+        <span class="text-slate-500">"""Executes the distributed Sliding Window Counter Lua script atomically."""</span>
+        now = int(time.time())
+        redis_key = f<span class="text-amber-300">"sf:swc:&#123;key&#125;"</span>
+
+        res = <span class="text-purple-400">await</span> self.client.evalsha(
+            self._sliding_counter_sha,
+            1,
+            redis_key,
+            limit,
+            window_seconds,
+            now,
+            cost
+        )
+        allowed_flag, metric = res[0], res[1]
+
+        <span class="text-purple-400">if</span> allowed_flag == 1:
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=limit,
+                remaining=metric,
+                reset_after_seconds=0.0,
+                reset_epoch_seconds=now
+            )
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=limit,
+            remaining=0,
+            reset_after_seconds=float(metric),
+            reset_epoch_seconds=now + metric
+        )</pre>
+            </div>
+
+            <!-- File 2: tests/integration/test_redis_lua.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Concurrency Race Condition Battery: <code class="text-purple-700">tests/integration/test_redis_lua.py</code></span>
+                    <span class="text-slate-400">Real Redis Docker Integration Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> testcontainers.redis <span class="text-purple-400">import</span> RedisContainer
+<span class="text-purple-400">from</span> sentinelflow.storage.redis_manager <span class="text-purple-400">import</span> RedisRateLimiter
+
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">redis_container</span>():
+    <span class="text-slate-500">"""Spawns an ephemeral Redis 7 container on Docker for integration tests."""</span>
+    <span class="text-purple-400">with</span> RedisContainer(<span class="text-amber-300">"redis:7-alpine"</span>) <span class="text-purple-400">as</span> redis_server:
+        <span class="text-purple-400">yield</span> redis_server
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">redis_limiter</span>(redis_container):
+    url = f<span class="text-amber-300">"redis://&#123;redis_container.get_container_host_ip()&#125;:&#123;redis_container.get_exposed_port(6379)&#125;/0"</span>
+    limiter = RedisRateLimiter(redis_url=url)
+    <span class="text-purple-400">await</span> limiter.initialize()
+    
+    <span class="text-purple-400">yield</span> limiter
+    
+    <span class="text-purple-400">await</span> limiter.client.flushdb()
+    <span class="text-purple-400">await</span> limiter.close()
+
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestRedisLuaConcurrency</span>:
+    <span class="text-slate-500">"""Verifies that Redis Lua scripts execute atomically with ZERO race condition leaks."""</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_token_bucket_lua_race_condition_proof</span>(self, redis_limiter: RedisRateLimiter):
+        <span class="text-slate-500">"""
+        RACE CONDITION ELIMINATION TEST:
+        Fires 50 concurrent requests simultaneously using asyncio.gather.
+        Configured Capacity: Exactly 10 requests allowed.
+        In an un-synchronized system, dozens leak through.
+        In Lua: EXACTLY 10 pass, and EXACTLY 40 fail!
+        """</span>
+        capacity = 10
+        refill_rate = 0.1  <span class="text-slate-500"># Very slow refill (1 token every 10s)</span>
+
+        <span class="text-slate-500"># Fire 50 asynchronous tasks at the exact same millisecond</span>
+        tasks = [
+            redis_limiter.acquire_token_bucket(
+                key=<span class="text-amber-300">"race_test_client"</span>,
+                capacity=capacity,
+                refill_rate_per_sec=refill_rate
+            )
+            <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(50)
+        ]
+        results = <span class="text-purple-400">await</span> asyncio.gather(*tasks)
+
+        allowed_count = sum(1 <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> results <span class="text-purple-400">if</span> r.allowed)
+        blocked_count = sum(1 <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> results <span class="text-purple-400">if not</span> r.allowed)
+
+        <span class="text-slate-500"># PROOF OF ATOMIC EXECUTION</span>
+        assert allowed_count == 10
+        assert blocked_count == 40
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_sliding_counter_lua_expiration_set_automatically</span>(self, redis_limiter: RedisRateLimiter):
+        <span class="text-slate-500"># Verify that every executed rate limit key carries an automated TTL</span>
+        _ = <span class="text-purple-400">await</span> redis_limiter.acquire_sliding_counter(
+            key=<span class="text-amber-300">"ttl_test_user"</span>,
+            limit=20,
+            window_seconds=60.0
+        )
+        
+        <span class="text-slate-500"># Keys matching pattern must have a positive TTL</span>
+        keys = <span class="text-purple-400">await</span> redis_limiter.client.keys(<span class="text-amber-300">"sf:swc:ttl_test_user:*"</span>)
+        assert len(keys) &gt; 0
+        ttl = <span class="text-purple-400">await</span> redis_limiter.client.ttl(keys[0])
+        assert ttl &gt; 0 <span class="text-slate-500"># Proof that key is guaranteed to expire and won't leak RAM!</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Long-Running Loops in Redis Lua</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing complex nested <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">for i=1, 10000 do ... end</code> loops inside a Redis Lua script.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes full backend outages:</strong> Redis executes Lua in a <strong>single-threaded global lock</strong>. While your script is running, Redis cannot process <em>any other command</em> for any service in your company! If your Lua script takes 50ms to run, Redis's throughput drops from 100,000 ops/sec to 20 ops/sec, taking down caching, queues, and session lookups. Keep Lua scripts sub-millisecond ($O(1)$ ops only).
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Zombie Key" Memory Leak</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">redis.call("HSET", key, ...)</code> without calling <code class="font-mono text-rose-900">redis.call("EXPIRE", key, ttl)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this exhausts cluster RAM:</strong> Every unique IP, customer, or API key that visits your service creates a new key in Redis. If keys never expire, they remain resident in Redis RAM permanently. Over months of traffic, millions of abandoned keys accumulate until Redis triggers its <code class="font-mono text-rose-950 font-bold">maxmemory</code> eviction policy, destroying your production cache!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to launch a local Redis instance and execute the concurrent race-condition integration battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install async Redis client and Testcontainers:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install redis testcontainers[redis]
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Concurrency Tests -->
+                <div>
+                    <span class="text-slate-500"># 2. Run real Redis integration tests (spawns Redis in Docker and executes Lua scripts):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_redis_lua.py -v -m integration --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.8s. Confirms 50 concurrent tasks are throttled with zero leaks!
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive Verification via redis-cli -->
+                <div>
+                    <span class="text-slate-500"># 3. Test EVALSHA directly using redis-cli (if local Redis is running):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        redis-cli SCRIPT LOAD "$(cat src/sentinelflow/storage/lua/sliding_counter.lua)"<br>
+                        # Returns 40-character SHA hash (e.g. 7f8a9...); execute via:<br>
+                        redis-cli EVALSHA &lt;SHA_HASH&gt; 1 "test_key" 10 60 $(date +%s) 1
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Returns [1, 9] (Allowed=1, Remaining=9) in a single atomic transaction.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Enterprise Microservices: Resilient Storage, Fail-Open vs. Fail-Closed &amp; Adaptive Limits</h4>
+                <p class="text-xs text-slate-500 font-sans">Hardening for disaster recovery: Resolving what happens when Redis crashes (Fail-Open vs. Fail-Closed), Google SRE Adaptive Throttling algorithms, and multi-tier composite key extraction.</p>
+            </div>
+            <a href="Chapter 06 - Enterprise Microservices - Resilient Storage, Fail-Open vs Fail-Closed and Adaptive Limits.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

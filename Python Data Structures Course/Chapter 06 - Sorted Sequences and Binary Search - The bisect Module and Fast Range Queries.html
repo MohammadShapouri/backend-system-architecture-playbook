@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Sorted Sequences &amp; Binary Search - The bisect Module &amp; Fast Range Queries</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 06 - Sorted Range Indexes &amp; Binary Search)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Logarithmic Search &amp; Ordered Sequences
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 06: Sorted Sequences &amp; Binary Search - The bisect Module &amp; Fast Range Queries
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Harnessing the power of sorted invariants: Escaping linear $O(n)$ full-table scans with $O(\log n)$ bisection mathematics, demystifying the boundary duality between <code class="font-mono text-emerald-400">bisect_left</code> and <code class="font-mono text-emerald-400">bisect_right</code>, mastering closed vs. open interval slicing, and engineering a high-speed secondary numeric range index for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 2 Milestone</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 06: Secondary Sorted Range Index</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 02, we implemented <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">MemForgeHashMap</code>, granting us instantaneous $O(1)$ point lookups for exact primary keys (e.g. <code class="font-mono text-slate-300">WHERE id = 991</code>). However, hash maps are fundamentally blind to range comparisons: evaluating <code class="font-mono text-slate-300">WHERE age BETWEEN 25 AND 40</code> or <code class="font-mono text-slate-300">WHERE timestamp &gt; 1700000000</code> forces a catastrophic full-table scan. In Milestone 06, we construct MemForge's <strong>Secondary Sorted Range Index</strong> using Python's standard library <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">bisect</code> engine, delivering sub-millisecond range slicing over millions of records.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The O(log n) Halving Principle Invariant</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Boundary Duality: <code class="text-purple-300">bisect_left</code> vs <code class="text-purple-300">bisect_right</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Interval Slicing: [lo, hi), [lo, hi], (lo, hi]</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Key-Projected Search (Python 3.10+ <code class="text-purple-300">key=</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Batch Timsort vs. The <code class="text-rose-400">insort</code> O(n²) Trap</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">SortedIndexScan</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Bisection Mathematics -->
+        <section id="bisection-mathematics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Bisection Mathematics &amp; Logarithmic Search</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When searching an unsorted array of size $n$, an algorithm has no mathematical advantage; in the worst and average cases, it must inspect every memory address sequentially, yielding linear complexity $O(n)$.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If the sequence maintains a <strong>sorted invariant</strong> ($a[i] \le a[i+1]$), we gain a powerful mathematical property: evaluating the median element at index $\text{mid} = \lfloor(\text{low} + \text{high}) / 2\rfloor$ instantly eliminates <strong>half of all remaining candidates</strong>. After $k$ iterations, the search space reduces to $n / 2^k$. Setting $n / 2^k = 1$ demonstrates that search terminates in at most $k = \lceil\log_2 n\rceil$ steps.
+            </p>
+
+            <!-- Search Space Reduction Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Algorithmic Efficiency: Linear Scan vs. Binary Search</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing worst-case memory comparisons across scaling datasets</p>
+                </div>
+
+                <div class="grid md:grid-cols-4 gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-slate-400 text-[10px] block">Dataset: 1,000 Items</span>
+                        <div class="text-rose-400 font-bold">Linear: 1,000 ops</div>
+                        <div class="text-emerald-400 font-bold">Binary: 10 ops</div>
+                        <span class="text-[9px] text-slate-500 font-sans">100x faster</span>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-slate-400 text-[10px] block">Dataset: 100,000 Items</span>
+                        <div class="text-rose-400 font-bold">Linear: 100,000 ops</div>
+                        <div class="text-emerald-400 font-bold">Binary: 17 ops</div>
+                        <span class="text-[9px] text-slate-500 font-sans">5,880x faster</span>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-slate-400 text-[10px] block">Dataset: 1,000,000 Items</span>
+                        <div class="text-rose-400 font-bold">Linear: 1,000,000 ops</div>
+                        <div class="text-emerald-400 font-bold">Binary: 20 ops</div>
+                        <span class="text-[9px] text-slate-500 font-sans">50,000x faster</span>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-emerald-900/60 rounded-xl space-y-1">
+                        <span class="text-slate-400 text-[10px] block">Dataset: 1,000,000,000 Items</span>
+                        <div class="text-rose-400 font-bold">Linear: 10⁹ ops</div>
+                        <div class="text-emerald-400 font-bold">Binary: 30 ops</div>
+                        <span class="text-[9px] text-emerald-400 font-sans">33,000,000x faster</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">CPython C-Acceleration Note (_bisectmodule.c):</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Python's standard library implements the <code class="font-mono text-slate-300">bisect</code> algorithms directly in optimized C. The midpoint is computed as <code class="font-mono text-purple-300">mid = ((size_t)lo + hi) &gt;&gt; 1</code>. In pure C/Java, <code class="font-mono">(lo + hi) / 2</code> risks signed 32-bit integer overflow; in CPython, the bit-shift on unsigned pointers guarantees memory safety and lightning-fast execution directly in CPU registers.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Boundary Duality: bisect_left vs bisect_right -->
+        <section id="boundary-duality" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Boundary Duality of bisect_left and bisect_right</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If an array contains unique elements, binary search trivially locates the target value. However, real-world database records frequently contain <strong>duplicate keys</strong> (e.g. thousands of records sharing the same timestamp, status code, or foreign key ID).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Python provides two core bisection primitives to define exact mathematical insertion and range boundaries around duplicates:
+            </p>
+
+            <!-- Visual Boundary Comparison Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Duplicate Key Partitioning: Target Value = 25
+                </div>
+
+                <!-- Array Element Blocks -->
+                <div class="space-y-2">
+                    <div class="grid grid-cols-7 gap-1 text-center font-bold text-[11px]">
+                        <div class="bg-slate-800 text-slate-400 p-2 rounded">10<br><span class="text-[9px] text-slate-500 font-normal">idx 0</span></div>
+                        <div class="bg-slate-800 text-slate-400 p-2 rounded">20<br><span class="text-[9px] text-slate-500 font-normal">idx 1</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-500">25<br><span class="text-[9px] text-purple-400 font-normal">idx 2</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-500">25<br><span class="text-[9px] text-purple-400 font-normal">idx 3</span></div>
+                        <div class="bg-purple-950 text-purple-300 p-2 rounded border border-purple-500">25<br><span class="text-[9px] text-purple-400 font-normal">idx 4</span></div>
+                        <div class="bg-slate-800 text-slate-400 p-2 rounded">30<br><span class="text-[9px] text-slate-500 font-normal">idx 5</span></div>
+                        <div class="bg-slate-800 text-slate-400 p-2 rounded">40<br><span class="text-[9px] text-slate-500 font-normal">idx 6</span></div>
+                    </div>
+
+                    <!-- Insertion Point Pointers -->
+                    <div class="grid grid-cols-7 gap-1 text-[10px] text-center pt-2">
+                        <div></div>
+                        <div></div>
+                        <div class="text-sky-300 font-bold flex flex-col items-center">
+                            <span>&uarr;</span>
+                            <span>bisect_left = 2</span>
+                            <span class="text-[8px] text-slate-400 font-sans">First Occurrence</span>
+                        </div>
+                        <div></div>
+                        <div></div>
+                        <div class="text-emerald-400 font-bold flex flex-col items-center">
+                            <span>&uarr;</span>
+                            <span>bisect_right = 5</span>
+                            <span class="text-[8px] text-slate-400 font-sans">After Last Match</span>
+                        </div>
+                        <div></div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4 text-xs font-sans pt-2">
+                    <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="font-mono text-sky-300 font-bold block text-sm">bisect_left(a, x=25) &rarr; Index 2</span>
+                        <p class="text-slate-400 text-[11px] leading-relaxed">
+                            Partitions the array such that all elements to the left are <strong>strictly less than $x$</strong> ($e &lt; x$), and all elements to the right are <strong>greater than or equal to $x$</strong> ($e \ge x$). Returns the index of the first occurrence.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
+                        <span class="font-mono text-emerald-400 font-bold block text-sm">bisect_right(a, x=25) &rarr; Index 5</span>
+                        <p class="text-slate-400 text-[11px] leading-relaxed">
+                            Partitions the array such that all elements to the left are <strong>less than or equal to $x$</strong> ($e \le x$), and all elements to the right are <strong>strictly greater than $x$</strong> ($e &gt; x$). Returns the insertion slot following the final occurrence.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mathematical Interval Slicing Table -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">Query Formulation</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">The 4 Interval Query Permutations</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    Database query engines express interval constraints in four mathematical forms. By combining <code class="font-mono text-purple-700">bisect_left</code> and <code class="font-mono text-purple-700">bisect_right</code>, you can calculate the exact slice indices in $O(\log n)$ time without post-filtering:
+                </p>
+
+                <div class="overflow-x-auto font-mono text-xs">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold">Mathematical Interval</th>
+                                <th class="py-2 px-2 font-bold">SQL Semantics</th>
+                                <th class="py-2 px-2 font-bold">Bisect Slice Formulation</th>
+                                <th class="py-2 px-2 font-bold">Boundary Mechanics</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">[v_min, v_max)</td>
+                                <td class="py-2.5 px-2">v &gt;= min AND v &lt; max</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">a[bisect_left(a, min) : bisect_left(a, max)]</td>
+                                <td class="py-2.5 px-2 font-sans">Standard Python half-open slice. Includes lower bound; stops before upper bound.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">[v_min, v_max]</td>
+                                <td class="py-2.5 px-2">v BETWEEN min AND max</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">a[bisect_left(a, min) : bisect_right(a, max)]</td>
+                                <td class="py-2.5 px-2 font-sans">Fully closed interval. Includes both extremes and all duplicate occurrences of max.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">(v_min, v_max]</td>
+                                <td class="py-2.5 px-2">v &gt; min AND v &lt;= max</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">a[bisect_right(a, min) : bisect_right(a, max)]</td>
+                                <td class="py-2.5 px-2 font-sans">Excludes lower bound duplicates; includes upper bound matches.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">(v_min, v_max)</td>
+                                <td class="py-2.5 px-2">v &gt; min AND v &lt; max</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">a[bisect_right(a, min) : bisect_left(a, max)]</td>
+                                <td class="py-2.5 px-2 font-sans">Strict open interval. Excludes matching boundaries on both sides.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Exhaustive Native API Reference -->
+        <section id="native-api" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Exhaustive Native Function Reference: The bisect Module</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Python's <code class="font-mono text-purple-700 font-bold">bisect</code> module provides four foundational functions, augmented in Python 3.10+ with optional <code class="font-mono text-purple-700 font-bold">key=</code> projection support:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-3 font-sans">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-900 font-mono">Python bisect Module Functions</h3>
+                        <p class="text-xs text-slate-500">C-accelerated bisection algorithms operating on sorted sequences</p>
+                    </div>
+                    <span class="bg-emerald-50 text-emerald-700 text-xs font-mono font-bold px-3 py-1 rounded-full border border-emerald-200">Standard Library</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold">Function Signature</th>
+                                <th class="py-2 px-2 font-bold">Time Complexity</th>
+                                <th class="py-2 px-2 font-bold">Return Type</th>
+                                <th class="py-2 px-2 font-bold">CPython Mechanism &amp; Operational Details</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">bisect_left(a, x, [lo, hi], *, [key])</td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">int</td>
+                                <td class="py-2.5 px-2 font-sans">Locates insertion index for $x$ in sorted list $a$ before duplicates. If $x$ is not present, returns index where $x$ could be inserted to maintain order.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">bisect_right(a, x, [lo, hi], *, [key])<br><span class="text-slate-400 font-normal">alias: bisect()</span></td>
+                                <td class="py-2.5 px-2 text-emerald-700 font-bold">O(log n)</td>
+                                <td class="py-2.5 px-2">int</td>
+                                <td class="py-2.5 px-2 font-sans">Locates insertion index for $x$ after duplicates. Standard default alias for <code class="font-mono">bisect()</code>.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">insort_left(a, x, [lo, hi], *, [key])</td>
+                                <td class="py-2.5 px-2 text-amber-700 font-bold">O(n)</td>
+                                <td class="py-2.5 px-2">None</td>
+                                <td class="py-2.5 px-2 font-sans">Finds insertion slot via <code class="font-mono">bisect_left</code> in $O(\log n)$, then executes <code class="font-mono">a.insert(idx, x)</code> in $O(n)$ by shifting elements rightward.</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2.5 px-2 font-bold text-purple-700">insort_right(a, x, [lo, hi], *, [key])<br><span class="text-slate-400 font-normal">alias: insort()</span></td>
+                                <td class="py-2.5 px-2 text-amber-700 font-bold">O(n)</td>
+                                <td class="py-2.5 px-2">None</td>
+                                <td class="py-2.5 px-2 font-sans">Finds insertion slot via <code class="font-mono">bisect_right</code> in $O(\log n)$, then executes <code class="font-mono">a.insert(idx, x)</code> in $O(n)$.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tiered Lookup Pattern -->
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Classic Production Pattern: Numeric Range Grading &amp; SLA Classification</div>
+                <pre>
+<span class="text-purple-400">from</span> bisect <span class="text-purple-400">import</span> bisect_right
+
+<span class="text-slate-500"># SLA Tier Cutoffs (in milliseconds):</span>
+<span class="text-slate-500"># 0 - 50ms: PLATINUM | 51 - 200ms: GOLD | 201 - 1000ms: SILVER | > 1000ms: BREACH</span>
+LATENCY_BREAKPOINTS = [50, 200, 1000]
+SLA_TIERS = [<span class="text-amber-300">"PLATINUM"</span>, <span class="text-amber-300">"GOLD"</span>, <span class="text-amber-300">"SILVER"</span>, <span class="text-rose-400 font-bold">"SLA_BREACH"</span>]
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">classify_query_sla</span>(latency_ms: float) -> str:
+    <span class="text-slate-500">"""Maps continuous latency values to discrete SLA buckets in O(log k) time."""</span>
+    bucket_index = bisect_right(LATENCY_BREAKPOINTS, latency_ms)
+    <span class="text-purple-400">return</span> SLA_TIERS[bucket_index]
+
+<span class="text-slate-500"># Example evaluations:</span>
+<span class="text-slate-500"># classify_query_sla(25.0)  &rarr; "PLATINUM" (index 0)</span>
+<span class="text-slate-500"># classify_query_sla(50.0)  &rarr; "PLATINUM" (index 0 because 50 is not > 50)</span>
+<span class="text-slate-500"># classify_query_sla(50.1)  &rarr; "GOLD"     (index 1)</span>
+<span class="text-slate-500"># classify_query_sla(2500)  &rarr; "SLA_BREACH" (index 3)</span></pre>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 06 -->
+        <section id="memforge-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 06: Sorted Numeric Range Index Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 06 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/index/sorted_index.py</code>: a secondary index designed to execute sub-millisecond range scans across stored record values (such as transaction amounts, timestamps, or latency metrics).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The sorted index features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Batch initialization via <code class="font-mono text-purple-700 font-bold">build_from_records()</code> using $O(n \log n)$ Timsort, avoiding the quadratic $O(n^2)$ penalty of repeated insertions.</li>
+                <li>Incremental insertion using <code class="font-mono text-purple-700 font-bold">bisect_right</code>.</li>
+                <li>Exact point matching returning all matching record IDs in $O(\log n)$ time.</li>
+                <li>Universal range filtering (<code class="font-mono text-purple-700 font-bold">range_scan</code>) supporting closed $[a, b]$, half-open $[a, b)$, and open $(a, b)$ intervals.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 06)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       ├── scheduler/</div>
+                <div>│       │   └── priority_queue.py         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">index/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">sorted_index.py</span>           <span class="text-slate-500"># Milestone 06: Sorted Range Index &amp; Binary Search</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_priority_queue.py    <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_sorted_index.py</span>      <span class="text-slate-500"># Milestone 06: Bisect Range Bounds &amp; Scanning Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/index/sorted_index.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Range Index: <code class="text-purple-700">src/memforge/index/sorted_index.py</code></span>
+                    <span class="text-slate-400">Bisect Range Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Index - Secondary Sorted Range Index (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> bisect <span class="text-purple-400">import</span> bisect_left, bisect_right
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Iterator, List, Optional, Tuple
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IndexEntry</span>:
+    <span class="text-slate-500">"""Discrete secondary index pointer linking a numeric indexed value to a record ID."""</span>
+    value: float
+    record_id: int
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SortedNumericIndex</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION SORTED RANGE INDEX:
+    Maintains entries in strict ascending order by value.
+    Provides O(log n) point searches and sub-millisecond range queries
+    over millions of indexed numerical records using bisect algorithms.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Parallel arrays or entries list projected by value</span>
+        self._entries: List[IndexEntry] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total indexed entries."""</span>
+        <span class="text-purple-400">return</span> len(self._entries)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">build_from_records</span>(self, records: List[Tuple[float, int]]) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        BATCH BUILD INVARIANT:
+        Constructs index in O(n log n) time using Timsort.
+        Avoids the O(n^2) catastrophe of calling insort in a loop!
+        """</span>
+        raw_entries = [IndexEntry(value=val, record_id=rid) <span class="text-purple-400">for</span> val, rid <span class="text-purple-400">in</span> records]
+        <span class="text-slate-500"># Sort in-place using value as primary key, record_id as secondary key</span>
+        raw_entries.sort(key=<span class="text-purple-400">lambda</span> e: (e.value, e.record_id))
+        self._entries = raw_entries
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insert</span>(self, value: float, record_id: int) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Incremental insertion: Uses bisect_right on value projection.
+        Complexity: O(log n) search + O(n) pointer shift.
+        """</span>
+        new_entry = IndexEntry(value=value, record_id=record_id)
+        <span class="text-slate-500"># Python 3.10+ key-based bisect: projects entry to its scalar value</span>
+        idx = bisect_right(self._entries, value, key=<span class="text-purple-400">lambda</span> e: e.value)
+        self._entries.insert(idx, new_entry)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">find_exact</span>(self, value: float) -> List[int]:
+        <span class="text-slate-500">"""
+        POINT QUERY:
+        Returns all record IDs matching value exactly in O(log n + k) time,
+        where k is the count of duplicates.
+        """</span>
+        left = bisect_left(self._entries, value, key=<span class="text-purple-400">lambda</span> e: e.value)
+        right = bisect_right(self._entries, value, key=<span class="text-purple-400">lambda</span> e: e.value)
+        <span class="text-purple-400">return</span> [self._entries[i].record_id <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(left, right)]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">range_scan</span>(
+        self,
+        min_val: Optional[float] = <span class="text-rose-400">None</span>,
+        max_val: Optional[float] = <span class="text-rose-400">None</span>,
+        include_min: bool = <span class="text-rose-400">True</span>,
+        include_max: bool = <span class="text-rose-400">False</span>
+    ) -> List[int]:
+        <span class="text-slate-500">"""
+        RANGE QUERY ENGINE:
+        Executes logarithmic range slicing across closed, half-open, or open intervals.
+        Returns: Matching list of record IDs.
+        """</span>
+        <span class="text-slate-500"># 1. Determine lower index boundary</span>
+        <span class="text-purple-400">if</span> min_val <span class="text-purple-400">is None</span>:
+            start_idx = 0
+        <span class="text-purple-400">elif</span> include_min:
+            start_idx = bisect_left(self._entries, min_val, key=<span class="text-purple-400">lambda</span> e: e.value)
+        <span class="text-purple-400">else</span>:
+            start_idx = bisect_right(self._entries, min_val, key=<span class="text-purple-400">lambda</span> e: e.value)
+
+        <span class="text-slate-500"># 2. Determine upper index boundary</span>
+        <span class="text-purple-400">if</span> max_val <span class="text-purple-400">is None</span>:
+            end_idx = len(self._entries)
+        <span class="text-purple-400">elif</span> include_max:
+            end_idx = bisect_right(self._entries, max_val, key=<span class="text-purple-400">lambda</span> e: e.value)
+        <span class="text-purple-400">else</span>:
+            end_idx = bisect_left(self._entries, max_val, key=<span class="text-purple-400">lambda</span> e: e.value)
+
+        <span class="text-slate-500"># Slices are zero-copy references to record_ids</span>
+        <span class="text-purple-400">return</span> [self._entries[i].record_id <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(start_idx, end_idx)]</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_sorted_index.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_sorted_index.py</code></span>
+                    <span class="text-slate-400">Bisect Range &amp; Boundary Assertions</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Sorted Range Index Verification (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.index.sorted_index <span class="text-purple-400">import</span> SortedNumericIndex
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestSortedNumericIndex</span>:
+    <span class="text-slate-500">"""Unit tests asserting point lookups, duplicate partitions, and range scan bounds."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_batch_build_and_point_query_with_duplicates</span>(self):
+        index = SortedNumericIndex()
+        <span class="text-slate-500"># Sample data with duplicates: 3 entries with value 25.0</span>
+        records = [
+            (50.0, 501),
+            (25.0, 201),
+            (10.0, 101),
+            (25.0, 202),
+            (100.0, 999),
+            (25.0, 203)
+        ]
+        index.build_from_records(records)
+        assert len(index) == 6
+
+        <span class="text-slate-500"># Point search for 25.0 must locate all 3 records</span>
+        matches_25 = index.find_exact(25.0)
+        assert sorted(matches_25) == [201, 202, 203]
+
+        <span class="text-slate-500"># Point search for missing value</span>
+        assert index.find_exact(99.0) == []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_half_open_range_scan</span>(self):
+        index = SortedNumericIndex()
+        <span class="text-slate-500"># Setup values: 10, 20, 30, 40, 50</span>
+        records = [(float(i * 10), i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(1, 6)]
+        index.build_from_records(records)
+
+        <span class="text-slate-500"># Standard half-open: [20.0, 40.0) -> values 20, 30</span>
+        results = index.range_scan(min_val=20.0, max_val=40.0, include_min=<span class="text-rose-400">True</span>, include_max=<span class="text-rose-400">False</span>)
+        assert results == [2, 3]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_closed_interval_range_scan</span>(self):
+        index = SortedNumericIndex()
+        records = [(float(i * 10), i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(1, 6)]
+        index.build_from_records(records)
+
+        <span class="text-slate-500"># Fully closed interval: [20.0, 40.0] -> values 20, 30, 40</span>
+        results = index.range_scan(min_val=20.0, max_val=40.0, include_min=<span class="text-rose-400">True</span>, include_max=<span class="text-rose-400">True</span>)
+        assert results == [2, 3, 4]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_strict_open_interval_range_scan</span>(self):
+        index = SortedNumericIndex()
+        records = [(float(i * 10), i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(1, 6)]
+        index.build_from_records(records)
+
+        <span class="text-slate-500"># Strict open: (20.0, 40.0) -> value 30 only</span>
+        results = index.range_scan(min_val=20.0, max_val=40.0, include_min=<span class="text-rose-400">False</span>, include_max=<span class="text-rose-400">False</span>)
+        assert results == [3]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_unbounded_range_scans</span>(self):
+        index = SortedNumericIndex()
+        records = [(float(i * 10), i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(1, 6)]
+        index.build_from_records(records)
+
+        <span class="text-slate-500"># Unbounded upper: >= 30.0 -> values 30, 40, 50</span>
+        res_upper = index.range_scan(min_val=30.0, max_val=<span class="text-rose-400">None</span>, include_min=<span class="text-rose-400">True</span>)
+        assert res_upper == [3, 4, 5]
+
+        <span class="text-slate-500"># Unbounded lower: < 30.0 -> values 10, 20</span>
+        res_lower = index.range_scan(min_val=<span class="text-rose-400">None</span>, max_val=30.0, include_max=<span class="text-rose-400">False</span>)
+        assert res_lower == [1, 2]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_incremental_insertion_maintains_sort_order</span>(self):
+        index = SortedNumericIndex()
+        index.build_from_records([(10.0, 1), (30.0, 3)])
+        
+        <span class="text-slate-500"># Incremental insert of 20.0</span>
+        index.insert(20.0, 2)
+        assert len(index) == 3
+
+        results = index.range_scan(min_val=5.0, max_val=35.0, include_min=<span class="text-rose-400">True</span>, include_max=<span class="text-rose-400">True</span>)
+        assert results == [1, 2, 3]</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Calling bisect on an Unsorted List</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Running <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">bisect_left(raw_unsorted_list, val)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails silently:</strong> The <code class="font-mono">bisect</code> module does <strong>NOT</strong> validate whether the sequence is sorted (checking sorting would take $O(n)$ time, destroying the $O(\log n)$ advantage). Executing binary search on an unsorted list returns meaningless, incorrect indices without raising any exceptions!
+                        <strong>Fix:</strong> Ensure the list is sorted via <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">a.sort()</code> before executing bisect queries.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Repeated insort() O(n²) Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Populating an index of 100,000 items by calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">bisect.insort()</code> in a loop.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> While <code class="font-mono">insort</code> finds the position in $O(\log n)$, inserting into a Python list forces an $O(n)$ memory shift of all following elements. 100,000 calls to <code class="font-mono">insort</code> costs $O(n^2)$ &rarr; 5 billion memory shifts!
+                        <strong>Fix:</strong> Collect items with <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">.append()</code> and call <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">.sort()</code> once in $O(n \log n)$.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Off-by-One Boundary Inversion</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">bisect_right</code> for a lower bound or <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">bisect_left</code> for a closed upper bound.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this drops data:</strong> If you query <code class="font-mono">WHERE age &gt;= 21</code> using <code class="font-mono">bisect_right(ages, 21)</code>, you jump <em>past</em> all 21-year-olds! Conversely, querying <code class="font-mono">WHERE age &lt;= 21</code> with <code class="font-mono">bisect_left</code> excludes all 21-year-olds!
+                        <strong>Rule:</strong> Use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">bisect_left</code> to include lower bounds; use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">bisect_right</code> to include upper bounds.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Memory-Heavy Intermediate Slicing</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">sub_records = large_sorted_list[lo:hi]</code> to count matches.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this thrashes RAM:</strong> In Python, slicing a list allocates a completely new list and copies all pointers. If the range matches 500,000 items, you copy 500,000 pointers (4MB RAM) just to count them!
+                        <strong>Fix:</strong> To get count, subtract indices directly: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">count = hi - lo</code> ($O(1)$ time and zero memory).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the sorted range index test battery and benchmark binary search vs linear scans:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge sorted range index unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_sorted_index.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 6 passed in ~0.09s. Confirms closed, half-open, and open interval scans, point lookups, and duplicate boundary partitioning.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 06:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, and sorted range indices.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Benchmark -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify O(log n) bisect vs O(n) linear search on 1,000,000 items:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "import timeit, bisect; data = list(range(1000000)); print('Linear scan (sec):', timeit.timeit(lambda: 999999 in data, number=100)); print('Bisect binary search (sec):', timeit.timeit(lambda: bisect.bisect_left(data, 999999), number=100))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Bisect executes roughly 20,000x faster than linear scan across one million records!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Pointer-Based Linked Structures - Singly, Doubly Linked Lists &amp; Sentinel Nodes</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering Phase 3: Stepping beyond Python array containers into manual pointer node architectures, sentinel boundary heads/tails, cycle detection algorithms, and building MemForge's transactional undo log.</p>
+            </div>
+            <a href="Chapter 07 - Pointer-Based Linked Structures - Singly, Doubly Linked Lists and Sentinel Nodes.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

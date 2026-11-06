@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Enterprise Microservices: Resilient Storage, Fail-Open vs. Fail-Closed &amp; Adaptive Limits</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 06 - SRE Resilience, Fail-Open/Closed &amp; Adaptive Throttling)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; SRE Resilience &amp; Adaptive Throttling
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Enterprise Microservices: Resilient Storage, Fail-Open vs. Fail-Closed &amp; Adaptive Limits
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Hardening rate limiters for real-world cloud failures: Resolving the rate limiter reliability paradox, choosing between Fail-Open and Fail-Closed policies, multi-tier composite key extraction, defending against IPv6 subnet rotation and spoofed proxy headers, implementing Google SRE’s <strong>Adaptive Throttling</strong> algorithm, and building the fault-tolerant resilience layer of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 06: Enterprise Microservice Resilience</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 05, we solved distributed concurrency leaks using atomic Redis Lua scripts. But in production, external state stores fail: Redis clusters experience network partitions, failovers, or latency spikes. If your rate limiter crashes your entire API gateway whenever Redis blips, <strong>the rate limiter has become a self-inflicted Denial of Service attack on your own infrastructure</strong>. In Milestone 06, we architect resilient storage: implementing route-specific <strong>Fail-Open</strong> vs. <strong>Fail-Closed</strong> policies, building emergency in-memory fallbacks, aggregating IPv6 addresses into <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">/64</code> subnets, and implementing Google SRE's mathematical <strong>Adaptive Throttling</strong> algorithm to reject requests dynamically when downstream services degrade.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Rate Limiter Reliability Paradox</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Route-Specific Fail-Open vs. Fail-Closed Gates</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> IPv6 Subnet Aggregation (<code class="text-purple-300">/64 CIDR</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defending Against Spoofed <code class="text-purple-300">X-Forwarded-For</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Google SRE's Adaptive Throttling Model</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Resilient Redis Client with Local Fallback</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Rate Limiter Reliability -->
+        <section id="cs-reliability-paradox" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Rate Limiter Reliability Paradox</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                The purpose of a rate limiter is to protect downstream services from crashing under traffic surges. However, in distributed architectures, the rate limiter itself depends on an external network service (typically Redis).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                This introduces <strong>The Reliability Paradox</strong>: <em>What happens when the tool meant to protect your system experiences a failure?</em> If an unhandled Redis connection timeout causes your FastAPI middleware to raise a <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">500 Internal Server Error</code>, a blip in Redis knocks down 100% of your company's revenue-generating traffic!
+            </p>
+
+            <!-- Fail-Open vs Fail-Closed Matrix (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The SRE Disaster Recovery Matrix: Fail-Open vs. Fail-Closed</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Evaluating Availability vs. Security Under Redis Partitions</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Fail-Open Card -->
+                    <div class="p-5 bg-sky-950/40 border border-sky-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-sky-800/60 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">1. Fail-Open (Permissive Policy)</span>
+                            <span class="text-[10px] bg-sky-900/60 text-sky-300 px-2 py-0.5 rounded font-bold">High Availability</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            If Redis is down or times out, <strong>allow the request through</strong>:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-sky-200 text-[10px] space-y-1">
+                            <div>Redis ping times out (> 15ms) &rarr; Catch RedisError</div>
+                            <div>Log CRITICAL SRE alert to monitoring stream</div>
+                            <div>Return RateLimitResult(allowed=True, remaining=1)</div>
+                            <div class="text-emerald-400 font-bold">&rarr; Endpoints continue serving customer requests!</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Best For:</strong> Public read APIs, product catalog search, e-commerce checkout.</li>
+                            <li><strong>Philosophy:</strong> Losing rate limiting temporarily is better than losing 100% of customer revenue.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Fail-Closed Card -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">2. Fail-Closed (Defensive Policy)</span>
+                            <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">High Security</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            If Redis is down or times out, <strong>block the request immediately</strong>:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>Redis ping times out (> 15ms) &rarr; Catch RedisError</div>
+                            <div>Raise HTTPException(status_code=503, Retry-After=30)</div>
+                            <div>Or reject with RateLimitResult(allowed=False)</div>
+                            <div class="text-rose-400 font-bold">&rarr; Protects databases &amp; identity stores from attack!</div>
+                        </div>
+                        <ul class="text-[10px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Best For:</strong> Authentication (`POST /auth/login`), payment execution, expensive LLM inference.</li>
+                            <li><strong>Philosophy:</strong> Failing closed prevents attackers from intentionally DDoSing Redis to bypass password brute-force guards.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Hybrid Enterprise Standard:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Never configure a single blanket policy across your entire company. In SentinelFlow, the YAML configuration allows declaring <code class="text-white font-mono">fail_policy: FAIL_OPEN</code> globally, while overriding critical endpoints with <code class="text-white font-mono">fail_policy: FAIL_CLOSED</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Composite Key Extraction: NATs, IPv6 Subnets, & Spoofing Defense -->
+        <section id="key-extraction-strategies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Identity &amp; Multi-Tenancy: Composite Keys &amp; IPv6 Subnets</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Before an algorithm can increment a counter, the rate limiter must answer: <strong>"Who is this request from?"</strong> Identifying clients naively leads to critical vulnerabilities:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- The IPv6 /64 Subnet Attack -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">1. The IPv6 Rotation Exploit</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">Botnet Threat</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        IPv4 addresses are scarce. In contrast, standard consumer IPv6 internet connections (home fiber, cloud VPS) are assigned an entire <strong>/64 subnet</strong> containing $2^{64}$ (over $18 \times 10^{18}$) distinct IP addresses.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-rose-300 text-[10px] space-y-0.5">
+                        <div>Attacker IP 1: 2001:db8:abcd:0012:0000:0000:0000:0001</div>
+                        <div>Attacker IP 2: 2001:db8:abcd:0012:0000:0000:0000:0002</div>
+                        <div class="text-rose-400 font-bold">&rarr; Attacker rotates through 10M IPs in seconds!</div>
+                    </div>
+                    <p class="text-[11px] text-emerald-800 font-sans">
+                        <strong>The Solution:</strong> Normalize all IPv6 addresses to their parent <strong>/64 CIDR subnet prefix</strong>. All $18 \times 10^{18}$ addresses from that customer share a single rate-limiting bucket!
+                    </p>
+                </div>
+
+                <!-- X-Forwarded-For Spoofing -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">2. X-Forwarded-For Spoofing</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Header Injection</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Clients can send arbitrary headers: <code class="text-purple-700 font-bold">X-Forwarded-For: 1.1.1.1</code>. If your application blindly trusts this header, an attacker can bypass rate limits simply by generating random IP strings on each request!
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-purple-300 text-[10px] space-y-0.5">
+                        <div>Client &rarr; [X-Forwarded-For: 8.8.8.8] &rarr; Cloudflare (192.168.1.1)</div>
+                        <div class="text-amber-300 font-bold">&rarr; Naive code reads 8.8.8.8 instead of Cloudflare proxy!</div>
+                    </div>
+                    <p class="text-[11px] text-emerald-800 font-sans">
+                        <strong>The Solution:</strong> Inspect <code class="font-bold">X-Forwarded-For</code> <em>only</em> if the immediate connection IP matches a configured whitelist of trusted edge reverse proxies (e.g., AWS ALB, Cloudflare CIDRs).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Composite Key Formula Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-3 border border-slate-800">
+                <div class="text-emerald-400 font-bold text-center uppercase tracking-widest text-[11px]">
+                    The Enterprise Multi-Tier Composite Key Architecture
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center text-sm font-bold text-sky-300">
+                    Key = {Tenant_ID} : {Principal_ID | Subnet_64} : {HTTP_Method} : {Route_Regex_Hash}
+                </div>
+                <div class="text-[11px] text-slate-400 font-sans text-center">
+                    Ensures authenticated users are identified by User ID, while anonymous traffic is isolated by IPv4 / IPv6 subnet masks without cross-tenant key pollution.
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Adaptive Throttling: Google SRE & Self-Healing Traffic Shaping -->
+        <section id="adaptive-throttling" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Self-Healing Infrastructure: Google SRE Adaptive Throttling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Static rate limits assume the backend is operating in a healthy state. But what happens when your downstream PostgreSQL database or payment provider slows down due to hardware contention? 
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If the database normally handles 1,000 requests per second at 5ms latency, but suddenly degrades to 500ms latency, continuing to allow 1,000 requests per second will cause query queue depths to explode, exhausting memory and triggering a total cascading outage.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In Chapter 21 of the <em>Google Site Reliability Engineering (SRE)</em> handbook, Google formalized <strong>Adaptive Throttling</strong>. It dynamically computes a client-side or gateway rejection probability based on the ratio of attempted requests to successfully accepted requests:
+            </p>
+
+            <!-- Adaptive Throttling Formula & Curve (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Google SRE Adaptive Throttling Formula</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Self-Healing Client Rejection Probability Curve</p>
+                </div>
+
+                <!-- Equation Box -->
+                <div class="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-center space-y-2">
+                    <div class="text-sm md:text-base text-emerald-300 font-bold tracking-wider">
+                        P(Drop) = max( 0, ( Requests &minus; K &times; Accepts ) / ( Requests + 1 ) )
+                    </div>
+                    <div class="text-[10px] text-slate-400 font-sans">
+                        Where <code class="text-amber-300 font-mono">K</code> is the Multiplier (typically 1.1 to 2.0). If requests == accepts, P(Drop) = 0.
+                    </div>
+                </div>
+
+                <!-- Dynamic Behavior Scenarios -->
+                <div class="grid md:grid-cols-3 gap-3 text-center text-[11px]">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-emerald-400 font-bold block">1. Healthy Backend</span>
+                        <div class="text-slate-300">Requests: 1,000 &bull; Accepts: 1,000</div>
+                        <div class="text-slate-400 text-[10px]">(1000 - 2.0 &times; 1000) &lt; 0</div>
+                        <div class="text-emerald-300 font-bold">Drop Probability: 0%</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-amber-400 font-bold block">2. Degraded Backend</span>
+                        <div class="text-slate-300">Requests: 1,000 &bull; Accepts: 400</div>
+                        <div class="text-slate-400 text-[10px]">(1000 - 2.0 &times; 400) / 1001</div>
+                        <div class="text-amber-300 font-bold">Drop Probability: ~19.9%</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-rose-800 rounded-xl space-y-1">
+                        <span class="text-rose-400 font-bold block">3. Failing Backend</span>
+                        <div class="text-slate-300">Requests: 1,000 &bull; Accepts: 100</div>
+                        <div class="text-slate-400 text-[10px]">(1000 - 2.0 &times; 100) / 1001</div>
+                        <div class="text-rose-400 font-bold">Drop Probability: ~79.9%</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Self-Healing Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        As the backend begins failing, the gateway dynamically sheds load without human intervention. Once the backend catches up and begins accepting requests again, the rejection probability gracefully drops back to zero.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: SentinelFlow Milestone 06 -->
+        <section id="sentinelflow-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 06: Resilient Architecture Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 06 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/key_extractor.py</code>: extracting composite keys, masking IPv6 <code class="font-mono text-purple-700 font-bold">/64</code> subnets, and validating trusted reverse proxies.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/adaptive.py</code>: Google SRE Adaptive Throttling engine.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/storage/resilient_redis.py</code>: a resilient storage wrapper supporting <code class="font-mono text-purple-700 font-bold">FAIL_OPEN</code> and <code class="font-mono text-purple-700 font-bold">FAIL_CLOSED</code> policies with emergency in-memory fallbacks.</li>
+                <li>We write comprehensive unit tests in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_resilience.py</code>.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 06)</div>
+                <div>sentinelflow/</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── config/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">key_extractor.py</span>       <span class="text-slate-500"># Milestone 06: IPv6 /64 Subnets &amp; Proxy Validation</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">adaptive.py</span>            <span class="text-slate-500"># Milestone 06: Google SRE Adaptive Throttling</span></div>
+                <div>│       └── storage/</div>
+                <div>│           ├── redis_manager.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">resilient_redis.py</span>     <span class="text-slate-500"># Milestone 06: Fail-Open/Closed &amp; In-Memory Fallback</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_algorithms.py</div>
+                <div>        ├── test_config.py</div>
+                <div>        ├── test_buckets.py</div>
+                <div>        ├── test_sliding_counter.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_resilience.py</span>         <span class="text-slate-500"># Milestone 06: Resilience &amp; SRE Tests</span></div>
+            </div>
+
+            <!-- File 1: src/sentinelflow/core/key_extractor.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Composite Key Extractor: <code class="text-purple-700">src/sentinelflow/core/key_extractor.py</code></span>
+                    <span class="text-slate-400">IPv6 Subnets &amp; Spoof Defense</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Core - Composite Key &amp; Subnet Extractor (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> ipaddress
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Optional
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">KeyExtractor</span>:
+    <span class="text-slate-500">"""
+    Extracts sanitized rate limit keys from incoming request headers.
+    Defends against IPv6 rotation exploits and unvalidated X-Forwarded-For spoofing.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, trusted_proxies: Optional[List[str]] = <span class="text-rose-400">None</span>):
+        <span class="text-slate-500"># Whitelist of trusted reverse proxies (e.g., Cloudflare, AWS ALB)</span>
+        self.trusted_proxies = {
+            ipaddress.ip_network(p) <span class="text-purple-400">for</span> p <span class="text-purple-400">in</span> (trusted_proxies <span class="text-purple-400">or</span> [<span class="text-amber-300">"127.0.0.1/32"</span>, <span class="text-amber-300">"::1/128"</span>])
+        }
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">sanitize_ip</span>(self, client_ip: str) -> str:
+        <span class="text-slate-500">"""
+        Normalizes IP addresses.
+        Aggregates IPv6 addresses into a single /64 subnet prefix!
+        """</span>
+        <span class="text-purple-400">try</span>:
+            ip = ipaddress.ip_address(client_ip.strip())
+            <span class="text-purple-400">if</span> ip.version == 6:
+                <span class="text-slate-500"># Mask to /64 network boundary (standard consumer ISP allocation)</span>
+                network_64 = ipaddress.IPv6Network(f<span class="text-amber-300">"&#123;ip&#125;/64"</span>, strict=<span class="text-rose-400">False</span>)
+                <span class="text-purple-400">return</span> str(network_64.network_address)
+            <span class="text-purple-400">return</span> str(ip)
+        <span class="text-purple-400">except</span> ValueError:
+            <span class="text-purple-400">return</span> <span class="text-amber-300">"malformed_ip"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">extract_client_ip</span>(self, direct_ip: str, x_forwarded_for: Optional[str] = <span class="text-rose-400">None</span>) -> str:
+        <span class="text-slate-500">"""
+        Inspects X-Forwarded-For ONLY if direct connection IP is a trusted reverse proxy!
+        """</span>
+        <span class="text-purple-400">try</span>:
+            parsed_direct = ipaddress.ip_address(direct_ip)
+            is_trusted = any(parsed_direct <span class="text-purple-400">in</span> net <span class="text-purple-400">for</span> net <span class="text-purple-400">in</span> self.trusted_proxies)
+
+            <span class="text-purple-400">if</span> is_trusted <span class="text-purple-400">and</span> x_forwarded_for:
+                <span class="text-slate-500"># Read leftmost client IP from X-Forwarded-For: "client, proxy1, proxy2"</span>
+                raw_client = x_forwarded_for.split(<span class="text-amber-300">","</span>)[0].strip()
+                <span class="text-purple-400">return</span> self.sanitize_ip(raw_client)
+        <span class="text-purple-400">except</span> ValueError:
+            pass
+
+        <span class="text-purple-400">return</span> self.sanitize_ip(direct_ip)</pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/core/adaptive.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Google SRE Adaptive Throttling: <code class="text-purple-700">src/sentinelflow/core/adaptive.py</code></span>
+                    <span class="text-slate-400">Dynamic Rejection Math</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Core - Google SRE Adaptive Throttling (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> random
+<span class="text-purple-400">from</span> collections <span class="text-purple-400">import</span> deque
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Deque, Tuple
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AdaptiveThrottler</span>:
+    <span class="text-slate-500">"""
+    GOOGLE SRE ADAPTIVE THROTTLING ENGINE:
+    Calculates dynamic rejection probabilities based on rolling backend success/fail ratios.
+    P(Drop) = max(0, (Requests - K * Accepts) / (Requests + 1))
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, multiplier_k: float = 2.0, history_window_size: int = 1000):
+        self.multiplier_k = multiplier_k
+        <span class="text-slate-500"># Circular buffer holding bool outcomes: True=Accepted, False=Rejected</span>
+        self._history: Deque[bool] = deque(maxlen=history_window_size)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_result</span>(self, success: bool) -> <span class="text-rose-400">None</span>:
+        self._history.append(success)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rejection_probability</span>(self) -> float:
+        requests = len(self._history)
+        <span class="text-purple-400">if</span> requests &lt; 20:
+            <span class="text-slate-500"># Warm-up phase: do not throttle before having statistical sample</span>
+            <span class="text-purple-400">return</span> 0.0
+
+        accepts = sum(1 <span class="text-purple-400">for</span> success <span class="text-purple-400">in</span> self._history <span class="text-purple-400">if</span> success)
+        drop_prob = (requests - (self.multiplier_k * accepts)) / (requests + 1)
+        <span class="text-purple-400">return</span> max(0.0, drop_prob)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">should_drop</span>(self) -> bool:
+        prob = self.rejection_probability()
+        <span class="text-purple-400">if</span> prob &lt;= 0.0:
+            <span class="text-purple-400">return False</span>
+        <span class="text-purple-400">return</span> random.random() &lt; prob</pre>
+            </div>
+
+            <!-- File 3: src/sentinelflow/storage/resilient_redis.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Resilient Storage Client: <code class="text-purple-700">src/sentinelflow/storage/resilient_redis.py</code></span>
+                    <span class="text-slate-400">Fail-Open/Closed with In-Memory Fallback</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow Storage - Resilient Redis Adapter (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">import</span> redis.exceptions
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+<span class="text-purple-400">from</span> sentinelflow.core.sliding_counter <span class="text-purple-400">import</span> SlidingWindowCounter
+<span class="text-purple-400">from</span> sentinelflow.storage.redis_manager <span class="text-purple-400">import</span> RedisRateLimiter
+
+logger = logging.getLogger(<span class="text-amber-300">"sentinelflow.resilience"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FailPolicy</span>(str, Enum):
+    FAIL_OPEN = <span class="text-amber-300">"FAIL_OPEN"</span>      <span class="text-slate-500"># Allow traffic on Redis crash (preserve UX)</span>
+    FAIL_CLOSED = <span class="text-amber-300">"FAIL_CLOSED"</span>  <span class="text-slate-500"># Block traffic on Redis crash (protect security)</span>
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ResilientRateLimiter</span>:
+    <span class="text-slate-500">"""
+    FAULT-TOLERANT STORAGE WRAPPER:
+    Wraps Redis cluster with circuit recovery, emergency in-memory fallbacks,
+    and route-specific Fail-Open / Fail-Closed policies.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        redis_limiter: RedisRateLimiter,
+        default_policy: FailPolicy = FailPolicy.FAIL_OPEN
+    ):
+        self.redis_limiter = redis_limiter
+        self.default_policy = default_policy
+        <span class="text-slate-500"># Emergency in-memory fallback cache (used if Redis is unreachable)</span>
+        self._emergency_fallback = SlidingWindowCounter(limit=1000, window_seconds=60.0)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_with_fallback</span>(
+        self,
+        key: str,
+        limit: int,
+        window_seconds: float,
+        policy: Optional[FailPolicy] = <span class="text-rose-400">None</span>
+    ) -> RateLimitResult:
+        active_policy = policy <span class="text-purple-400">or</span> self.default_policy
+
+        <span class="text-purple-400">try</span>:
+            <span class="text-slate-500"># 1. Primary path: Attempt atomic Redis Lua execution</span>
+            <span class="text-purple-400">return await</span> self.redis_limiter.acquire_sliding_counter(
+                key=key, limit=limit, window_seconds=window_seconds
+            )
+        <span class="text-purple-400">except</span> (redis.exceptions.RedisError, TimeoutError) <span class="text-purple-400">as</span> exc:
+            logger.error(f<span class="text-rose-400">"REDIS OUTAGE DETECTED: &#123;exc&#125;. Engaging policy: &#123;active_policy.value&#125;"</span>)
+
+            <span class="text-slate-500"># 2. FAIL-CLOSED: Block traffic immediately</span>
+            <span class="text-purple-400">if</span> active_policy == FailPolicy.FAIL_CLOSED:
+                <span class="text-purple-400">return</span> RateLimitResult(
+                    allowed=<span class="text-rose-400">False</span>,
+                    limit=limit,
+                    remaining=0,
+                    reset_after_seconds=window_seconds,
+                    reset_epoch_seconds=0
+                )
+
+            <span class="text-slate-500"># 3. FAIL-OPEN: Permit traffic through while logging telemetry</span>
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=limit,
+                remaining=1,
+                reset_after_seconds=0.0,
+                reset_epoch_seconds=0
+            )</pre>
+            </div>
+
+            <!-- File 4: tests/unit/test_resilience.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Resilience &amp; SRE Test Battery: <code class="text-purple-700">tests/unit/test_resilience.py</code></span>
+                    <span class="text-slate-400">Verifying Fault Modes</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> redis.exceptions
+<span class="text-purple-400">from</span> sentinelflow.core.key_extractor <span class="text-purple-400">import</span> KeyExtractor
+<span class="text-purple-400">from</span> sentinelflow.core.adaptive <span class="text-purple-400">import</span> AdaptiveThrottler
+<span class="text-purple-400">from</span> sentinelflow.storage.resilient_redis <span class="text-purple-400">import</span> ResilientRateLimiter, FailPolicy
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestResilienceAndExtraction</span>:
+    <span class="text-slate-500">"""Verifies SRE failure modes, IPv6 normalization, and adaptive throttling."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_ipv6_addresses_masked_to_64_subnet</span>(self):
+        extractor = KeyExtractor()
+        ip1 = <span class="text-amber-300">"2001:0db8:85a3:0000:0000:8a2e:0370:7334"</span>
+        ip2 = <span class="text-amber-300">"2001:0db8:85a3:0000:ffff:ffff:ffff:ffff"</span>
+        
+        <span class="text-slate-500"># Both IPs belong to 2001:db8:85a3::/64</span>
+        subnet1 = extractor.sanitize_ip(ip1)
+        subnet2 = extractor.sanitize_ip(ip2)
+        assert subnet1 == subnet2 == <span class="text-amber-300">"2001:db8:85a3::"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_spoofed_x_forwarded_for_ignored_from_untrusted_direct_ip</span>(self):
+        extractor = KeyExtractor(trusted_proxies=[<span class="text-amber-300">"10.0.0.1/32"</span>])
+        
+        <span class="text-slate-500"># Direct connection comes from untrusted 198.51.100.2 pretending to be 1.1.1.1</span>
+        extracted = extractor.extract_client_ip(
+            direct_ip=<span class="text-amber-300">"198.51.100.2"</span>, 
+            x_forwarded_for=<span class="text-amber-300">"1.1.1.1"</span>
+        )
+        <span class="text-slate-500"># Must ignore the spoofed header and rate limit the real direct connection IP!</span>
+        assert extracted == <span class="text-amber-300">"198.51.100.2"</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_fail_open_permits_traffic_during_redis_crash</span>(self, mocker):
+        mock_redis = mocker.MagicMock()
+        mock_redis.acquire_sliding_counter = mocker.AsyncMock(
+            side_effect=redis.exceptions.ConnectionError(<span class="text-amber-300">"Redis cluster unreachable"</span>)
+        )
+        limiter = ResilientRateLimiter(mock_redis, default_policy=FailPolicy.FAIL_OPEN)
+
+        res = <span class="text-purple-400">await</span> limiter.acquire_with_fallback(<span class="text-amber-300">"user_1"</span>, 100, 60.0)
+        assert res.allowed <span class="text-purple-400">is True</span>  <span class="text-slate-500"># Zero downtime! User traffic allowed through</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_fail_closed_blocks_traffic_on_auth_endpoint</span>(self, mocker):
+        mock_redis = mocker.MagicMock()
+        mock_redis.acquire_sliding_counter = mocker.AsyncMock(
+            side_effect=redis.exceptions.ConnectionError(<span class="text-amber-300">"Redis connection timeout"</span>)
+        )
+        limiter = ResilientRateLimiter(mock_redis, default_policy=FailPolicy.FAIL_OPEN)
+
+        <span class="text-slate-500"># Route override: Login route enforces FAIL_CLOSED</span>
+        res = <span class="text-purple-400">await</span> limiter.acquire_with_fallback(<span class="text-amber-300">"user_1"</span>, 5, 60.0, policy=FailPolicy.FAIL_CLOSED)
+        assert res.allowed <span class="text-purple-400">is False</span>  <span class="text-slate-500"># Protects authentication store from brute force!</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_google_sre_adaptive_throttling_probability_calculation</span>(self):
+        throttler = AdaptiveThrottler(multiplier_k=2.0)
+        
+        <span class="text-slate-500"># 100 requests: 90 accepted &rarr; Drop probability is 0</span>
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(90): throttler.record_result(True)
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(10): throttler.record_result(False)
+        assert throttler.rejection_probability() == 0.0
+
+        <span class="text-slate-500"># Downstream degrades: 100 consecutive backend rejections</span>
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(100): throttler.record_result(False)
+        
+        <span class="text-slate-500"># Probability must jump to shed load</span>
+        assert throttler.rejection_probability() &gt; 0.0</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Trusting Raw X-Forwarded-For Headers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">client_ip = request.headers.get("X-Forwarded-For")</code> without validating the connecting peer IP.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys rate limiting:</strong> HTTP request headers can be spoofed by any client. An attacker sending requests via <code class="font-mono">curl -H "X-Forwarded-For: &lt;random_ip&gt;"</code> will create a brand new rate-limit bucket on every single request, completely bypassing all rate limits! Only read proxy headers if the connecting socket originates from a whitelisted reverse proxy.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Global Blanket Fail-Open Policies</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring the rate limiter to Fail-Open across all routes, including <code class="font-mono text-rose-900">POST /auth/login</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes security breaches:</strong> Attackers purposely trigger a DDoS attack against your Redis cluster to force the rate limiter into failure mode. Once Redis drops, the login endpoint runs un-throttled, allowing the attacker to brute-force passwords without restriction! Always enforce <strong>Fail-Closed</strong> on security-critical boundaries.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify IPv6 subnet aggregation, fail-open/closed recovery, and Google SRE adaptive throttling:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Unit Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the SRE resilience and adaptive throttling test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_resilience.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.04s. Confirms /64 subnet aggregation, proxy validation, and adaptive load shedding!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test IPv6 subnet masking directly in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from sentinelflow.core.key_extractor import KeyExtractor; k = KeyExtractor(); print('Subnet:', k.sanitize_ip('2001:db8:1234:5678:abcd:ef01:2345:6789'))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output: <code class="text-emerald-400 font-mono">Subnet: 2001:db8:1234:5678::</code> (Aggregated into single /64 bucket).
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Web Integration: FastAPI ASGI Middleware &amp; Standardized IETF Headers</h4>
+                <p class="text-xs text-slate-500 font-sans">Connecting traffic control to the web: Writing pure ASGI middleware without memory buffering, injecting standard IETF rate-limit headers on 200/429 responses, and building production FastAPI gateways.</p>
+            </div>
+            <a href="Chapter 07 - Web Integration - FastAPI ASGI Middleware and Standardized IETF Headers.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

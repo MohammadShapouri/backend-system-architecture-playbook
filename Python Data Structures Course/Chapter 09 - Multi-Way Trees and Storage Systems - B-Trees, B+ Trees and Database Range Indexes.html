@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Multi-Way Trees &amp; Storage Systems - B-Trees, B+ Trees &amp; Database Range Indexes</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 09 - Multi-Way B-Tree Storage Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Storage Engines &amp; High Fan-Out Topologies
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 09: Multi-Way Trees &amp; Storage Systems - B-Trees, B+ Trees &amp; Database Range Indexes
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Overcoming binary tree pointer limits: Understanding why industrial database engines (PostgreSQL, SQLite, MySQL InnoDB) abandon binary trees for high-fan-out multi-way layouts, aligning tree nodes with hardware cache lines and 4KB memory pages, orchestrating proactive top-down node splitting, comparing B-Trees against B+ Trees with leaf chaining, and engineering an in-memory B-Tree range index for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Culmination</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 09: Multi-Way B-Tree Storage Index</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 08, we proved that AVL trees prevent pathological degeneration by keeping heights balanced at $h \approx 1.44 \log_2 n$. However, in enterprise database systems storing tens of millions of records, a binary tree with a fan-out of 2 still requires 20 to 30 pointer hops across random heap memory per query. In Milestone 09, we construct MemForge's <strong>Multi-Way B-Tree Index</strong> (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">MemBTreeIndex</code>): a storage-aligned indexing engine with a high branching factor ($t$), minimizing pointer hops, keeping entire node keys contiguous in RAM, and providing lightning-fast multi-key range scans.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Fan-Out Theorem (B-Tree vs. Binary Tree)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> B-Tree Invariants (Degree $t$, Capacity $2t-1$)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> B-Tree vs. B+ Tree Architectural Tradeoffs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Proactive Top-Down Node Splitting (CLRS Model)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Sequential Range Iteration &amp; In-Order Traversal</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">MemBTreeIndex</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of High Fan-Out Storage Trees -->
+        <section id="fan-out-theorem" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Fan-Out Theorem &amp; Storage Alignment</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Why do foundational databases like PostgreSQL, MySQL (InnoDB), and SQLite rely on multi-way trees (specifically B-Trees and B+ Trees) rather than Red-Black or AVL trees?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The reason is hardware reality: <strong>The Memory Hierarchy and the Fan-Out Theorem</strong>. In computing systems, memory is not transferred in single bytes; hardware controllers transfer data in fixed-size blocks (typically a 64-byte CPU cache line, or a 4KB to 16KB virtual memory page / storage block).
+            </p>
+
+            <!-- Fan-Out Comparison Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Fan-Out Theorem: Binary Trees (Fan-Out = 2) vs. Multi-Way B-Trees (Fan-Out = 100)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Evaluating pointer-dereference depth and cache-line efficiency across 10,000,000 records</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 items-stretch">
+                    <!-- Binary Tree -->
+                    <div class="p-5 bg-slate-950 border border-rose-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Binary Tree (AVL / Red-Black)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold">Fan-Out B = 2</span>
+                        </div>
+
+                        <div class="space-y-2 text-[11px] font-sans text-slate-300">
+                            <div><strong>Tree Height for 10M records:</strong></div>
+                            <div class="p-2 bg-slate-900 rounded font-mono text-rose-300 text-xs">
+                                h &approx; &lceil;log₂ (10,000,000)&rceil; = 24 pointer hops!
+                            </div>
+                            <p class="text-[11px] text-slate-400 leading-relaxed">
+                                Every single node holds only <strong>1 key</strong> and <strong>2 child pointers</strong> (taking ~32 bytes). When loaded from memory or disk, it uses less than 1% of a 4KB memory page, wasting 99% of transferred bandwidth on empty padding. Traversal forces 24 disjoint random memory address dereferences!
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Multi-Way B-Tree -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Multi-Way B-Tree (Storage Aligned)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold">Fan-Out B = 100</span>
+                        </div>
+
+                        <div class="space-y-2 text-[11px] font-sans text-slate-300">
+                            <div><strong>Tree Height for 10M records:</strong></div>
+                            <div class="p-2 bg-slate-900 rounded font-mono text-emerald-300 text-xs">
+                                h &approx; &lceil;log₁₀₀ (10,000,000)&rceil; = 4 pointer hops!
+                            </div>
+                            <p class="text-[11px] text-slate-400 leading-relaxed">
+                                Each node holds up to <strong>99 sorted keys</strong> and <strong>100 child pointers</strong>, packed contiguously into a single 4KB block. Finding an element takes only 3 to 4 node fetches. Once a node is brought into CPU cache, all 99 keys are searched using instantaneous binary search in L1 cache!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">The Core Storage Principle:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        By increasing the branching factor $B$, tree height shrinks drastically from $O(\log_2 n)$ to $O(\log_B n)$. In high-performance data systems, CPU computation inside a localized contiguous memory block is thousands of times cheaper than chasing pointers across disjoint random memory addresses.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Mathematical Invariants: B-Trees vs. B+ Trees -->
+        <section id="btree-invariants" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: B-Tree Invariants &amp; The B+ Tree Extension</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Invented by Rudolf Bayer and Edward M. McCreight at Boeing Labs in 1970, a <strong>B-Tree of Minimum Degree $t \ge 2$</strong> satisfies the following strict mathematical invariants:
+            </p>
+
+            <!-- 5 Core B-Tree Rules Grid -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <span class="text-emerald-700 font-bold font-mono text-sm block">1. Node Key Bounds</span>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Every node except the root contains at least $t - 1$ keys and at most $2t - 1$ keys. The root contains at least 1 key (unless the tree is empty).
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <span class="text-purple-700 font-bold font-mono text-sm block">2. Child Branching</span>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        If an internal node contains $k$ keys, it must have exactly $k + 1$ children. The keys act as partition separators between the subtrees.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <span class="text-sky-700 font-bold font-mono text-sm block">3. Strict Leaf Balance</span>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        All leaf nodes reside at the <strong>exact same depth</strong>. A B-Tree grows <em>upward from the root</em> upon splitting, never downward at arbitrary branches.
+                    </p>
+                </div>
+            </div>
+
+            <!-- B-Tree vs B+ Tree Architecture Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Architectural Duality: Standard B-Tree vs. B+ Tree with Leaf Chaining
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-start">
+                    <!-- Standard B-Tree -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <span class="text-sky-300 font-bold text-sm block border-b border-slate-800 pb-1">Standard B-Tree</span>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            Every node (internal nodes and leaves) stores both <strong>keys and data values</strong>.
+                        </p>
+                        <div class="p-3 bg-slate-900 rounded-xl space-y-2 text-[10px]">
+                            <div class="bg-slate-800 p-2 rounded text-center text-sky-300 border border-slate-700">
+                                Internal Node: [Key 50 + Data Payload 50]
+                            </div>
+                            <div class="flex justify-between gap-2">
+                                <div class="bg-slate-800 p-1.5 rounded flex-1 text-center text-slate-300">
+                                    Leaf: [20 + Data 20]
+                                </div>
+                                <div class="bg-slate-800 p-1.5 rounded flex-1 text-center text-slate-300">
+                                    Leaf: [75 + Data 75]
+                                </div>
+                            </div>
+                        </div>
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Advantage:</strong> Point queries for keys located near the top return immediately without reaching leaves.</li>
+                            <li><strong>Disadvantage:</strong> Data payloads consume space inside internal nodes, reducing fan-out. Range queries require in-order traversal jumping up and down the tree.</li>
+                        </ul>
+                    </div>
+
+                    <!-- B+ Tree -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold text-sm block border-b border-slate-800 pb-1">B+ Tree (Database Standard)</span>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            Internal nodes store <strong>keys only</strong> (routing guide). All data values reside exclusively in <strong>leaves</strong>, linked in a chain!
+                        </p>
+                        <div class="p-3 bg-slate-900 rounded-xl space-y-2 text-[10px]">
+                            <div class="bg-slate-800 p-2 rounded text-center text-purple-300 border border-purple-800">
+                                Router Node (Keys Only): [ 50 ]
+                            </div>
+                            <div class="flex items-center justify-between gap-1">
+                                <div class="bg-emerald-950 p-1.5 rounded flex-1 text-center text-emerald-300 border border-emerald-700">
+                                    Leaf: [20:Data, 35:Data]
+                                </div>
+                                <span class="text-emerald-400 font-bold">&hArr;</span>
+                                <div class="bg-emerald-950 p-1.5 rounded flex-1 text-center text-emerald-300 border border-emerald-700">
+                                    Leaf: [50:Data, 80:Data]
+                                </div>
+                            </div>
+                        </div>
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong>Advantage (Maximized Fan-Out):</strong> Internal nodes hold hundreds of keys, keeping tree height extremely flat ($h \le 3$).</li>
+                            <li><strong>Advantage (Linear Range Scans):</strong> Range queries ($v_1 \le x \le v_2$) binary search to the starting leaf once, then simply follow the leaf's horizontal <code class="font-mono text-emerald-400">next</code> pointer without touching the tree!</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Algorithms: Proactive Node Splitting Mechanics -->
+        <section id="splitting-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: Proactive Top-Down Node Splitting</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In classical tree algorithms, insertion descends to a leaf, adds the key, and if the leaf overflows, triggers a cascading sequence of parent splits propagating back up the tree.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In production systems, this bottom-up splitting introduces complex locking contention in multi-threaded databases. The standard production algorithm (formalized in Cormen, Leiserson, Rivest, and Stein &bull; CLRS) is <strong>Proactive Top-Down Splitting</strong>:
+            </p>
+
+            <!-- Splitting Diagram -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">The CLRS Single-Pass Invariant</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">Proactive Median Promotion ($t=2$ Example)</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    As the insertion algorithm descends the tree from the root, whenever it encounters a full node (holding $2t - 1$ keys), <strong>it splits that node immediately</strong> before descending into it!
+                </p>
+                <div class="p-4 bg-slate-900 text-slate-200 rounded-xl font-mono text-xs space-y-2 border border-slate-800">
+                    <span class="text-emerald-400 font-bold block text-[11px]">// Splitting a full child node [10, 20, 30] with degree t = 2 (max keys = 3):</span>
+                    <div class="text-[11px] text-slate-300 leading-relaxed">
+                        1. Identify the median key at index $t - 1 = 1$ &rarr; Key 20.<br>
+                        2. Promote median Key 20 up into the parent node.<br>
+                        3. Left keys [10] remain in the original child.<br>
+                        4. Right keys [30] are allocated into a new sibling child node.<br>
+                        5. Because the parent was guaranteed non-full during descent, the promotion never triggers an upstream cascade!
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    This guarantees that insertion completes in a single top-down pass without backtracking or recursive stack propagation. If the <strong>root</strong> is full, the root splits: a new root is created with 1 key, and the tree grows in height by 1 from the top!
+                </p>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 09 -->
+        <section id="memforge-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 09: In-Memory Multi-Way B-Tree Index Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 09 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/index/btree.py</code>: an in-memory Multi-Way B-Tree Secondary Range Index.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The B-Tree Index features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Configurable minimum degree $t$ (e.g. $t=2$ for a 2-3-4 tree, or $t=3$ for max 5 keys per node).</li>
+                <li><strong>Proactive Top-Down Node Splitting:</strong> Splits full nodes ($2t - 1$ keys) during descent, eliminating parent recursion cascades.</li>
+                <li><strong>Multi-Value Duplicate Mapping:</strong> Each key maps to an array of associated <code class="font-mono text-slate-800">record_ids</code>.</li>
+                <li><strong>Pruned Range Scans:</strong> Recursively prunes subtrees outside query boundaries to execute $[v_{\min}, v_{\max}]$ scans in $O(\log_t n + k)$ time.</li>
+                <li>In-order generator traversal yielding all indexed records in strictly ascending order.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 09)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── buffer.py                 <span class="text-slate-500"># Milestone 01: Zero-Copy WAL &amp; Array</span></div>
+                <div>│       │   └── hash_map.py               <span class="text-slate-500"># Milestone 02: Custom Open-Addressing Hash Table</span></div>
+                <div>│       ├── analytics/</div>
+                <div>│       │   └── telemetry.py              <span class="text-slate-500"># Milestone 03: Telemetry &amp; Config Resolver</span></div>
+                <div>│       ├── cache/</div>
+                <div>│       │   └── lru_cache.py              <span class="text-slate-500"># Milestone 04: LRU Buffer Pool &amp; Page Pinning</span></div>
+                <div>│       ├── scheduler/</div>
+                <div>│       │   └── priority_queue.py         <span class="text-slate-500"># Milestone 05: Priority Query Scheduler</span></div>
+                <div>│       ├── index/</div>
+                <div>│       │   ├── sorted_index.py           <span class="text-slate-500"># Milestone 06: Bisect Sorted Range Index</span></div>
+                <div>│       │   ├── avl_tree.py               <span class="text-slate-500"># Milestone 08: Self-Balancing AVL Secondary Tree</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">btree.py</span>                  <span class="text-slate-500"># Milestone 09: Multi-Way B-Tree Secondary Index</span></div>
+                <div>│       └── txn/</div>
+                <div>│           └── undo_log.py               <span class="text-slate-500"># Milestone 07: Sentinel Doubly Linked Undo Chain</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_hash_map.py          <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_telemetry.py         <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_lru_cache.py         <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_priority_queue.py    <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_sorted_index.py      <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_undo_log.py          <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        ├── test_avl_tree.py          <span class="text-slate-500"># Milestone 08 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_btree.py</span>             <span class="text-slate-500"># Milestone 09: B-Tree Splits, Range Queries &amp; Invariants</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/index/btree.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production B-Tree Engine: <code class="text-purple-700">src/memforge/index/btree.py</code></span>
+                    <span class="text-slate-400">Multi-Way Storage Tree Implementation</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Index Engine - Multi-Way B-Tree Storage Range Index (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> bisect <span class="text-purple-400">import</span> bisect_left
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Iterator, List, Optional, Tuple
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BTreeNode</span>:
+    <span class="text-slate-500">"""Discrete B-Tree node storing up to (2t - 1) keys and (2t) child pointers."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, is_leaf: bool = <span class="text-rose-400">True</span>):
+        self.is_leaf: bool = is_leaf
+        <span class="text-slate-500"># Contiguous list of sorted keys</span>
+        self.keys: List[Any] = []
+        <span class="text-slate-500"># Parallel list of record ID arrays (handles duplicate indexed keys)</span>
+        self.values: List[List[int]] = []
+        <span class="text-slate-500"># List of child node pointers (len(children) == len(keys) + 1 if not leaf)</span>
+        self.children: List[<span class="text-amber-300">"BTreeNode"</span>] = []
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">MemBTreeIndex</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION MULTI-WAY B-TREE SECONDARY INDEX:
+    Implements CLRS proactive top-down node splitting with degree t >= 2.
+    Guarantees strict O(log_t n) search and sub-millisecond range scanning.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, degree: int = 3):
+        <span class="text-purple-400">if</span> degree &lt; 2:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"B-Tree minimum degree t must be >= 2."</span>)
+        self._t: int = degree  <span class="text-slate-500"># Minimum degree</span>
+        self._root: BTreeNode = BTreeNode(is_leaf=<span class="text-rose-400">True</span>)
+        self._total_entries: int = 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__len__</span>(self) -> int:
+        <span class="text-slate-500">"""Returns total active record ID pointers indexed across all keys."""</span>
+        <span class="text-purple-400">return</span> self._total_entries
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">search</span>(self, key: Any) -> List[int]:
+        <span class="text-slate-500">"""Point lookup returning matching record IDs in O(log_t n) time."""</span>
+        <span class="text-purple-400">return</span> self._search_node(self._root, key)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_search_node</span>(self, node: BTreeNode, key: Any) -> List[int]:
+        <span class="text-slate-500"># Use binary search inside the node's sorted key array</span>
+        i = bisect_left(node.keys, key)
+        <span class="text-purple-400">if</span> i &lt; len(node.keys) <span class="text-purple-400">and</span> node.keys[i] == key:
+            <span class="text-purple-400">return</span> node.values[i].copy()
+
+        <span class="text-purple-400">if</span> node.is_leaf:
+            <span class="text-purple-400">return</span> []
+
+        <span class="text-purple-400">return</span> self._search_node(node.children[i], key)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">insert</span>(self, key: Any, record_id: int) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        PROACTIVE TOP-DOWN INSERTION:
+        Splits full nodes during descent, eliminating upward cascading splits.
+        """</span>
+        root = self._root
+        <span class="text-slate-500"># If root is completely full (2t - 1 keys), tree must grow in height by 1</span>
+        <span class="text-purple-400">if</span> len(root.keys) == (2 * self._t - 1):
+            new_root = BTreeNode(is_leaf=<span class="text-rose-400">False</span>)
+            new_root.children.append(root)
+            self._split_child(new_root, 0, root)
+            self._root = new_root
+            self._insert_non_full(new_root, key, record_id)
+        <span class="text-purple-400">else</span>:
+            self._insert_non_full(root, key, record_id)
+
+        self._total_entries += 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_insert_non_full</span>(self, node: BTreeNode, key: Any, record_id: int) -> <span class="text-rose-400">None</span>:
+        i = bisect_left(node.keys, key)
+
+        <span class="text-slate-500"># Case 1: Key already exists in this node &rarr; append record_id</span>
+        <span class="text-purple-400">if</span> i &lt; len(node.keys) <span class="text-purple-400">and</span> node.keys[i] == key:
+            node.values[i].append(record_id)
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Case 2: Node is a leaf &rarr; insert key and value in-place</span>
+        <span class="text-purple-400">if</span> node.is_leaf:
+            node.keys.insert(i, key)
+            node.values.insert(i, [record_id])
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Case 3: Internal node &rarr; descend into child</span>
+        child = node.children[i]
+        <span class="text-slate-500"># Proactive Split Check: Split child if full before descending!</span>
+        <span class="text-purple-400">if</span> len(child.keys) == (2 * self._t - 1):
+            self._split_child(node, i, child)
+            <span class="text-slate-500"># If key is greater than promoted median, descend into right sibling</span>
+            <span class="text-purple-400">if</span> key == node.keys[i]:
+                node.values[i].append(record_id)
+                <span class="text-purple-400">return</span>
+            <span class="text-purple-400">elif</span> key &gt; node.keys[i]:
+                i += 1
+
+        self._insert_non_full(node.children[i], key, record_id)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_split_child</span>(self, parent: BTreeNode, index: int, child: BTreeNode) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        Splits a full child node around its median key at index (t - 1).
+        Promotes the median key up into parent node.
+        """</span>
+        t = self._t
+        median_idx = t - 1
+        median_key = child.keys[median_idx]
+        median_val = child.values[median_idx]
+
+        <span class="text-slate-500"># Allocate new right sibling node</span>
+        sibling = BTreeNode(is_leaf=child.is_leaf)
+
+        <span class="text-slate-500"># Transfer upper (t - 1) keys and values to sibling</span>
+        sibling.keys = child.keys[median_idx + 1 :]
+        sibling.values = child.values[median_idx + 1 :]
+
+        <span class="text-slate-500"># Transfer upper t children to sibling if not leaf</span>
+        <span class="text-purple-400">if not</span> child.is_leaf:
+            sibling.children = child.children[t:]
+            child.children = child.children[:t]
+
+        <span class="text-slate-500"># Shrink original child to lower (t - 1) keys</span>
+        child.keys = child.keys[:median_idx]
+        child.values = child.values[:median_idx]
+
+        <span class="text-slate-500"># Insert median key and sibling child into parent node</span>
+        parent.children.insert(index + 1, sibling)
+        parent.keys.insert(index, median_key)
+        parent.values.insert(index, median_val)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">inorder_traversal</span>(self) -> Iterator[Tuple[Any, List[int]]]:
+        <span class="text-slate-500">"""Yields (key, record_ids) tuples in strictly ascending sorted order."""</span>
+        <span class="text-purple-400">yield from</span> self._inorder_recursive(self._root)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_inorder_recursive</span>(self, node: BTreeNode) -> Iterator[Tuple[Any, List[int]]]:
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(len(node.keys)):
+            <span class="text-purple-400">if not</span> node.is_leaf:
+                <span class="text-purple-400">yield from</span> self._inorder_recursive(node.children[i])
+            <span class="text-purple-400">yield</span> (node.keys[i], node.values[i])
+
+        <span class="text-purple-400">if not</span> node.is_leaf:
+            <span class="text-purple-400">yield from</span> self._inorder_recursive(node.children[len(node.keys)])
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">range_scan</span>(self, min_val: Any, max_val: Any) -> List[int]:
+        <span class="text-slate-500">"""
+        PRUNED B-TREE RANGE SCAN [min_val, max_val]:
+        Selectively descends only subtrees intersecting the interval.
+        Complexity: O(log_t n + k) where k is matching records.
+        """</span>
+        results: List[int] = []
+        self._range_recursive(self._root, min_val, max_val, results)
+        <span class="text-purple-400">return</span> results
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_range_recursive</span>(self, node: BTreeNode, min_val: Any, max_val: Any, out: List[int]) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(len(node.keys)):
+            key = node.keys[i]
+            <span class="text-slate-500"># Descend left child if min_val could reside in that subtree</span>
+            <span class="text-purple-400">if not</span> node.is_leaf <span class="text-purple-400">and</span> min_val &lt;= key:
+                self._range_recursive(node.children[i], min_val, max_val, out)
+
+            <span class="text-slate-500"># Capture matches within interval</span>
+            <span class="text-purple-400">if</span> min_val &lt;= key &lt;= max_val:
+                out.extend(node.values[i])
+
+            <span class="text-slate-500"># Pruning: Stop searching this node if key exceeds max_val</span>
+            <span class="text-purple-400">if</span> key &gt; max_val:
+                <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Descend final right child if applicable</span>
+        <span class="text-purple-400">if not</span> node.is_leaf <span class="text-purple-400">and</span> node.keys[-1] &lt;= max_val:
+            self._range_recursive(node.children[len(node.keys)], min_val, max_val, out)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_btree.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_btree.py</code></span>
+                    <span class="text-slate-400">B-Tree Splits, Range Queries &amp; Invariants</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Multi-Way B-Tree Secondary Index Tests (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.index.btree <span class="text-purple-400">import</span> MemBTreeIndex
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestMemBTreeIndex</span>:
+    <span class="text-slate-500">"""Unit tests asserting B-Tree proactive splits, sorted invariants, and range scans."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_root_split_grows_tree_upward</span>(self):
+        <span class="text-slate-500"># Minimum degree t = 2 (max keys = 2t - 1 = 3 keys per node)</span>
+        btree = MemBTreeIndex(degree=2)
+        assert btree._root.is_leaf <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># Insert 3 keys -> fills the root node completely: [10, 20, 30]</span>
+        btree.insert(10, 1)
+        btree.insert(20, 2)
+        btree.insert(30, 3)
+        assert btree._root.is_leaf <span class="text-purple-400">is True</span>
+        assert btree._root.keys == [10, 20, 30]
+
+        <span class="text-slate-500"># 4th insert forces root split: Key 20 promotes to a NEW root!</span>
+        btree.insert(40, 4)
+        assert btree._root.is_leaf <span class="text-purple-400">is False</span>
+        assert btree._root.keys == [20]  <span class="text-slate-500"># Median promoted</span>
+        assert len(btree._root.children) == 2
+        assert btree._root.children[0].keys == [10]
+        assert btree._root.children[1].keys == [30, 40]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_adversarial_sorted_data_ingestion</span>(self):
+        <span class="text-slate-500"># Ingest 100 strictly ascending sequential numbers into B-Tree (t = 3)</span>
+        btree = MemBTreeIndex(degree=3)
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(1, 101):
+            btree.insert(i, record_id=i * 10)
+
+        assert len(btree) == 100
+
+        <span class="text-slate-500"># Point search validation across extremes and interior</span>
+        assert btree.search(1) == [10]
+        assert btree.search(50) == [500]
+        assert btree.search(100) == [1000]
+        assert btree.search(999) == []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_duplicate_key_accumulation</span>(self):
+        btree = MemBTreeIndex(degree=2)
+        btree.insert(25, 101)
+        btree.insert(25, 102)
+        btree.insert(25, 103)
+
+        assert len(btree) == 3
+        assert btree.search(25) == [101, 102, 103]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_inorder_traversal_sorting_guarantee</span>(self):
+        btree = MemBTreeIndex(degree=2)
+        raw_keys = [45, 12, 89, 3, 23, 77, 91, 14, 66]
+        <span class="text-purple-400">for</span> k <span class="text-purple-400">in</span> raw_keys:
+            btree.insert(k, record_id=k)
+
+        sorted_output = [k <span class="text-purple-400">for</span> k, _ <span class="text-purple-400">in</span> btree.inorder_traversal()]
+        assert sorted_output == [3, 12, 14, 23, 45, 66, 77, 89, 91]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_pruned_range_scan_extraction</span>(self):
+        btree = MemBTreeIndex(degree=3)
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in</span> range(10, 110, 10):  <span class="text-slate-500"># 10, 20, ..., 100</span>
+            btree.insert(i, record_id=i // 10)
+
+        <span class="text-slate-500"># Range scan [25, 65] -> matches 30, 40, 50, 60</span>
+        results = btree.range_scan(min_val=25, max_val=65)
+        assert results == [3, 4, 5, 6]</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Setting Degree t Too Small in Memory</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Defaulting to <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">degree = 2</code> (a 2-3-4 tree) for millions of in-memory objects.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this hurts performance:</strong> If $t=2$, nodes hold only 1 to 3 keys, creating excessive node allocations and null child pointers. In memory, degree should be tuned to cache-line width (e.g. $t = 16$ to $64$), packing 31 to 127 contiguous keys per node to exploit high CPU cache locality.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Linear Scans Inside Nodes</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Iterating via <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">for key in node.keys: if key == target: ...</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this degrades throughput:</strong> If a node stores 128 keys, a linear scan requires up to 128 comparisons per node. Because the keys inside every B-Tree node are strictly sorted, you should use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">bisect_left(node.keys, target)</code> to locate child branches in only 7 operations ($O(\log k)$)!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Neglecting Proactive Splitting</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing naive bottom-up insertion splitting.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this complicates concurrency:</strong> If a leaf split cascades upward to its parent, grandparent, and root, an engine must lock the entire tree path to prevent concurrent race conditions. <strong>Proactive top-down splitting</strong> guarantees that when you arrive at a leaf, its parent is guaranteed non-full, bounding mutations to localized subtrees.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Using B-Trees When B+ Trees Are Needed</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Choosing a standard B-Tree for a workload dominated by range scans (e.g. <code class="font-mono text-rose-900">WHERE date BETWEEN x AND y</code>).
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this wastes CPU:</strong> Standard B-Trees must climb up and down parent pointers via in-order traversal to collect range matches. B+ Trees link all leaf nodes in a horizontal sequence (<code class="font-mono">leaf.next</code>), executing range scans with zero parent node overhead.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the B-Tree secondary index test battery and empirically verify multi-way branching:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge B-Tree index unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_btree.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.08s. Confirms root splits, adversarial sorted ingestion, duplicate tracking, and range pruning.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 09:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, range indices, undo chains, AVL trees, and B-Trees.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect B-Tree height across 10,000 items with degree t = 10:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from memforge.index.btree import MemBTreeIndex; bt = MemBTreeIndex(degree=10); [bt.insert(i, i) for i in range(10000)]; print('Total items:', len(bt)); print('Root key count (fan-out):', len(bt._root.keys)); print('Is root leaf?', bt._root.is_leaf)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates that 10,000 items are structured into a shallow, high-fan-out multi-way tree in fractions of a second.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Prefix Trees &amp; String Search - Tries, Radix Trees &amp; Fast Autocomplete</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering Phase 4: Beyond numeric and scalar comparisons into string retrieval trees (Tries), character edge transitions, Patricia/Radix tree edge compression, and engineering MemForge's real-time autocomplete engine.</p>
+            </div>
+            <a href="Chapter 10 - Prefix Trees and String Search - Tries, Radix Trees and Fast Autocomplete.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

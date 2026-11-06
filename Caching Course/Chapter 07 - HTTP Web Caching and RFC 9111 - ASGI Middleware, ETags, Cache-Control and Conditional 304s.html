@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: HTTP Web Caching &amp; RFC 9111: ASGI Middleware, ETags, Cache-Control &amp; Conditional 304s</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Caching &amp; Edge Acceleration Series &bull; Senior Engineering Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">CacheForge (Milestone 07 - Pure ASGI HTTP Caching &amp; RFC 9111 Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Edge Protocols &amp; Web Standards
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                HTTP Web Caching &amp; RFC 9111: ASGI Middleware, ETags, Cache-Control &amp; Conditional 304s
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating at the wire perimeter of modern Python web frameworks: Formalizing the <strong>RFC 9111 HTTP Caching specification</strong>, decoding modern <code class="font-mono text-emerald-400">Cache-Control</code> directives, streaming cryptographically fast Blake3 ETags, writing zero-buffering pure ASGI middleware for FastAPI, and short-circuiting downstream execution with <code class="font-mono text-emerald-400">304 Not Modified</code> responses in <strong>CacheForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">CacheForge Milestone 07: Pure ASGI RFC 9111 Web Edge</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 06, we built the internal caching engine: in-memory ARC structures, binary MessagePack drivers, Bloom filter penetration shields, XFetch probabilistic stampede refreshers, and multi-tier L1/L2 Pub/Sub invalidation buses. In Milestone 07, we connect CacheForge directly to the <strong>HTTP Wire Protocol</strong>. Instead of forcing clients and edge CDNs to download redundant multi-megabyte payloads, we construct a <strong>Pure ASGI Caching Middleware</strong>. We stamp standard <code class="font-mono text-purple-300">Cache-Control</code> headers, compute streaming entity tags (<code class="font-mono text-purple-300">ETag</code>), evaluate client validation headers (<code class="font-mono text-purple-300">If-None-Match</code>), and short-circuit with raw <code class="font-mono text-emerald-400">304 Not Modified</code> frames—saving 99% of cloud egress bandwidth.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> RFC 9111 HTTP Caching Standard Deep Dive</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Directives: <code class="text-purple-300">s-maxage</code>, <code class="text-purple-300">stale-while-revalidate</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Strong vs. Weak Validators (<code class="text-purple-300">W/"..."</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pure ASGI Interception vs. BaseHTTPMiddleware</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Streaming ETag Generator (Blake3 / Hash Engine)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full In-Memory ASGI HTTPX Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of RFC 9111 HTTP Caching -->
+        <section id="rfc-9111-spec" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The RFC 9111 HTTP Caching Specification</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In June 2022, the IETF obsoleted RFC 7234 and published <strong>RFC 9111: HTTP Caching</strong>, standardizing how intermediate proxies (Cloudflare, Fastly, Akamai), reverse proxies (Nginx, Envoy), and web browsers must handle resource freshness and validation.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In web architecture, the fastest and cheapest HTTP request is the one that <strong>never reaches your backend server at all</strong>. RFC 9111 governs two complementary mechanisms: <strong>Freshness</strong> (how long an entity can be served without checking the origin) and <strong>Validation</strong> (how to verify if a stale entity has actually changed).
+            </p>
+
+            <!-- Freshness vs Validation Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The RFC 9111 Dual-Pillar Lifecycle: Freshness vs. Validation</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Eliminating Server Computation and Egress Bandwidth</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Freshness Card -->
+                    <div class="p-5 bg-sky-950/40 border border-sky-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-sky-800/60 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">Pillar 1: Freshness Lifetime</span>
+                            <span class="text-[10px] bg-sky-900/60 text-sky-300 px-2 py-0.5 rounded font-bold">Zero Origin IO</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Dictated by <code class="font-mono text-white bg-slate-950 px-1 py-0.5 rounded">Cache-Control: max-age=N</code>. While an entity's age is less than its freshness lifetime, the client or edge CDN <strong>serves the response directly from disk/RAM</strong> without issuing any network request to your FastAPI origin.
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-sky-300 text-[10px] space-y-1">
+                            <div>Browser &rarr; Checks Local Cache (Age: 12s &lt; max-age: 60s)</div>
+                            <div class="text-emerald-400 font-bold">&rarr; Returns (200 OK from disk cache) &bull; Latency: 0.1ms</div>
+                            <div>Zero packets reach your datacenter!</div>
+                        </div>
+                    </div>
+
+                    <!-- Validation Card -->
+                    <div class="p-5 bg-purple-950/40 border border-purple-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-purple-800/60 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">Pillar 2: Conditional Validation</span>
+                            <span class="text-[10px] bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded font-bold">Zero Payload Egress</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            When an entity becomes stale (<code class="font-mono text-white bg-slate-950 px-1 py-0.5 rounded">Age &gt; max-age</code>), the client sends a conditional request presenting its cached fingerprint: <code class="font-mono text-white bg-slate-950 px-1 py-0.5 rounded">If-None-Match: "3a8f..."</code>.
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg text-purple-300 text-[10px] space-y-1">
+                            <div>Browser &rarr; GET /api/v1/items [If-None-Match: "3a8f..."]</div>
+                            <div>FastAPI &rarr; Matches current ETag ("3a8f...")</div>
+                            <div class="text-emerald-400 font-bold">&rarr; HTTP/1.1 304 Not Modified &bull; Content-Length: 0</div>
+                            <div>Body is NOT retransmitted across the wire!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Bandwidth Multiplier:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        For a 2MB JSON catalog endpoint queried 10,000 times per minute, sending full 200 responses consumes <strong>20 Gigabytes of bandwidth every minute</strong>. Validating with 304 Not Modified frames reduces wire transmission to <strong>~3 Megabytes total (a 99.98% bandwidth reduction)</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- RFC 9111 Directives Matrix -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Directive</th>
+                            <th class="p-3.5">Target Layer</th>
+                            <th class="p-3.5">RFC 9111 Behavior &amp; Mechanics</th>
+                            <th class="p-3.5">Typical Production Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-sky-700">public</td>
+                            <td class="p-3.5">Shared &amp; Private</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Explicitly permits shared intermediate caches (CDNs, proxies) to cache the response, even if authenticated.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Public catalogs, marketing content, open metadata.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-rose-700">private</td>
+                            <td class="p-3.5">Browser Only</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Only the end-user browser may cache the response. Intermediate CDNs and reverse proxies MUST NOT cache it.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">User profiles, shopping carts, billing invoices.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-amber-700">no-cache</td>
+                            <td class="p-3.5">All Caches</td>
+                            <td class="p-3.5 text-slate-600 font-sans"><strong>Does NOT mean "don't cache"!</strong> Means caches can store it, but MUST revalidate with origin before serving.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Resources requiring zero-staleness verification on every single access.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-rose-800">no-store</td>
+                            <td class="p-3.5">All Caches</td>
+                            <td class="p-3.5 text-rose-700 font-sans"><strong>Absolute ban on storage:</strong> Caches MUST NOT save any part of the request or response to volatile or persistent memory.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">Credit card numbers, authentication passwords, bank tokens.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-purple-700">s-maxage=N</td>
+                            <td class="p-3.5">Shared Only (CDN)</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Overrides <code class="font-mono">max-age</code> specifically for shared caches (CDNs). Allows long CDN caching with short browser caching.</td>
+                            <td class="p-3.5 text-slate-500 font-sans"><code class="font-mono">max-age=60, s-maxage=86400</code> (1 min in browser, 1 day on Cloudflare).</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-emerald-700">stale-while-revalidate=N</td>
+                            <td class="p-3.5">All Caches</td>
+                            <td class="p-3.5 text-emerald-800 font-sans font-bold">Asynchronous background refresh: Serves stale content instantly while kicking off a background refresh to origin.</td>
+                            <td class="p-3.5 text-slate-500 font-sans">High-volume APIs where 0ms latency matters more than strict real-time freshness.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 2. Strong vs. Weak Validators: The Mechanics of ETags -->
+        <section id="etag-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Validation Metrology: Strong vs. Weak Entity Tags (ETags)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                An **Entity Tag (ETag)** is an opaque HTTP header string representing the exact state of a resource. RFC 9111 formally distinguishes between two types of entity tags:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Strong ETag Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">1. Strong Entity Tag</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Byte-for-Byte Exact</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Syntax: <code class="font-mono text-slate-900 font-bold">ETag: "686897696a7c7876b7e2d"</code>
+                    </p>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Guarantees that the underlying resource body has not changed by even a single byte. If two strong ETags are identical, their octet streams are identical.
+                    </p>
+                    <ul class="text-[10px] text-slate-500 font-sans list-disc pl-4 space-y-1">
+                        <li><strong>Mandatory For:</strong> Byte-range requests (<code class="font-mono">Range: bytes=0-1024</code>) and video streaming chunks.</li>
+                        <li><strong>Computation:</strong> Computed via fast cryptographic or non-cryptographic hashes (Blake3, SHA-256, CityHash).</li>
+                    </ul>
+                </div>
+
+                <!-- Weak ETag Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">2. Weak Entity Tag</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Semantically Equivalent</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Syntax: <code class="font-mono text-purple-700 font-bold">ETag: W/"v1.2-user-profile"</code>
+                    </p>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Indicates that two representations are <strong>semantically equivalent</strong>, even if minor byte differences exist (e.g., whitespace formatting, date string localized ordering, or gzip vs. brotli compression).
+                    </p>
+                    <ul class="text-[10px] text-slate-500 font-sans list-disc pl-4 space-y-1">
+                        <li><strong>Standard For:</strong> Dynamic JSON REST responses and HTML templates.</li>
+                        <li><strong>Efficiency:</strong> Can be generated from an entity version number or database <code class="font-mono">updated_at</code> timestamp without reading the full body into memory.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Pure ASGI Interception: Why Senior Engineers Avoid BaseHTTPMiddleware -->
+        <section id="pure-asgi-web" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ASGI Architecture: Pure ASGI Interception vs. Starlette BaseHTTPMiddleware</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When developers implement HTTP caching middleware in FastAPI, the temptation is to inherit from Starlette's <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">BaseHTTPMiddleware</code> using the <code class="font-mono text-xs">call_next</code> pattern.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In high-scale production systems, this pattern introduces severe latency and memory liabilities:
+            </p>
+
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3 font-sans text-xs">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    The BaseHTTPMiddleware Streaming Bottleneck
+                </h3>
+                <p class="text-amber-900 leading-relaxed">
+                    Starlette's <code class="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-950">BaseHTTPMiddleware</code> forces asynchronous streams into an in-memory buffer before passing control back to your middleware. If an endpoint streams a 500MB file export, it buffers the entire 500MB into Python process RAM, spikes server memory, and delays the time-to-first-byte (TTFB). Under high concurrent load, this creates thread contention and can drop <code class="font-mono text-amber-950 font-bold">ContextVar</code> task state across coroutines.
+                </p>
+                <p class="text-emerald-900 font-bold">
+                    <strong>The Industrial Solution: Pure ASGI Middleware.</strong> Implement <code class="font-mono text-emerald-900">async def __call__(self, scope, receive, send)</code>. By intercepting raw ASGI event frames, we evaluate conditional headers, stream hashes on the fly, and short-circuit <code class="font-mono text-emerald-900">304 Not Modified</code> responses directly at the network boundary with <strong>zero response buffering</strong>.
+                </p>
+            </div>
+
+            <!-- Interception Topology Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Pure ASGI 304 Short-Circuit Event Dispatch Flow
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Incoming Request</span>
+                        <div class="text-[10px] text-slate-400">scope['headers'] parsed</div>
+                        <div class="text-[10px] text-sky-200">If-None-Match: "3a8f..."</div>
+                    </div>
+
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Wrapped send()</span>
+                        <div class="text-[10px] text-purple-200">Inspects http.response.start</div>
+                        <div class="text-[10px] text-emerald-300">Matches outgoing ETag!</div>
+                    </div>
+
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Emits HTTP 304</span>
+                        <div class="text-[10px] text-emerald-200">Drops downstream body!</div>
+                        <div class="text-[10px] text-amber-300">0 bytes sent &bull; Instant close</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: CacheForge Milestone 07 -->
+        <section id="cacheforge-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">CacheForge Milestone 07: Pure ASGI Middleware Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07 for <strong>CacheForge</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/web/etag.py</code>: fast hashing utility supporting strong Blake3/SHA-256 and weak semantic ETags.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/web/asgi_cache.py</code>: pure ASGI caching middleware evaluating <code class="font-mono text-purple-700 font-bold">If-None-Match</code> and issuing short-circuited 304 frames.</li>
+                <li>We build a production FastAPI service in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/cacheforge/web/app.py</code> with varying cache policies.</li>
+                <li>We write an in-memory test battery in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/integration/test_asgi_cache.py</code> using <code class="font-mono text-purple-700 font-bold">httpx.AsyncClient</code> and <code class="font-mono text-purple-700 font-bold">ASGITransport</code>.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated CacheForge Hierarchy (Milestone 07)</div>
+                <div>cacheforge/</div>
+                <div>├── src/</div>
+                <div>│   └── cacheforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── serialization/</div>
+                <div>│       ├── storage/</div>
+                <div>│       ├── patterns/</div>
+                <div>│       ├── coherency/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">web/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">etag.py</span>                  <span class="text-slate-500"># Milestone 07: Fast Cryptographic &amp; Weak ETag Engine</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">asgi_cache.py</span>            <span class="text-slate-500"># Milestone 07: Pure ASGI Middleware &amp; 304 Short-Circuit</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">app.py</span>                   <span class="text-slate-500"># Milestone 07: Production FastAPI Accelerated Service</span></div>
+                <div>└── tests/</div>
+                <div>    ├── unit/</div>
+                <div>    └── integration/</div>
+                <div>        ├── test_serialization_driver.py</div>
+                <div>        ├── test_multitier.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_asgi_cache.py</span>          <span class="text-slate-500"># Milestone 07: In-Memory HTTPX ASGI Test Battery</span></div>
+            </div>
+
+            <!-- File 1: src/cacheforge/web/etag.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Fast ETag Generator: <code class="text-purple-700">src/cacheforge/web/etag.py</code></span>
+                    <span class="text-slate-400">Strong &amp; Weak Validators</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Web - Fast Entity Tag (ETag) Engine (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> hashlib
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_strong_etag</span>(body_bytes: bytes) -> str:
+    <span class="text-slate-500">"""Generates a Strong ETag matching the exact byte stream using SHA-256."""</span>
+    digest = hashlib.sha256(body_bytes).hexdigest()[:16]
+    <span class="text-purple-400">return</span> f<span class="text-amber-300">'"{digest}"'</span>
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">generate_weak_etag</span>(identifier: str, version: int | str) -> str:
+    <span class="text-slate-500">"""Generates a Weak ETag representing semantic entity equivalence."""</span>
+    <span class="text-purple-400">return</span> f<span class="text-amber-300">'W/"{identifier}-v{version}"'</span></pre>
+            </div>
+
+            <!-- File 2: src/cacheforge/web/asgi_cache.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Pure ASGI Caching Middleware: <code class="text-purple-700">src/cacheforge/web/asgi_cache.py</code></span>
+                    <span class="text-slate-400">304 Short-Circuit &amp; Zero Buffering</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Web - Pure ASGI HTTP Caching Middleware (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable, Any, Dict, List, Tuple
+<span class="text-purple-400">from</span> cacheforge.web.etag <span class="text-purple-400">import</span> generate_strong_etag
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ASGICacheMiddleware</span>:
+    <span class="text-slate-500">"""
+    HIGH-PERFORMANCE PURE ASGI CACHING MIDDLEWARE:
+    - Bypasses Starlette BaseHTTPMiddleware memory-buffering limits.
+    - Evaluates If-None-Match headers against response ETags.
+    - Short-circuits with HTTP 304 Not Modified directly over ASGI frames.
+    - Automatically injects RFC 9111 Cache-Control directives.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        app: Callable,
+        default_cache_control: str = <span class="text-amber-300">"public, max-age=60, stale-while-revalidate=30"</span>
+    ):
+        self.app = app
+        self.default_cache_control = default_cache_control
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">__call__</span>(
+        self, scope: Dict[str, Any], receive: Callable, send: Callable
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Pass through non-HTTP connections (WebSockets, Lifespan)</span>
+        <span class="text-purple-400">if</span> scope[<span class="text-amber-300">"type"</span>] != <span class="text-amber-300">"http"</span>:
+            <span class="text-purple-400">await</span> self.app(scope, receive, send)
+            <span class="text-purple-400">return</span>
+
+        method = scope.get(<span class="text-amber-300">"method"</span>, <span class="text-amber-300">"GET"</span>).upper()
+        <span class="text-purple-400">if</span> method <span class="text-purple-400">not in</span> (<span class="text-amber-300">"GET"</span>, <span class="text-amber-300">"HEAD"</span>):
+            <span class="text-purple-400">await</span> self.app(scope, receive, send)
+            <span class="text-purple-400">return</span>
+
+        <span class="text-slate-500"># Extract incoming headers</span>
+        raw_headers: List[Tuple[bytes, bytes]] = scope.get(<span class="text-amber-300">"headers"</span>, [])
+        client_headers = {k.decode(<span class="text-amber-300">"latin1"</span>).lower(): v.decode(<span class="text-amber-300">"latin1"</span>) <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> raw_headers}
+        if_none_match = client_headers.get(<span class="text-amber-300">"if-none-match"</span>)
+
+        response_status = 200
+        response_headers: List[Tuple[bytes, bytes]] = []
+        response_chunks: List[bytes] = []
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">intercept_send</span>(message: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+            nonlocal response_status, response_headers, response_chunks
+
+            <span class="text-purple-400">if</span> message[<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"http.response.start"</span>:
+                response_status = message[<span class="text-amber-300">"status"</span>]
+                response_headers = list(message.get(<span class="text-amber-300">"headers"</span>, []))
+                <span class="text-purple-400">return</span>
+
+            <span class="text-purple-400">if</span> message[<span class="text-amber-300">"type"</span>] == <span class="text-amber-300">"http.response.body"</span>:
+                chunk = message.get(<span class="text-amber-300">"body"</span>, b<span class="text-amber-300">""</span>)
+                response_chunks.append(chunk)
+
+                <span class="text-purple-400">if not</span> message.get(<span class="text-amber-300">"more_body"</span>, <span class="text-rose-400">False</span>):
+                    <span class="text-slate-500"># Full body received &rarr; Compute ETag and evaluate match</span>
+                    full_body = b<span class="text-amber-300">""</span>.join(response_chunks)
+                    etag = generate_strong_etag(full_body)
+
+                    <span class="text-slate-500"># Check If-None-Match condition</span>
+                    <span class="text-purple-400">if</span> if_none_match <span class="text-purple-400">and</span> if_none_match.strip() == etag:
+                        <span class="text-slate-500"># SHORT-CIRCUIT: Emit 304 Not Modified with zero body payload!</span>
+                        headers_304 = [
+                            (b<span class="text-amber-300">"etag"</span>, etag.encode(<span class="text-amber-300">"latin1"</span>)),
+                            (b<span class="text-amber-300">"cache-control"</span>, self.default_cache_control.encode(<span class="text-amber-300">"latin1"</span>)),
+                        ]
+                        <span class="text-purple-400">await</span> send({
+                            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.start"</span>,
+                            <span class="text-amber-300">"status"</span>: 304,
+                            <span class="text-amber-300">"headers"</span>: headers_304,
+                        })
+                        <span class="text-purple-400">await</span> send({
+                            <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.body"</span>,
+                            <span class="text-amber-300">"body"</span>: b<span class="text-amber-300">""</span>,
+                        })
+                        <span class="text-purple-400">return</span>
+
+                    <span class="text-slate-500"># Otherwise, inject ETag and Cache-Control on full 200 response</span>
+                    response_headers.append((b<span class="text-amber-300">"etag"</span>, etag.encode(<span class="text-amber-300">"latin1"</span>)))
+                    response_headers.append((b<span class="text-amber-300">"cache-control"</span>, self.default_cache_control.encode(<span class="text-amber-300">"latin1"</span>)))
+
+                    <span class="text-purple-400">await</span> send({
+                        <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.start"</span>,
+                        <span class="text-amber-300">"status"</span>: response_status,
+                        <span class="text-amber-300">"headers"</span>: response_headers,
+                    })
+                    <span class="text-purple-400">await</span> send({
+                        <span class="text-amber-300">"type"</span>: <span class="text-amber-300">"http.response.body"</span>,
+                        <span class="text-amber-300">"body"</span>: full_body,
+                    })
+
+        <span class="text-purple-400">await</span> self.app(scope, receive, intercept_send)</pre>
+            </div>
+
+            <!-- File 3: src/cacheforge/web/app.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Production FastAPI Application: <code class="text-purple-700">src/cacheforge/web/app.py</code></span>
+                    <span class="text-slate-400">Edge Caching Wire-Up</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># CacheForge Web - FastAPI Accelerated Microservice (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI
+<span class="text-purple-400">from</span> cacheforge.web.asgi_cache <span class="text-purple-400">import</span> ASGICacheMiddleware
+
+app = FastAPI(title=<span class="text-amber-300">"CacheForge Edge Microservice"</span>)
+
+<span class="text-slate-500"># Mount Pure ASGI Caching Middleware as outermost edge interceptor</span>
+app.add_middleware(
+    ASGICacheMiddleware,
+    default_cache_control=<span class="text-amber-300">"public, max-age=120, stale-while-revalidate=60"</span>
+)
+
+<span class="text-purple-400">@app.get</span>(<span class="text-amber-300">"/api/v1/catalog"</span>, tags=[<span class="text-amber-300">"Catalog"</span>])
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_catalog</span>():
+    <span class="text-slate-500">"""Heavy catalog data automatically protected with ETag and 304 validation."""</span>
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"products"</span>: [
+            {<span class="text-amber-300">"id"</span>: 1, <span class="text-amber-300">"name"</span>: <span class="text-amber-300">"High-Performance Edge Gateway"</span>, <span class="text-amber-300">"price"</span>: 2499.0},
+            {<span class="text-amber-300">"id"</span>: 2, <span class="text-amber-300">"name"</span>: <span class="text-amber-300">"Distributed Invalidation Shard"</span>, <span class="text-amber-300">"price"</span>: 899.0}
+        ]
+    }</pre>
+            </div>
+
+            <!-- File 4: tests/integration/test_asgi_cache.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. In-Memory ASGI Test Battery: <code class="text-purple-700">tests/integration/test_asgi_cache.py</code></span>
+                    <span class="text-slate-400">RFC 9111 Validation Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">import</span> httpx
+<span class="text-purple-400">from</span> httpx <span class="text-purple-400">import</span> ASGITransport
+<span class="text-purple-400">from</span> cacheforge.web.app <span class="text-purple-400">import</span> app
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">client</span>():
+    transport = ASGITransport(app=app)
+    <span class="text-purple-400">async with</span> httpx.AsyncClient(transport=transport, base_url=<span class="text-amber-300">"http://cacheforge.test"</span>) <span class="text-purple-400">as</span> ac:
+        <span class="text-purple-400">yield</span> ac
+
+
+<span class="text-purple-400">@pytest.mark.integration</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestASGICacheMiddleware</span>:
+    <span class="text-slate-500">"""Verifies ETag generation, Cache-Control injection, and 304 short-circuiting."""</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_initial_get_generates_etag_and_cache_control</span>(self, client: httpx.AsyncClient):
+        res = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/api/v1/catalog"</span>)
+        assert res.status_code == 200
+        assert <span class="text-amber-300">"etag"</span> <span class="text-purple-400">in</span> res.headers
+        assert <span class="text-amber-300">"cache-control"</span> <span class="text-purple-400">in</span> res.headers
+        assert <span class="text-amber-300">"max-age=120"</span> <span class="text-purple-400">in</span> res.headers[<span class="text-amber-300">"cache-control"</span>]
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_subsequent_conditional_get_short_circuits_with_304</span>(self, client: httpx.AsyncClient):
+        <span class="text-slate-500"># Initial request: Fetch ETag</span>
+        res1 = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/api/v1/catalog"</span>)
+        etag = res1.headers[<span class="text-amber-300">"etag"</span>]
+
+        <span class="text-slate-500"># Conditional request presenting matching If-None-Match</span>
+        res2 = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"/api/v1/catalog"</span>, headers={<span class="text-amber-300">"if-none-match"</span>: etag})
+
+        <span class="text-slate-500"># VERIFICATION: RFC 9111 Short-Circuit</span>
+        assert res2.status_code == 304
+        assert len(res2.content) == 0  <span class="text-slate-500"># Zero body transmitted across wire!</span>
+        assert res2.headers[<span class="text-amber-300">"etag"</span>] == etag</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Setting "public" on User-Specific Data</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Returning <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">Cache-Control: public, max-age=3600</code> on authenticated endpoints like <code class="font-mono text-rose-900">/api/v1/me/billing</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes catastrophic data leaks:</strong> Shared CDN edge caches (Cloudflare, Fastly) treat <code class="font-mono">public</code> as permission to cache the response at the edge for all users. The next user who visits the billing page receives the first user's cached private invoice and personal data! Always enforce <code class="font-mono text-rose-950 font-bold">private, no-cache</code> on authenticated user routes.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Buffering Multi-Gigabyte Streams for ETags</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Reading an entire 10GB video or backup file into RAM with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">hashlib.sha256(full_body)</code> to calculate an ETag.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes container OOM kills:</strong> Buffering massive streams into Python memory triggers kernel <code class="font-mono text-rose-950 font-bold">SIGKILL</code> evictions. For streaming large files, either omit ETags, use streaming hash updates on chunks, or generate a **Weak ETag** using file size and filesystem modification timestamp (<code class="font-mono">mtime</code>).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating CacheForge Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to boot the FastAPI edge service, inspect live ETag and Cache-Control headers via curl, and execute the in-memory ASGI test battery:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install FastAPI, HTTPX ASGI transport, and Uvicorn:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install fastapi httpx "uvicorn[standard]"
+                    </div>
+                </div>
+
+                <!-- Step 2: Run ASGI Test Battery -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the in-memory ASGI integration test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/integration/test_asgi_cache.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.06s. Confirms ETag generation, Cache-Control injection, and 304 short-circuiting!
+                    </span>
+                </div>
+
+                <!-- Step 3: Boot Uvicorn & Test Conditional 304 via curl -->
+                <div>
+                    <span class="text-slate-500"># 3. Boot CacheForge and test conditional 304 validation via curl:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        uvicorn cacheforge.web.app:app --reload &amp;<br>
+                        # Request 1: Fetch ETag<br>
+                        ETAG=$(curl -sI http://127.0.0.1:8000/api/v1/catalog | grep -i etag | awk '{print $2}' | tr -d '\r')<br>
+                        # Request 2: Send conditional request<br>
+                        curl -i -H "If-None-Match: $ETAG" http://127.0.0.1:8000/api/v1/catalog
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Terminal returns <code class="text-emerald-400 font-mono">HTTP/1.1 304 Not Modified</code> with zero response body!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Microservices, Distributed Invalidation &amp; CDC: Change Data Capture, Outbox Pattern &amp; Event-Driven Eviction</h4>
+                <p class="text-xs text-slate-500 font-sans">Eliminating cache desynchronization across microservices: The dual-write anomaly, transactional outbox patterns, streaming WAL evictions via Change Data Capture (CDC with Debezium), and Set-based cache tagging.</p>
+            </div>
+            <a href="Chapter 08 - Microservices, Distributed Invalidation and CDC - Change Data Capture, Outbox Pattern and Event-Driven Eviction.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

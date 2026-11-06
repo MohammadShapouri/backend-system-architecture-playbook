@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Concurrency Control, Row Locking &amp; Race Conditions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>SQLAlchemy 2.0 Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">LedgerCore (Milestone 05 - Concurrency &amp; Lock Architecture)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; High-Throughput Integrity &amp; Concurrency
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Concurrency Control, Row Locking &amp; Race Conditions
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Defending high-frequency financial ledgers against double-spending: The mechanics of the Read-Modify-Write lost update anomaly, transaction isolation boundaries, Pessimistic Locking with <code class="font-mono text-emerald-400">with_for_update()</code>, eliminating circular deadlocks via deterministic sorting, and Optimistic Concurrency Control.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">LedgerCore Milestone 05: Double-Spend Defense</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 04, our <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">transfer_funds</code> endpoint worked perfectly for sequential requests. But in production, 50 users or automated checkout bots might attempt to withdraw money from the same account at the exact same millisecond. In Milestone 05, we simulate concurrent double-spend attacks, upgrade our queries with explicit row locks (<code class="font-mono text-purple-300">with_for_update()</code>), eliminate deadlocks with deterministic ID sorting, and implement Optimistic Locking with version counters.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Read-Modify-Write Lost Update</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pessimistic locking (<code class="text-purple-300">with_for_update</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Lock parameters (<code class="text-purple-300">nowait</code>, <code class="text-purple-300">skip_locked</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Deterministic Lock Ordering (Anti-Deadlock)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Optimistic Concurrency (<code class="text-purple-300">version_id_col</code>)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Concurrency: The Lost Update Anomaly -->
+        <section id="cs-concurrency-anomalies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Read-Modify-Write Lost Update Anomaly</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Most web applications follow the <strong>Read-Modify-Write</strong> pattern: a request fetches a record into application memory, calculates a new state in Python, and emits an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">UPDATE</code> statement back to the database. Under concurrent load, multiple threads execute this cycle simultaneously, leading to <strong>Lost Updates</strong> and financial double-spending.
+            </p>
+
+            <!-- Race Condition Visual Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">Anatomy of a Financial Double-Spend Race Condition</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Initial State: Alice has an account balance of $100.00. Two $80.00 withdrawals arrive at the same millisecond.</p>
+                </div>
+
+                <!-- Timeline Comparison Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Thread 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold">Worker Pod A (Withdrawal #1: $80)</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded">T = 0ms &rarr; 40ms</span>
+                        </div>
+                        <div class="space-y-2 text-[11px] font-sans">
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-sky-400 font-mono font-bold">Step 1 (0ms):</span> Reads balance from DB: <code class="text-emerald-300 font-mono">$100.00</code>
+                            </div>
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-sky-400 font-mono font-bold">Step 2 (10ms):</span> Python verifies $100 &ge; $80 (&check; Valid). Calculates new balance: <code class="text-amber-300 font-mono">$20.00</code>
+                            </div>
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-sky-400 font-mono font-bold">Step 3 (30ms):</span> Emits SQL: <code class="text-purple-300 font-mono">UPDATE balance = 20.00</code>
+                            </div>
+                            <div class="p-2 bg-emerald-950/60 rounded border border-emerald-800 text-emerald-300 font-bold">
+                                &check; Commits successfully! Balance = $20.00
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thread 2 -->
+                    <div class="p-4 bg-slate-950 border border-rose-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                            <span class="text-rose-400 font-bold">Worker Pod B (Withdrawal #2: $80)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-400 px-2 py-0.5 rounded">T = 5ms &rarr; 45ms</span>
+                        </div>
+                        <div class="space-y-2 text-[11px] font-sans">
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-rose-400 font-mono font-bold">Step 1 (5ms):</span> Reads balance from DB: <code class="text-emerald-300 font-mono">$100.00</code> (Before A commits!)
+                            </div>
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-rose-400 font-mono font-bold">Step 2 (15ms):</span> Python verifies $100 &ge; $80 (&check; Valid). Calculates new balance: <code class="text-amber-300 font-mono">$20.00</code>
+                            </div>
+                            <div class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <span class="text-rose-400 font-mono font-bold">Step 3 (40ms):</span> Emits SQL: <code class="text-purple-300 font-mono">UPDATE balance = 20.00</code> (Overwrites Pod A!)
+                            </div>
+                            <div class="p-2 bg-rose-950 rounded border border-rose-700 text-rose-300 font-bold">
+                                &cross; CRITICAL CATASTROPHE: Alice withdrew $160, but her balance is $20! $60 vanished.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono">Why Standard Transaction Isolation (READ COMMITTED) Fails Here:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        By default, PostgreSQL, MySQL, and Oracle run in <strong>READ COMMITTED</strong> isolation. This prevents dirty reads (reading uncommitted data), but it does <strong>nothing</strong> to serialize the Read-Modify-Write cycle. Pod B reads committed data ($100) at T=5ms and commits after Pod A, completely obliterating Pod A's deduction!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Pessimistic Locking: with_for_update() -->
+        <section id="pessimistic-locking" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Pessimistic Locking: <code>SELECT ... FOR UPDATE</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Pessimistic Locking</strong> assumes conflicts will happen. Instead of allowing concurrent workers to read a row freely, a worker acquires an exclusive row-level database lock when querying the row. Any subsequent transaction attempting to read or mutate that same row is forced to halt and wait in an orderly queue.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In SQLAlchemy, this is achieved by appending <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">.with_for_update()</code> to your query:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Anatomy of <code>with_for_update()</code></h3>
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># Compiles to: SELECT * FROM accounts WHERE id = :id FOR UPDATE</span>
+stmt = (
+    select(Account)
+    .where(Account.id == account_id)
+    .<span class="text-emerald-400 font-bold">with_for_update</span>()
+)
+account = session.scalar(stmt)</pre>
+                
+                <div class="grid md:grid-cols-3 gap-4 pt-2 text-xs font-mono">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-sky-800 font-bold block">1. nowait=True</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            <code class="text-slate-900">.with_for_update(nowait=True)</code>.<br>
+                            If another transaction holds the lock, do NOT wait. Immediately raise <code class="text-rose-700">OperationalError</code> so the API can return an instant <code class="text-rose-700 font-bold">HTTP 409 Conflict</code>.
+                        </p>
+                    </div>
+
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-purple-800 font-bold block">2. skip_locked=True</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            <code class="text-slate-900">.with_for_update(skip_locked=True)</code>.<br>
+                            Skips rows currently locked by other workers. The absolute standard for building high-speed asynchronous job queues and consumer tables!
+                        </p>
+                    </div>
+
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-emerald-800 font-bold block">3. read=True (FOR SHARE)</span>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            <code class="text-slate-900">.with_for_update(read=True)</code>.<br>
+                            Acquires a shared lock. Allows other transactions to read the row, but blocks any transaction from updating or deleting it until committed.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Deadlock Threat & Deterministic Lock Ordering -->
+        <section id="deadlock-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Deadlock Trap &amp; Deterministic Lock Ordering</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Pessimistic row locking introduces a severe engineering vulnerability: <strong>Deadlocks</strong>. A deadlock occurs when two transactions attempt to lock the same resources in opposing chronological order, creating an unresolvable circular dependency.
+            </p>
+
+            <!-- Deadlock vs Deterministic Lock Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">Circular Deadlock vs. Deterministic Lock Ordering</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">How Transferring Between Accounts Can Paralyze the Database</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Circular Deadlock Box -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <span class="text-rose-400 font-bold block text-sm">1. Circular Wait Deadlock (Unsorted)</span>
+                        <div class="space-y-2 text-[11px] font-sans text-slate-300">
+                            <p><strong>Transaction 1:</strong> Transfer Alice (ID 1) &rarr; Bob (ID 2)</p>
+                            <div class="bg-slate-950 p-2 rounded font-mono text-sky-300 text-[10px]">T1 locks Account 1 &bull; Then requests Account 2</div>
+                            <p><strong>Transaction 2:</strong> Transfer Bob (ID 2) &rarr; Alice (ID 1)</p>
+                            <div class="bg-slate-950 p-2 rounded font-mono text-purple-300 text-[10px]">T2 locks Account 2 &bull; Then requests Account 1</div>
+                            <div class="p-2 bg-rose-950 rounded border border-rose-700 text-rose-300 text-[10px] font-mono font-bold">
+                                DEADLOCK! T1 waits for T2; T2 waits for T1.<br>
+                                Postgres terminates one transaction after deadlock_timeout (1s)!
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deterministic Order Box -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold block text-sm">2. Deterministic Lock Ordering (Sorted)</span>
+                        <div class="space-y-2 text-[11px] font-sans text-slate-300">
+                            <p><strong>The Mathematical Invariant:</strong> Always acquire row locks in ascending Primary Key ID order: <code class="text-white font-mono">order_by(Account.id.asc())</code></p>
+                            <div class="bg-slate-950 p-2.5 rounded font-mono text-emerald-300 text-[10px] space-y-1">
+                                <div>T1 sorts IDs: [1, 2] &rarr; Locks Account 1 first, then 2</div>
+                                <div>T2 sorts IDs: [1, 2] &rarr; Tries to lock Account 1 first!</div>
+                            </div>
+                            <div class="p-2 bg-emerald-950 rounded border border-emerald-700 text-emerald-300 text-[10px] font-mono">
+                                &check; T2 queues cleanly behind T1 on Account 1.<br>
+                                Circular wait condition is mathematically eliminated! Zero deadlocks.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Optimistic Concurrency Control (OCC) -->
+        <section id="optimistic-locking" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Optimistic Concurrency Control (OCC)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Pessimistic locking is mandatory for high-contention financial balances. However, for low-contention scenarios (like editing a user profile or updating an account's name), holding exclusive database locks degrades system throughput.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Optimistic Concurrency Control (OCC)</strong> acquires no locks during read operations. Instead, each row includes a <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">version_id</code> integer counter. When emitting an <code class="font-mono text-xs">UPDATE</code>, SQLAlchemy checks whether the version in the database still matches the version originally loaded into Python:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">How SQLAlchemy Executes Optimistic Versioning</h3>
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># In models.py: Declare version_id column with mapper argument</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Account</span>(Base):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>)
+    owner_name: Mapped[str] = mapped_column(String(100))
+    <span class="text-emerald-400 font-bold">version_id: Mapped[int] = mapped_column(default=1, nullable=False)</span>
+
+    __mapper_args__ = {
+        <span class="text-amber-300">"version_id_col"</span>: version_id  <span class="text-slate-500"># Activates native OCC in SQLAlchemy!</span>
+    }</pre>
+
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    When you call <code class="font-mono text-purple-700">session.commit()</code>, SQLAlchemy automatically translates the update into:
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 font-mono text-[11px]">
+                    UPDATE accounts SET owner_name = :name, version_id = version_id + 1<br>
+                    WHERE id = :id AND version_id = :expected_version;
+                </div>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    If another worker modified the row in the interim, the database's updated row count is <strong>0</strong>. SQLAlchemy instantly detects this and raises <code class="font-mono font-bold text-rose-700">sqlalchemy.orm.exc.StaleDataError</code> without any corrupting overwrites!
+                </p>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: LedgerCore Milestone 05 -->
+        <section id="ledgercore-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">LedgerCore Milestone 05: Concurrency Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now harden LedgerCore's transfer engine. We update <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/models.py</code> with optimistic versioning, and refactor <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">app/main.py</code> to execute **Deterministic Sorted Row Locking** with <code class="font-mono text-purple-700 font-bold">with_for_update()</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>ledgercore_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── config.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">models.py</span>                  <span class="text-slate-500"># Adds version_id_col for Optimistic Concurrency</span></div>
+                <div>│   ├── schemas.py</div>
+                <div>│   └── <span class="text-emerald-300 font-bold">main.py</span>                    <span class="text-slate-500"># Hardened transfer endpoint with Deterministic Row Locking</span></div>
+            </div>
+
+            <!-- File 1: app/models.py with version_id -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Hardened Models: <code class="text-purple-700">app/models.py</code></span>
+                    <span class="text-slate-400">Optimistic OCC Integration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/models.py: Add version_id to Account</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Account</span>(Base, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = <span class="text-amber-300">"accounts"</span>
+
+    id: Mapped[int] = mapped_column(primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    uuid: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    account_number: Mapped[str] = mapped_column(String(32), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    owner_name: Mapped[str] = mapped_column(String(100), nullable=<span class="text-rose-400">False</span>)
+    balance: Mapped[Decimal] = mapped_column(Numeric(14, 4), default=Decimal(<span class="text-amber-300">"0.0000"</span>), nullable=<span class="text-rose-400">False</span>)
+    status: Mapped[AccountStatus] = mapped_column(SQLEnum(AccountStatus, native_enum=<span class="text-rose-400">False</span>), default=AccountStatus.ACTIVE, nullable=<span class="text-rose-400">False</span>)
+
+    <span class="text-slate-500"># OPTIMISTIC CONCURRENCY CONTROL: Integer version tracker</span>
+    version_id: Mapped[int] = mapped_column(default=1, nullable=<span class="text-rose-400">False</span>)
+
+    transactions: Mapped[list[<span class="text-amber-300">"Transaction"</span>]] = relationship(back_populates=<span class="text-amber-300">"account"</span>)
+
+    __mapper_args__ = {
+        <span class="text-amber-300">"version_id_col"</span>: version_id
+    }
+
+    __table_args__ = (
+        CheckConstraint(<span class="text-amber-300">"balance &gt;= 0"</span>, name=<span class="text-amber-300">"ck_account_balance_non_negative"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 2: app/main.py Refactored with Deterministic with_for_update() -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Hardened Transfer Service: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Deadlock-Free Pessimistic Locking</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># In app/main.py: Replace transfer_funds with Deterministic Lock Ordering</span>
+<span class="text-purple-400">@app.post</span>(<span class="text-amber-300">"/api/v1/transfers"</span>, response_model=TransferResponse, status_code=status.HTTP_200_OK)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">transfer_funds</span>(
+    payload: TransferRequest,
+    session: Session = Depends(get_db_session)
+):
+    <span class="text-slate-500">"""
+    PRODUCTION CONCURRENCY ARCHITECTURE:
+    1. Pre-lookups account primary keys.
+    2. Sorts IDs ascending to eliminate cross-transaction circular deadlocks.
+    3. Acquires exclusive row locks via with_for_update().
+    4. Performs atomic balance deductions and commits safely.
+    """</span>
+    <span class="text-slate-500"># Step 1: Lightweight lookup to obtain primary keys</span>
+    sender_basic = session.scalar(select(Account.id, Account.status).where(Account.account_number == payload.sender_account_number))
+    recipient_basic = session.scalar(select(Account.id, Account.status).where(Account.account_number == payload.recipient_account_number))
+
+    <span class="text-purple-400">if not</span> sender_basic <span class="text-purple-400">or not</span> recipient_basic:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Account not found."</span>)
+
+    sender_id, _ = sender_basic
+    recipient_id, _ = recipient_basic
+
+    <span class="text-purple-400">if</span> sender_id == recipient_id:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Cannot transfer to self."</span>)
+
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># STEP 2: DETERMINISTIC LOCK ORDERING (THE DEADLOCK IMMUNITY PATTERN)</span>
+    <span class="text-slate-500"># Always acquire locks in ascending Primary Key ID order: 1 then 2!</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    sorted_ids = sorted([sender_id, recipient_id])
+
+    <span class="text-purple-400">try</span>:
+        <span class="text-slate-500"># SELECT ... FOR UPDATE locked strictly in ascending order!</span>
+        stmt = (
+            select(Account)
+            .where(Account.id.in_(sorted_ids))
+            .order_by(Account.id.asc())
+            .<span class="text-emerald-400 font-bold">with_for_update</span>()  <span class="text-slate-500"># EXCLUSIVE ROW LOCK ACQUIRED HERE</span>
+        )
+        locked_accounts = session.scalars(stmt).all()
+        account_map = {acc.id: acc <span class="text-purple-400">for</span> acc <span class="text-purple-400">in</span> locked_accounts}
+
+        sender = account_map[sender_id]
+        recipient = account_map[recipient_id]
+
+        <span class="text-purple-400">if</span> sender.status != AccountStatus.ACTIVE <span class="text-purple-400">or</span> recipient.status != AccountStatus.ACTIVE:
+            <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Accounts must be ACTIVE."</span>)
+
+        <span class="text-slate-500"># Safe balance inspection under exclusive row lock</span>
+        <span class="text-purple-400">if</span> sender.balance &lt; payload.amount:
+            <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=<span class="text-amber-300">"Insufficient funds."</span>)
+
+        <span class="text-slate-500"># Mutate safely without race conditions</span>
+        sender.balance -= payload.amount
+        recipient.balance += payload.amount
+
+        transfer_record = TransferTransaction(
+            account_id=sender.id,
+            amount=payload.amount,
+            destination_account_number=recipient.account_number,
+            routing_reference=payload.routing_reference
+        )
+        session.add(transfer_record)
+        session.commit()  <span class="text-slate-500"># EXCLUSIVE ROW LOCKS RELEASED AUTOMATICALLY HERE</span>
+
+        <span class="text-purple-400">return</span> TransferResponse(
+            status=<span class="text-amber-300">"success"</span>,
+            transfer_uuid=transfer_record.uuid,
+            sender_account_number=sender.account_number,
+            recipient_account_number=recipient.account_number,
+            transferred_amount=payload.amount,
+            fee_applied=<span class="text-rose-400">False</span>,
+            sender_new_balance=sender.balance
+        )
+
+    <span class="text-purple-400">except</span> HTTPException:
+        session.rollback()
+        <span class="text-purple-400">raise</span>
+    <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+        session.rollback()
+        <span class="text-purple-400">raise</span> HTTPException(status_code=500, detail=f<span class="text-amber-300">"Transfer failed: &#123;exc&#125;"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Holding Database Locks Across External HTTP APIs</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Acquiring a lock via <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">with_for_update()</code>, and then calling an external payment gateway (<code class="font-mono text-rose-900">requests.post("https://api.stripe.com")</code>) before committing!
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes full backend outages:</strong> If Stripe experiences a 10-second latency spike, your transaction holds the database row lock for 10 full seconds. All other concurrent requests wanting that account wait, connection pools exhaust, and within seconds the entire API cluster crashes. 
+                        <strong>Rule:</strong> Never execute third-party network I/O while holding a database row lock.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Overusing SERIALIZABLE Isolation</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Thinking: "I don't need row locking; I'll just set the entire database to SERIALIZABLE isolation."
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this degrades throughput:</strong> True SERIALIZABLE isolation in PostgreSQL uses Predicate Locking (SSI). When concurrent transactions conflict, PostgreSQL does <strong>not</strong> queue them; it immediately kills one with a <code class="font-mono text-rose-950 font-bold">40001 serialization_failure</code>. Under heavy concurrent load, 60%+ of your API requests fail and require complex client retry logic. Explicit row locking with deterministic ordering scales far better.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating LedgerCore Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Boot your application and simulate concurrent requests to prove race conditions are neutralized:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Boot Server -->
+                <div>
+                    <span class="text-slate-500"># 1. Start LedgerCore API:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+                    </div>
+                </div>
+
+                <!-- Step 2: Seed Account -->
+                <div>
+                    <span class="text-slate-500"># 2. Seed Alice ($100.0000) and Bob ($0.0000):</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-ALICE", "owner_name": "Alice", "initial_balance": "100.0000"}'<br>
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/accounts -H "Content-Type: application/json" -d '{"account_number": "ACC-BOB", "owner_name": "Bob", "initial_balance": "0.0000"}'
+                    </div>
+                </div>
+
+                <!-- Step 3: Concurrent Attack Simulation -->
+                <div>
+                    <span class="text-slate-500"># 3. Fire TWO concurrent $80.00 transfers at the exact same millisecond:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/transfers -H "Content-Type: application/json" -d '{"sender_account_number": "ACC-ALICE", "recipient_account_number": "ACC-BOB", "amount": "80.0000"}' &amp;<br>
+                        curl -s -X POST http://127.0.0.1:8000/api/v1/transfers -H "Content-Type: application/json" -d '{"sender_account_number": "ACC-ALICE", "recipient_account_number": "ACC-BOB", "amount": "80.0000"}' &amp;
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Result: Request #1 locks Alice's row, deducts $80, and commits (Alice = $20). Request #2 queues behind the lock; once acquired, it checks $20 &lt; $80 and raises HTTP 400 Insufficient Funds! Total double-spend defense.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Swagger Docs Callout -->
+            <div class="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs">
+                <span class="font-sans">Explore LedgerCore's concurrency endpoints in Swagger UI:</span>
+                <a href="http://127.0.0.1:8000/docs" target="_blank" class="bg-emerald-500 text-slate-950 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition font-mono">Open /docs &rarr;</a>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 6 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Relationship Loading &amp; Defeating the N+1 Problem</h4>
+                <p class="text-xs text-slate-500 font-sans">Query performance engineering: Why lazy loading kills high-throughput APIs, mastering <code class="font-mono">selectinload</code> vs. <code class="font-mono">joinedload</code>, and building LedgerCore's statement export without overloading the database.</p>
+            </div>
+            <a href="Chapter 06 - Relationship Loading and Defeating the N+1 Problem.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 6 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

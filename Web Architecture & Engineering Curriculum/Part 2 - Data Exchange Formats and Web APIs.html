@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Part 2: Data Exchange Formats & Web APIs</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: {
+                            50: '#fdfbf7',
+                            100: '#fbf7ee',
+                            200: '#f6eed9',
+                            300: '#eedfbc',
+                            border: '#e8d7ad'
+                        },
+                        boxGreen: {
+                            DEFAULT: '#1b4d3e',
+                            light: '#236350',
+                            dark: '#143a2f'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        pre code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed">
+
+    <!-- Top Banner / Header -->
+    <header class="bg-slate-900 text-white border-b border-slate-800 py-10 px-4 sm:px-8 shadow-sm">
+        <div class="max-w-6xl mx-auto">
+            <div class="inline-block px-3 py-1 mb-3 text-xs font-semibold tracking-wider uppercase bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">
+                Core Web Engineering Series • Guide 02
+            </div>
+            <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-4">
+                Part 2: Data Exchange Formats & Web APIs
+            </h1>
+            <p class="text-lg sm:text-xl text-slate-300 max-w-3xl leading-relaxed">
+                Learn how modern web applications decouple data from visual presentation using JSON, how to design clean RESTful Web APIs, and how Python backends deliver pure data across platforms.
+            </p>
+        </div>
+    </header>
+
+    <!-- Main Container: Sticky Nav + Content -->
+    <div class="max-w-6xl mx-auto px-4 sm:px-8 py-10 grid grid-cols-1 lg:grid-cols-12 gap-10">
+
+        <!-- Sidebar / Table of Contents (Desktop Sticky) -->
+        <aside class="lg:col-span-4 order-2 lg:order-1">
+            <div class="sticky top-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+                    <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+                    </svg>
+                    <h2 class="font-bold text-slate-900 text-base uppercase tracking-wider">Table of Contents</h2>
+                </div>
+                <nav class="space-y-2 text-sm">
+                    <a href="#intro" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">0. Introduction & Context</a>
+                    <a href="#what-is-api" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">1. What is an API?</a>
+                    <a href="#data-formats" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">2. Data Formats: Why JSON Won</a>
+                    <a href="#json-python-map" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">3. Python to JSON Mapping</a>
+                    <a href="#rest-principles" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">4. RESTful API Architecture</a>
+                    <a href="#endpoints-crud" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">5. Designing Clean CRUD URLs</a>
+                    <a href="#framework-box" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">6. Framework Spotlight: FastAPI</a>
+                    <a href="#takeaways" class="block py-1.5 px-2 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 font-medium transition">7. Key Takeaways & Review</a>
+                </nav>
+
+                <!-- Part 1 Connection Reminder -->
+                <div class="mt-8 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
+                    <span class="font-bold text-slate-800 block mb-1">Building on Part 1:</span>
+                    In <a href="#intro" class="text-emerald-600 underline font-semibold">Part 1</a>, we saw how an MVC server renders full HTML pages. In Part 2, we remove HTML from the server completely and deliver pure data.
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="lg:col-span-8 order-1 lg:order-2 space-y-16">
+
+            <!-- SECTION 0: Introduction & Recap -->
+            <section id="intro" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
+                <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Orientation</span>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-4">0. Introduction & The Need for APIs</h2>
+                
+                <p class="text-slate-600 mb-4">
+                    In <strong>Part 1</strong>, we learned about the <em>Client-Server</em> relationship and how traditional <em>MVC (Model-View-Controller)</em> servers assemble an entire HTML document on the server before sending it down to a web browser.
+                </p>
+
+                <p class="text-slate-600 mb-4">
+                    That pattern works great if your only user is sitting in front of a desktop web browser. But what happens when your business grows, and you need to build:
+                </p>
+
+                <ul class="list-disc pl-5 space-y-1.5 text-sm text-slate-600 mb-6">
+                    <li>An <strong>iPhone / Android mobile app</strong> (which does not use HTML/CSS to draw screens).</li>
+                    <li>A modern <strong>Single Page Application (SPA)</strong> written in React or Vue.</li>
+                    <li>A <strong>Smart Watch</strong> or <strong>Internet of Things (IoT)</strong> thermostat.</li>
+                    <li>An automated system that allows other companies' computers to query your inventory.</li>
+                </ul>
+
+                <p class="text-slate-600">
+                    If your server sends back HTML filled with buttons, colors, and layout tags, mobile apps cannot easily understand it. Instead, the server must strip away all styling and visual layout, sending back <strong>only raw, structured data</strong>. This raw data bridge is called a <strong>Web API</strong>.
+                </p>
+            </section>
+
+            <!-- SECTION 1: What is an API? -->
+            <section id="what-is-api" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Concept 01</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">1. What is an API? (Application Programming Interface)</h2>
+                </div>
+
+                <p class="text-slate-600">
+                    An <strong>API</strong> is not a physical device, a database, or a programming language. An API is an agreed-upon <strong>contract</strong> or <strong>rulebook</strong> that allows two completely independent software applications to talk to each other without needing to know how the other program is built internally.
+                </p>
+
+                <!-- Analogy Box -->
+                <div class="p-5 bg-emerald-50/50 border border-emerald-200 rounded-xl text-sm">
+                    <h3 class="font-bold text-emerald-950 mb-2 flex items-center gap-2">
+                        <span class="text-emerald-700 text-lg">💡</span>
+                        The Restaurant Waiter Analogy
+                    </h3>
+                    <p class="text-slate-700">
+                        Think of a restaurant. You (the <strong>Client</strong>) sit at a table. You do not walk into the kitchen (the <strong>Database/Backend</strong>) to cook or dig through the pantry. 
+                    </p>
+                    <p class="text-slate-700 mt-2">
+                        Instead, the restaurant provides a <strong>Menu</strong> (the API Documentation) that lists exactly what items you are allowed to request. The <strong>Waiter</strong> (the API) takes your specific order, carries it back to the kitchen, waits for the meal to be prepared, and delivers the finished food back to your table. You do not care what kind of stove the kitchen uses; you only care that when you ask for item #4, you receive item #4.
+                    </p>
+                </div>
+
+                <!-- Web API Specific Definition -->
+                <h3 class="text-lg font-bold text-slate-900">What makes it a "Web API"?</h3>
+                <p class="text-slate-600 text-sm">
+                    In general computer science, an API can exist between any two software components (such as Python code calling a built-in math module). But when we say <strong>Web API</strong>, we mean an interface that communicates over the internet using the standard <strong>HTTP/HTTPS protocol</strong> that we explored in Part 1.
+                </p>
+
+                <!-- DIAGRAM: Web API Architecture -->
+                <div class="p-4 bg-slate-900 rounded-xl text-slate-200 text-xs font-mono overflow-x-auto shadow-inner">
+                    <div class="text-slate-400 mb-2 font-sans font-semibold">// One API Server Powering Multiple Different Clients</div>
+                    <pre class="text-slate-300">
+   [ React Web App ]   ────────┐
+                               │
+   [ iOS Mobile App ]  ────────┼───> HTTP Requests (JSON) ───> [ Web API Server ]
+                               │                                (Python / FastAPI)
+   [ Partner Company ] ────────┘                                        │
+                                                                 [ Database ]
+                    </pre>
+                </div>
+            </section>
+
+            <!-- SECTION 2: Data Formats: Why JSON Won -->
+            <section id="data-formats" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Concept 02</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">2. Data Formats: Why JSON Won the Web</h2>
+                </div>
+
+                <p class="text-slate-600">
+                    When an API server talks across the internet, it cannot send live Python objects directly through fiber-optic cables. It must convert that data into a universal, human-readable text format.
+                </p>
+
+                <p class="text-slate-600">
+                    Over web history, three primary text formats have competed:
+                </p>
+
+                <!-- Comparison Cards -->
+                <div class="space-y-3 text-sm">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <span class="font-bold text-slate-900 block mb-1">1. Plain Text (<code class="text-xs font-mono bg-slate-200 px-1 rounded">text/plain</code>)</span>
+                        <p class="text-slate-600 text-xs">
+                            Simple strings like: <code class="bg-slate-100 px-1 rounded text-slate-700">Alice,30,alice@example.com</code>. Extremely lightweight, but very poor at representing nested or hierarchical structures (e.g. a user who has multiple addresses and a list of order numbers).
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <span class="font-bold text-slate-900 block mb-1">2. XML (<code class="text-xs font-mono bg-slate-200 px-1 rounded">application/xml</code>)</span>
+                        <p class="text-slate-600 text-xs">
+                            An older markup format with opening and closing tags (e.g., <code class="bg-slate-100 px-1 rounded text-slate-700">&lt;user&gt;&lt;name&gt;Alice&lt;/name&gt;&lt;/user&gt;</code>). It is verbose, heavy, and difficult to parse quickly in modern programming languages.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-emerald-50/60 border border-emerald-300 rounded-xl">
+                        <span class="font-bold text-emerald-950 block mb-1">3. JSON (<code class="text-xs font-mono bg-emerald-100 px-1 rounded text-emerald-800">application/json</code>) — The Undisputed King</span>
+                        <p class="text-emerald-900 text-xs">
+                            <strong>JSON (JavaScript Object Notation)</strong> is clean, readable, minimal, and supported natively by virtually every single programming language in existence without needing special external tools.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Side by side comparison: XML vs JSON -->
+                <h3 class="text-lg font-bold text-slate-900 mt-4">Visual Proof: XML vs. JSON for the Exact Same Data</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                    <div class="p-4 bg-slate-900 text-slate-300 rounded-xl">
+                        <span class="text-rose-400 font-bold block mb-2 font-sans">// XML (Heavy, Repetitive Tags)</span>
+                        <pre>&lt;user id="101"&gt;
+    &lt;name&gt;Alice&lt;/name&gt;
+    &lt;isActive&gt;true&lt;/isActive&gt;
+    &lt;skills&gt;
+        &lt;skill&gt;Python&lt;/skill&gt;
+        &lt;skill&gt;FastAPI&lt;/skill&gt;
+    &lt;/skills&gt;
+&lt;/user&gt;</pre>
+                    </div>
+
+                    <div class="p-4 bg-slate-900 text-emerald-300 rounded-xl">
+                        <span class="text-emerald-400 font-bold block mb-2 font-sans">// JSON (Clean, Concise, Lightweight)</span>
+                        <pre>{
+  "id": 101,
+  "name": "Alice",
+  "is_active": true,
+  "skills": ["Python", "FastAPI"]
+}</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: Python to JSON Mapping -->
+            <section id="json-python-map" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Concept 03</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">3. How Python Translates into JSON (Serialization)</h2>
+                </div>
+
+                <p class="text-slate-600">
+                    If you know basic Python, you already understand 95% of JSON. They share almost identical data structures:
+                </p>
+
+                <!-- Mapping Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700 text-xs uppercase font-mono border-b border-slate-200">
+                                <th class="p-3">Python Data Type</th>
+                                <th class="p-3">JSON Equivalent</th>
+                                <th class="p-3">Example</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-xs font-mono">
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">dict</td>
+                                <td class="p-3 text-slate-800">Object</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">{"name": "Alice"}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">list, tuple</td>
+                                <td class="p-3 text-slate-800">Array</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">[1, 2, 3]</code></td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">str</td>
+                                <td class="p-3 text-slate-800">String</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">"Hello World"</code></td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">int, float</td>
+                                <td class="p-3 text-slate-800">Number</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">42</code> or <code class="bg-slate-100 px-1 py-0.5 rounded">3.14</code></td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">True / False</td>
+                                <td class="p-3 text-slate-800">true / false</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">true</code> (lowercase in JSON)</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 text-emerald-700 font-bold">None</td>
+                                <td class="p-3 text-slate-800">null</td>
+                                <td class="p-3 text-slate-600"><code class="bg-slate-100 px-1 py-0.5 rounded">null</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Two Crucial Terms -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mt-4">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                        <strong class="text-slate-900 block mb-1">Serialization (Dumping)</strong>
+                        <p class="text-slate-600 text-xs">
+                            Taking an in-memory Python object (like a dict) and encoding it into a JSON formatted text string so it can be sent over HTTP.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                        <strong class="text-slate-900 block mb-1">Deserialization (Parsing)</strong>
+                        <p class="text-slate-600 text-xs">
+                            Taking an incoming raw JSON string received over the network and converting it back into a native Python dictionary so your code can read its keys.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 4: RESTful API Principles -->
+            <section id="rest-principles" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Concept 04</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">4. RESTful API Architecture</h2>
+                </div>
+
+                <p class="text-slate-600">
+                    You can technically design an API any way you want, but chaos occurs when every developer makes up their own random rules. To bring consistency, the software industry follows an architectural style called <strong>REST (Representational State Transfer)</strong>.
+                </p>
+
+                <p class="text-slate-600 text-sm">
+                    An API that follows these rules is described as <strong>RESTful</strong>. It relies on three fundamental conventions:
+                </p>
+
+                <div class="space-y-4 text-sm">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <h3 class="font-bold text-slate-900 mb-1">Rule 1: Treat Everything as a "Resource" (Use Nouns, Not Verbs)</h3>
+                        <p class="text-slate-600 text-xs">
+                            In REST, your URLs represent <em>things</em> (data resources), not actions. Actions belong in the HTTP Method (GET, POST, etc.) that we learned in Part 1.
+                        </p>
+                        <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                            <div class="p-2 bg-rose-50 border border-rose-200 text-rose-800 rounded">
+                                ❌ Bad: <code class="block font-bold mt-0.5">POST /delete_user_by_id?id=5</code>
+                            </div>
+                            <div class="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded">
+                                ✔ Clean REST: <code class="block font-bold mt-0.5">DELETE /users/5</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <h3 class="font-bold text-slate-900 mb-1">Rule 2: Statelessness</h3>
+                        <p class="text-slate-600 text-xs">
+                            The server never "remembers" previous requests automatically. Every single incoming request must include all the credentials, IDs, and payload data required to complete that task independently.
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <h3 class="font-bold text-slate-900 mb-1">Rule 3: Standard HTTP Headers for Content Negotiation</h3>
+                        <p class="text-slate-600 text-xs">
+                            Both the client and server must declare what format they are sending and expecting via HTTP headers:
+                        </p>
+                        <pre class="bg-slate-900 text-slate-300 p-2.5 rounded font-mono text-[11px] mt-2">
+Content-Type: application/json  (Tells the receiver: "I am sending you JSON data")
+Accept: application/json        (Tells the server: "Please respond to me in JSON")</pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 5: Designing Clean CRUD URLs -->
+            <section id="endpoints-crud" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Concept 05</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">5. Designing Clean CRUD Endpoints</h2>
+                </div>
+
+                <p class="text-slate-600">
+                    Almost every database record in history undergoes four operations known as <strong>CRUD</strong>: 
+                    <strong>C</strong>reate, <strong>R</strong>ead, <strong>U</strong>pdate, and <strong>D</strong>elete. 
+                    In a REST API, these map directly onto the HTTP verbs:
+                </p>
+
+                <!-- CRUD Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700 text-xs uppercase font-mono border-b border-slate-200">
+                                <th class="p-3">Operation</th>
+                                <th class="p-3">HTTP Verb</th>
+                                <th class="p-3">Clean Endpoint URL</th>
+                                <th class="p-3">Expected Status Code</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-xs font-mono">
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Read All</td>
+                                <td class="p-3 text-blue-600 font-bold">GET</td>
+                                <td class="p-3 text-slate-600">/items</td>
+                                <td class="p-3 text-emerald-600">200 OK</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Read One</td>
+                                <td class="p-3 text-blue-600 font-bold">GET</td>
+                                <td class="p-3 text-slate-600">/items/42</td>
+                                <td class="p-3 text-emerald-600">200 OK (or 404 Not Found)</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Create</td>
+                                <td class="p-3 text-emerald-600 font-bold">POST</td>
+                                <td class="p-3 text-slate-600">/items</td>
+                                <td class="p-3 text-emerald-600">201 Created</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Update (Full)</td>
+                                <td class="p-3 text-amber-600 font-bold">PUT</td>
+                                <td class="p-3 text-slate-600">/items/42</td>
+                                <td class="p-3 text-emerald-600">200 OK</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Update (Partial)</td>
+                                <td class="p-3 text-amber-600 font-bold">PATCH</td>
+                                <td class="p-3 text-slate-600">/items/42</td>
+                                <td class="p-3 text-emerald-600">200 OK</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-slate-800">Delete</td>
+                                <td class="p-3 text-rose-600 font-bold">DELETE</td>
+                                <td class="p-3 text-slate-600">/items/42</td>
+                                <td class="p-3 text-slate-500">204 No Content</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Path Parameters vs Query Parameters -->
+                <h3 class="text-lg font-bold text-slate-900 mt-6">Path Parameters vs. Query Parameters</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                        <strong class="text-slate-900 block mb-1">1. Path Parameters (Identity)</strong>
+                        <p class="text-slate-600 text-xs mb-2">
+                            Used to identify a <em>specific single resource</em>:
+                        </p>
+                        <code class="text-xs bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-800">/products/841</code>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                        <strong class="text-slate-900 block mb-1">2. Query Parameters (Filtering/Sorting)</strong>
+                        <p class="text-slate-600 text-xs mb-2">
+                            Appended after a <code class="font-bold text-slate-800">?</code> to filter, search, or paginate a collection:
+                        </p>
+                        <code class="text-xs bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-800">/products?category=shoes&limit=10</code>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 6: Framework Spotlight (FastAPI for APIs) -->
+            <section id="framework-box">
+                <!-- SPECIAL FRAMEWORK SPOTLIGHT BOX: Fast API for REST APIs -->
+                <div class="rounded-xl border-2 border-cream-border bg-cream-50 overflow-hidden shadow-sm">
+                    <!-- Green Header -->
+                    <div class="bg-boxGreen px-4 py-3 flex items-center justify-between text-white">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-emerald-300" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="font-bold text-sm tracking-wide uppercase">Framework Spotlight: Building Real REST APIs with FastAPI</span>
+                        </div>
+                        <span class="text-xs bg-boxGreen-light px-2 py-0.5 rounded text-emerald-100">Tool Breakdown</span>
+                    </div>
+
+                    <!-- Cream Body -->
+                    <div class="p-5 text-sm space-y-4 text-slate-800">
+                        <div>
+                            <h4 class="font-bold text-slate-900 mb-1">Why FastAPI Shines for APIs:</h4>
+                            <p class="text-slate-700 text-xs sm:text-sm">
+                                As introduced in Part 1, <strong>FastAPI</strong> is a lightweight Python web framework. When building APIs, it has two super-powers:
+                            </p>
+                            <ol class="list-decimal pl-5 mt-1 text-xs text-slate-600 space-y-1">
+                                <li><strong>Automatic JSON Conversion:</strong> Any Python dictionary or model you return is automatically converted into pure JSON without extra code.</li>
+                                <li><strong>Automatic Interactive Docs:</strong> Visiting <code class="bg-amber-100/70 px-1 rounded text-slate-800">/docs</code> in your browser instantly gives you an interactive UI (Swagger) to test all your endpoints live.</li>
+                            </ol>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-slate-900 mb-1">Installation Reminder:</h4>
+                            <pre class="bg-slate-900 text-emerald-400 p-2.5 rounded font-mono text-xs overflow-x-auto">pip install fastapi uvicorn</pre>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-slate-900 mb-1">A Fully Functional REST API in Python:</h4>
+                            <p class="text-slate-600 text-xs mb-2">Save this as <code class="font-mono bg-amber-100/70 px-1 rounded">main.py</code> and run it with <code class="font-mono bg-amber-100/70 px-1 rounded">uvicorn main:app --reload</code>:</p>
+                            <pre class="bg-slate-900 text-slate-200 p-3 rounded font-mono text-xs overflow-x-auto">
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI()
+
+# In-memory database simulation (a list of Python dictionaries)
+fake_database = [
+    {"id": 1, "title": "Buy groceries", "completed": False},
+    {"id": 2, "title": "Read Part 2 guide", "completed": True}
+]
+
+# Schema: Define what data a client must send when creating a todo
+class TodoCreate(BaseModel):
+    title: str
+    completed: bool = False
+
+# 1. READ ALL (GET)
+@app.get("/todos")
+def get_all_todos():
+    return fake_database  # FastAPI automatically converts this to JSON!
+
+# 2. READ ONE (GET with Path Parameter)
+@app.get("/todos/{todo_id}")
+def get_single_todo(todo_id: int):
+    for item in fake_database:
+        if item["id"] == todo_id:
+            return item
+    raise HTTPException(status_code=404, detail="Todo item not found")
+
+# 3. CREATE (POST with JSON Body)
+@app.post("/todos", status_code=201)
+def create_todo(new_todo: TodoCreate):
+    new_item = {
+        "id": len(fake_database) + 1,
+        "title": new_todo.title,
+        "completed": new_todo.completed
+    }
+    fake_database.append(new_item)
+    return new_item</pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 7: Key Takeaways -->
+            <section id="takeaways" class="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div>
+                    <span class="text-xs font-bold text-emerald-700 uppercase tracking-widest block mb-1">Summary</span>
+                    <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">7. Key Takeaways & Review</h2>
+                </div>
+
+                <div class="space-y-2 text-sm">
+                    <div class="p-3 bg-slate-50 rounded-lg flex items-start gap-2">
+                        <span class="text-emerald-600 font-bold">✔</span>
+                        <span class="text-slate-700"><strong>APIs Decouple Presentation:</strong> Web APIs return pure structured data (JSON), allowing one backend to power mobile apps, web browsers, and external partners simultaneously.</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg flex items-start gap-2">
+                        <span class="text-emerald-600 font-bold">✔</span>
+                        <span class="text-slate-700"><strong>JSON Dominance:</strong> JSON won because it is minimal, human-readable, and maps directly to native dictionaries and lists across all languages.</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg flex items-start gap-2">
+                        <span class="text-emerald-600 font-bold">✔</span>
+                        <span class="text-slate-700"><strong>RESTful Convention:</strong> REST uses <strong>nouns</strong> in URL paths for resources (<code class="text-xs font-mono bg-slate-200 px-1 rounded">/users</code>) and HTTP verbs for actions (<code class="text-xs font-mono bg-slate-200 px-1 rounded">GET</code>, <code class="text-xs font-mono bg-slate-200 px-1 rounded">POST</code>, <code class="text-xs font-mono bg-slate-200 px-1 rounded">DELETE</code>).</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg flex items-start gap-2">
+                        <span class="text-emerald-600 font-bold">✔</span>
+                        <span class="text-slate-700"><strong>Status Code Accuracy:</strong> REST APIs communicate state using standard HTTP codes (e.g. 200 OK, 201 Created, 404 Not Found) alongside JSON response bodies.</span>
+                    </div>
+                </div>
+
+                <!-- Next Chapter Preview -->
+                <div class="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                        <span class="text-xs uppercase font-bold text-slate-400">Up Next in Series</span>
+                        <div class="font-bold text-slate-800 text-base">Part 3: The Backend — Routing, State, Sessions, JWTs & Middleware</div>
+                    </div>
+                    <div class="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-medium">
+                        Ready to continue
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-4 text-center text-xs text-slate-500">
+        <p>Comprehensive Web Architecture & Engineering Guide • Part 2: Data Exchange Formats & Web APIs</p>
+    </footer>
+
+</body>
+</html>

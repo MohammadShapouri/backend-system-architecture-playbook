@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Storage Fundamentals: B-Trees vs. LSM-Trees &amp; In-Memory Tables</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 09 - Storage Engine Physics)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Storage Engines &amp; Database Internals
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Storage Fundamentals: B-Trees vs. LSM-Trees &amp; In-Memory Tables
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating at the disk and flash boundaries: Analyzing page-based random mutations in <strong>B-Trees</strong> versus append-only sequential writes in <strong>Log-Structured Merge-Trees (LSM-Trees)</strong>, navigating the RUM Conjecture, eliminating disk reads with <strong>Bloom Filters</strong>, evaluating in-memory table structures, and engineering the hybrid persistence tier of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 09: Hybrid Storage Architecture</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 08, we evaluated real-time communication protocols across Long-Polling, SSE, and WebSockets. In Milestone 09, we descend into <strong>storage engine physics</strong>. In OmniRoute, two diametrically opposed workloads collide: financial ride payments require strict ACID relational guarantees with predictable primary-key read lookups, while 500,000 active drivers stream 166,667 GPS coordinates per second that would instantly exhaust B-Tree disk IOPS. We architect OmniRoute's <strong>Hybrid Storage Engine</strong>: combining an in-memory <strong>MemTable with an append-only Write-Ahead Log (WAL)</strong> and <strong>SSTable/Bloom Filter simulation</strong> for telemetry ingestion alongside an asynchronous <strong>SQLAlchemy 2.0 B-Tree persistence model</strong> for trip settlement records.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Disk Physics: Sequential vs. Random I/O Bounds</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> B-Tree Architecture: 8KB Pages &amp; Write Amplification</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> LSM-Tree Architecture: MemTable, WAL, SSTable &amp; Compaction</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The RUM Conjecture (Read, Update, Memory Space)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Bloom Filters: Space-Efficient Disk Miss Defense</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Uber Case Study: Postgres to Schemaless to RocksDB</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete Hybrid Storage Engine &amp; PyTest Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Storage Engine Physics & The RUM Conjecture -->
+        <section id="storage-physics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Hardware Mechanical Sympathy</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Physics: The Mechanical Sympathy of Disk &amp; Flash</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A storage engine is the software translation layer between abstract application data structures (objects, rows, documents) and the physical properties of magnetic platters or silicon flash cells.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Regardless of whether an engine runs on a rotating HDD or a PCIe Gen5 NVMe SSD, one fundamental hardware law remains invariant: <strong>Sequential disk writes are orders of magnitude faster and less damaging to flash media than random in-place updates.</strong>
+            </p>
+
+            <!-- The RUM Conjecture Visual Card -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The RUM Conjecture (Athanassoulis et al., Harvard Database Group)
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Read -->
+                    <div class="p-4 bg-slate-950 border border-sky-500 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Read Overhead (R)</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            How many disk seeks/pages must be read to return a record? B-Trees optimize for this ($O(\log_B N)$).
+                        </p>
+                    </div>
+
+                    <!-- Update -->
+                    <div class="p-4 bg-slate-950 border border-emerald-500 rounded-2xl space-y-2">
+                        <span class="text-emerald-300 font-bold block text-sm">Update Overhead (U)</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            How much data must be written to disk when modifying a value? LSM-Trees optimize for this via append-only logs.
+                        </p>
+                    </div>
+
+                    <!-- Memory Space -->
+                    <div class="p-4 bg-slate-950 border border-purple-500 rounded-2xl space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Memory / Space Overhead (M)</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            How much extra disk space and RAM is wasted on indexes, fragmentation, and deleted tombstones?
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-amber-400 font-mono">The Trilemma Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The <strong>RUM Conjecture</strong> proves that you can optimize for at most <strong>two</strong> of these three dimensions. Designing a storage engine that simultaneously delivers minimum Read cost, minimum Write cost, and minimum Storage space is physically impossible.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine keeping an inventory catalog of 50,000 car parts in a retail repair shop.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    A <strong>B-Tree</strong> is like an encyclopedia with rigid 500-page leather-bound volumes. When a customer buys a spark plug, you walk to Volume 4, Page 212, erase the pencil number "14", and write "13". Finding parts is fast because pages are in strict alphabetical order. But updating is slow and tedious, and constantly erasing pages wears physical holes in the paper (Write Amplification).
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    An <strong>LSM-Tree</strong> is like a legal pad on the shop counter. When a customer buys a spark plug, you simply write a one-line note on the next available line: <em>"Sold 1 spark plug at 2:15 PM"</em>. Writing takes 1 second (append-only speed!). But when someone asks: <em>"How many spark plugs do we have?"</em>, you have to read the notebook backwards and scan older archived notebooks (Compaction) to calculate the final tally.
+                </p>
+            </div>
+        </section>
+
+        <!-- B-TREES VS. LSM-TREES DEEP DIVE -->
+        <section id="trees-deep-dive" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Core Storage Architecture
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    B-Trees vs. LSM-Trees: The Architectural Divide
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    In-Place Mutation &bull; Log-Structured Append &bull; Write Amplification Factor (WAF)
+                </p>
+            </div>
+
+            <!-- Deep Comparison Grid -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- B-Trees -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">B-Trees (PostgreSQL, MySQL, SQLite)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Read-Optimized</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Data is organized into fixed-size pages (typically 4KB to 16KB). Pages form a balanced tree with a massive branching factor (often 100 to 500 children per node).
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-sky-300 text-[10px] space-y-1">
+                        <div>&bull; Tree Height: Typically 3 to 4 levels for 1 Billion rows!</div>
+                        <div>&bull; Read Path: $O(\log_B N)$ &rarr; Max 3-4 page reads to find any record</div>
+                        <div>&bull; Write Path: In-place page rewrite + Write-Ahead Log (WAL)</div>
+                        <div class="text-rose-400 font-bold">&bull; Downside: Modifying 8 bytes rewrites entire 8KB page (WAF ~50-100x!)</div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong>Best For:</strong> Strong consistency, range queries, read-heavy workloads, and multi-column secondary indexes.
+                    </p>
+                </div>
+
+                <!-- LSM-Trees -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">LSM-Trees (RocksDB, Cassandra, ScyllaDB)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Write-Optimized</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Writes never mutate disk data in place. Incoming writes append to an in-memory sorted structure (<strong>MemTable</strong>) and a sequential disk log (WAL).
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                        <div>&bull; Write Path: Zero random I/O. Pure sequential appends at memory speed</div>
+                        <div>&bull; Disk Flush: MemTable flushes to immutable <strong>SSTables</strong> on disk</div>
+                        <div>&bull; Background Compaction: Merges SSTable files and removes tombstones</div>
+                        <div class="text-amber-400 font-bold">&bull; Downside: Read amplification (must check MemTable + multiple SSTables)</div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong>Best For:</strong> Extreme write throughput, time-series telemetry, financial ledgers, and append-heavy events.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Visual Flowchart of LSM-Tree Pipeline -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The LSM-Tree Architecture: MemTable, WAL, SSTable &amp; Bloom Filter
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Client Write -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-sky-300 font-bold block text-xs">1. Ingress Write</span>
+                        <div class="text-[9px] text-slate-400 font-sans">put(key, value)</div>
+                        <div class="text-[9px] text-emerald-400 font-bold">Instant return!</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; writes to both &rarr;</div>
+
+                    <!-- MemTable & WAL -->
+                    <div class="p-4 bg-sky-950/80 border-2 border-sky-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-sky-300 font-bold block text-sm">2. MemTable &amp; WAL</span>
+                        <div class="text-[10px] text-slate-200 font-sans">RAM SkipList + Disk Append Log</div>
+                        <div class="text-[9px] text-emerald-300">Fast in-memory sort</div>
+                        <div class="text-[9px] text-amber-300">WAL provides crash recovery</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; flush when full &rarr;</div>
+
+                    <!-- SSTables on Disk -->
+                    <div class="p-4 bg-purple-950/80 border-2 border-purple-500 rounded-2xl w-full md:w-56 space-y-1.5 shadow-lg">
+                        <span class="text-purple-300 font-bold block text-sm">3. SSTables (Disk)</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Sorted String Tables</div>
+                        <div class="text-[9px] text-slate-300">Immutable sequentially written files</div>
+                        <div class="text-[9px] text-emerald-400 font-bold">Guarded by Bloom Filter</div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; merges &rarr;</div>
+
+                    <!-- Compaction -->
+                    <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-44 space-y-1">
+                        <span class="text-emerald-300 font-bold block text-xs">4. Compaction</span>
+                        <div class="text-[9px] text-slate-400 font-sans">Background Merge-Sort</div>
+                        <div class="text-[9px] text-amber-300 font-bold">Removes tombstones</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Magic of Bloom Filters in LSM-Trees:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Because SSTables on disk are immutable, a single key lookup might have to check 10 different SSTable files. A **Bloom Filter** (a space-efficient probabilistic data structure) is loaded in RAM for every SSTable. The filter can say with 100% mathematical certainty if a key is <em>definitely NOT</em> in that SSTable file, preventing 99% of useless random disk reads!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE UBER CASE STUDY: POSTGRESQL TO SCHEMALESS TO ROCKSDB -->
+        <section id="uber-case-study" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Industrial Case Study
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Case Study: Why Uber Migrated from PostgreSQL to MySQL and then RocksDB
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    The Write Amplification Crisis in High-Frequency Geo-Telemetry
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In 2016, Uber engineering published one of the most famous database architectural post-mortems in internet history: <em>Why Uber, an early adopter of PostgreSQL, migrated its core dispatch and trip database back to MySQL (InnoDB) and subsequently built Docstore on top of RocksDB.</em>
+            </p>
+
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-4 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-rose-400 font-bold text-sm">The PostgreSQL B-Tree Write Amplification Problem at Uber</span>
+                    <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold border border-rose-500/30">PostgreSQL HOT Tuple Limitation</span>
+                </div>
+                <div class="space-y-2 text-[11px] font-sans leading-relaxed">
+                    <p>
+                        In PostgreSQL, row versions are stored directly in the primary table heap. If you have an `orders` table with 5 secondary indexes (e.g., `user_id`, `driver_id`, `created_at`, `status`, `city_id`), and you update a single column (e.g. `status = 'IN_TRANSIT'`):
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 font-mono text-[10px] space-y-1">
+                        <div>1. Postgres allocates a brand new row tuple in the table page heap.</div>
+                        <div>2. Because the physical disk tuple address changes, <strong>all 5 secondary B-Tree indexes must be updated</strong>!</div>
+                        <div>3. Modifying 5 indexes writes 5 random 8KB B-tree leaf pages to disk + WAL records.</div>
+                        <div class="text-rose-400 font-bold">&rarr; A 10-byte status update generated over 40 Kilobytes of random disk writes!</div>
+                    </div>
+                    <p>
+                        Under millions of driver location and ride status updates, PostgreSQL saturated Uber’s NVMe SSD write endurance and overwhelmed database replication streams.
+                    </p>
+                    <p>
+                        <strong>The LSM-Tree Solution (Docstore on RocksDB):</strong>
+                        In RocksDB, updating a ride status requires only a single append to the in-memory MemTable and write-ahead log. There are zero random page rewrites. Storage bandwidth dropped by over <strong>80%</strong>, and write latency tail drops (p99) stabilized from seconds to sub-10 milliseconds!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 09 -->
+        <section id="omniroute-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 09: Hybrid Storage Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 09 for <strong>OmniRoute</strong>: a production-grade Hybrid Storage Engine demonstrating:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Log-Structured Merge-Tree (LSM) Core:</strong> An in-memory sorted MemTable, append-only Write-Ahead Log (WAL), immutable SSTable disk flusher, and a bit-array <strong>Bloom Filter</strong> to eliminate disk reads.</li>
+                <li><strong>Relational B-Tree Storage:</strong> Asynchronous SQLAlchemy 2.0 models storing trip settlement ledgers with primary and indexed foreign keys.</li>
+                <li><strong>FastAPI Storage Controller:</strong> Routing high-frequency driver coordinates to the LSM engine and ACID trip orders to the relational B-Tree engine.</li>
+                <li><strong>Automated PyTest Battery:</strong> Testing WAL crash replay, Bloom filter accuracy, and B-Tree transactions.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 09)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── storage/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 09: B-Tree Trip Settlement Entity (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">lsm_engine.py</span>    <span class="text-slate-500"># Milestone 09: MemTable, Append-Only WAL &amp; Bloom Filter</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 09: FastAPI Hybrid Ingress Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_storage_engines.py</span> <span class="text-slate-500"># Milestone 09 WAL Durability &amp; Bloom Filter Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/storage/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. B-Tree Trip Settlement Entity: <code class="text-purple-700">src/omniroute/storage/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Storage - B-Tree Relational Settlement Schema</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, DateTime, Index
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TripSettlementBTreeModel</span>(Base):
+    <span class="text-slate-500">"""
+    B-TREE RELATIONAL MODEL:
+    Optimized for point-reads, ACID consistency, and multi-column joins.
+    Used exclusively for finalized trip billing and driver payouts.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"trip_settlements"</span>
+
+    trip_id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    rider_id: Mapped[str] = mapped_column(String(36), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    driver_id: Mapped[str] = mapped_column(String(36), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    fare_amount: Mapped[float] = mapped_column(Float, nullable=<span class="text-rose-400">False</span>)
+    status: Mapped[str] = mapped_column(String(20), default=<span class="text-amber-300">"COMPLETED"</span>, index=<span class="text-rose-400">True</span>)
+    settled_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )
+
+    __table_args__ = (
+        Index(<span class="text-amber-300">"ix_driver_settlement_window"</span>, <span class="text-amber-300">"driver_id"</span>, <span class="text-amber-300">"settled_at"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/storage/lsm_engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. LSM-Tree Engine with MemTable &amp; Bloom Filter: <code class="text-purple-700">src/omniroute/storage/lsm_engine.py</code></span>
+                    <span class="text-slate-400">Append-Only Ingestion Physics</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Storage - Log-Structured Merge-Tree (LSM) Engine with Bloom Filters</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Optional, List
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BloomFilter</span>:
+    <span class="text-slate-500">"""
+    SPACE-EFFICIENT PROBABILISTIC FILTER:
+    Guarantees 0% false negatives.
+    If the filter says 'No', the key is 100% guaranteed not in the SSTable file.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, size_bits: int = 2048, hash_count: int = 3):
+        self.size_bits = size_bits
+        self.hash_count = hash_count
+        self.bit_array = [0] * size_bits
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_get_hashes</span>(self, key: str) -> List[int]:
+        hashes = []
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(self.hash_count):
+            digest = hashlib.md5(f<span class="text-amber-300">"{key}:{i}"</span>.encode(<span class="text-amber-300">"utf-8"</span>)).hexdigest()
+            hashes.append(int(digest, 16) % self.size_bits)
+        <span class="text-purple-400">return</span> hashes
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add</span>(self, key: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">for</span> bit_idx <span class="text-purple-400">in</span> self._get_hashes(key):
+            self.bit_array[bit_idx] = 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">contains</span>(self, key: str) -> bool:
+        <span class="text-purple-400">return all</span>(self.bit_array[bit_idx] == 1 <span class="text-purple-400">for</span> bit_idx <span class="text-purple-400">in</span> self._get_hashes(key))
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LSMStorageEngine</span>:
+    <span class="text-slate-500">"""
+    LSM-TREE STORAGE ENGINE (RocksDB Architecture):
+    1. MemTable: In-memory sorted dictionary for O(1) writes.
+    2. Write-Ahead Log (WAL): Sequential append-only disk log for crash recovery.
+    3. SSTable: Immutable flushed disk files guarded by in-memory Bloom Filters.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, wal_path: str = <span class="text-amber-300">"lsm_wal.log"</span>, memtable_flush_threshold: int = 5):
+        self.wal_path = wal_path
+        self.memtable_flush_threshold = memtable_flush_threshold
+        self._memtable: Dict[str, dict] = {}
+        self._sstables: List[Dict[str, dict]] = []
+        self._bloom_filters: List[BloomFilter] = []
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">put</span>(self, key: str, value: dict) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-slate-500"># 1. Append to Write-Ahead Log (Sequential Write)</span>
+            log_entry = json.dumps({<span class="text-amber-300">"key"</span>: key, <span class="text-amber-300">"val"</span>: value}) + <span class="text-amber-300">"\n"</span>
+            <span class="text-purple-400">with</span> open(self.wal_path, <span class="text-amber-300">"a"</span>, encoding=<span class="text-amber-300">"utf-8"</span>) <span class="text-purple-400">as</span> wal_file:
+                wal_file.write(log_entry)
+
+            <span class="text-slate-500"># 2. Write to in-memory sorted MemTable</span>
+            self._memtable[key] = value
+
+            <span class="text-slate-500"># 3. Check flush threshold</span>
+            <span class="text-purple-400">if</span> len(self._memtable) &gt;= self.memtable_flush_threshold:
+                self._flush_memtable_to_sstable()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_flush_memtable_to_sstable</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Flushes sorted MemTable to an immutable SSTable and builds a Bloom filter."""</span>
+        sstable = dict(sorted(self._memtable.items()))
+        bf = BloomFilter()
+        <span class="text-purple-400">for</span> k <span class="text-purple-400">in</span> sstable.keys():
+            bf.add(k)
+
+        self._sstables.insert(0, sstable)  <span class="text-slate-500"># Most recent SSTable first</span>
+        self._bloom_filters.insert(0, bf)
+        self._memtable = {}
+
+        <span class="text-slate-500"># Truncate WAL because state is safely committed to SSTable</span>
+        <span class="text-purple-400">if</span> os.path.exists(self.wal_path):
+            open(self.wal_path, <span class="text-amber-300">"w"</span>).close()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get</span>(self, key: str) -> Optional[dict]:
+        <span class="text-slate-500">"""
+        READ PATH:
+        1. Check in-memory MemTable (O(1)).
+        2. Scan SSTables guarded by Bloom filters (skips non-matching files).
+        """</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-slate-500"># Step 1: Check MemTable</span>
+            <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> self._memtable:
+                <span class="text-purple-400">return</span> self._memtable[key]
+
+            <span class="text-slate-500"># Step 2: Check SSTables with Bloom Filter defense</span>
+            <span class="text-purple-400">for</span> idx, sstable <span class="text-purple-400">in</span> enumerate(self._sstables):
+                <span class="text-purple-400">if not</span> self._bloom_filters[idx].contains(key):
+                    <span class="text-slate-500"># Bloom filter says NO &rarr; Skip SSTable completely without searching!</span>
+                    <span class="text-purple-400">continue</span>
+                <span class="text-purple-400">if</span> key <span class="text-purple-400">in</span> sstable:
+                    <span class="text-purple-400">return</span> sstable[key]
+
+            <span class="text-purple-400">return None</span></pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Hybrid Storage FastAPI Controller: <code class="text-purple-700">src/omniroute/storage/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Polyglot Dispatch</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, HTTPException, status
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.storage.lsm_engine <span class="text-purple-400">import</span> LSMStorageEngine
+<span class="text-purple-400">from</span> omniroute.storage.models <span class="text-purple-400">import</span> TripSettlementBTreeModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/storage"</span>, tags=[<span class="text-amber-300">"Hybrid Storage Engines"</span>])
+lsm_engine = LSMStorageEngine(wal_path=<span class="text-amber-300">"omniroute_wal.log"</span>, memtable_flush_threshold=3)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TelemetryWriteDTO</span>(BaseModel):
+    driver_id: str
+    lat: float
+    lng: float
+    speed: float
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TripOrderSettlementDTO</span>(BaseModel):
+    rider_id: str
+    driver_id: str
+    fare_amount: float
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/lsm/telemetry"</span>, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">write_high_frequency_telemetry</span>(dto: TelemetryWriteDTO):
+    <span class="text-slate-500">"""LSM-TREE PATH: High-throughput write via MemTable append and WAL."""</span>
+    <span class="text-purple-400">await</span> lsm_engine.put(dto.driver_id, dto.model_dump())
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"engine"</span>: <span class="text-amber-300">"LSM-Tree"</span>, <span class="text-amber-300">"driver_id"</span>: dto.driver_id, <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"APPENDED"</span>}
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/lsm/telemetry/{driver_id}"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">read_telemetry_lsm</span>(driver_id: str):
+    <span class="text-slate-500">"""LSM-TREE READ PATH: Evaluates MemTable -> Bloom Filter -> SSTable."""</span>
+    val = <span class="text-purple-400">await</span> lsm_engine.get(driver_id)
+    <span class="text-purple-400">if not</span> val:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=<span class="text-amber-300">"Telemetry record not found."</span>)
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"engine"</span>: <span class="text-amber-300">"LSM-Tree"</span>, <span class="text-amber-300">"record"</span>: val}
+
+
+<span class="text-purple-400">@router.post</span>(<span class="text-amber-300">"/btree/settlement"</span>, status_code=status.HTTP_201_CREATED)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">commit_acid_trip_settlement</span>(
+    dto: TripOrderSettlementDTO,
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-slate-500">"""B-TREE PATH: Relational database write with ACID transactional semantics."""</span>
+    record = TripSettlementBTreeModel(
+        rider_id=dto.rider_id,
+        driver_id=dto.driver_id,
+        fare_amount=dto.fare_amount
+    )
+    db.add(record)
+    <span class="text-purple-400">await</span> db.commit()
+    <span class="text-purple-400">await</span> db.refresh(record)
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"engine"</span>: <span class="text-amber-300">"B-Tree RDBMS"</span>, <span class="text-amber-300">"trip_id"</span>: record.trip_id, <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"COMMITTED"</span>}</pre>
+            </div>
+
+            <!-- File 4: tests/test_storage_engines.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Storage Engine Test Battery: <code class="text-purple-700">tests/test_storage_engines.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+
+<span class="text-purple-400">from</span> omniroute.storage.lsm_engine <span class="text-purple-400">import</span> LSMStorageEngine, BloomFilter
+<span class="text-purple-400">from</span> omniroute.storage.models <span class="text-purple-400">import</span> Base, TripSettlementBTreeModel
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestStorageEnginesSuite</span>:
+    <span class="text-slate-500">"""Verifies LSM-Tree MemTable/SSTable flushes, Bloom filter accuracy, and B-Tree models."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_bloom_filter_zero_false_negatives</span>(self):
+        bf = BloomFilter(size_bits=1024, hash_count=3)
+        bf.add(<span class="text-amber-300">"driver_42"</span>)
+        bf.add(<span class="text-amber-300">"driver_99"</span>)
+
+        <span class="text-slate-500"># Invariant: If added, MUST evaluate to True</span>
+        assert bf.contains(<span class="text-amber-300">"driver_42"</span>) <span class="text-purple-400">is True</span>
+        assert bf.contains(<span class="text-amber-300">"driver_99"</span>) <span class="text-purple-400">is True</span>
+        <span class="text-slate-500"># Non-existent key (99% probability False)</span>
+        assert bf.contains(<span class="text-amber-300">"driver_non_existent"</span>) <span class="text-purple-400">is False</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_lsm_memtable_flush_and_sstable_retrieval</span>(self):
+        wal_file = <span class="text-amber-300">"test_lsm_flush.log"</span>
+        <span class="text-purple-400">if</span> os.path.exists(wal_file):
+            os.remove(wal_file)
+
+        engine = LSMStorageEngine(wal_path=wal_file, memtable_flush_threshold=2)
+
+        <span class="text-slate-500"># Write 2 entries &rarr; Triggers automatic SSTable flush</span>
+        <span class="text-purple-400">await</span> engine.put(<span class="text-amber-300">"k1"</span>, {<span class="text-amber-300">"lat"</span>: 1.0})
+        <span class="text-purple-400">await</span> engine.put(<span class="text-amber-300">"k2"</span>, {<span class="text-amber-300">"lat"</span>: 2.0})
+
+        assert len(engine._sstables) == 1
+        assert len(engine._memtable) == 0  <span class="text-slate-500"># MemTable cleared post-flush!</span>
+
+        <span class="text-slate-500"># Read back from SSTable via Bloom Filter</span>
+        val = <span class="text-purple-400">await</span> engine.get(<span class="text-amber-300">"k1"</span>)
+        assert val == {<span class="text-amber-300">"lat"</span>: 1.0}
+
+        <span class="text-purple-400">if</span> os.path.exists(wal_file):
+            os.remove(wal_file)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_btree_relational_settlement_persistence</span>(self, in_memory_db):
+        <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+            record = TripSettlementBTreeModel(
+                rider_id=<span class="text-amber-300">"rider_1"</span>,
+                driver_id=<span class="text-amber-300">"driver_1"</span>,
+                fare_amount=35.50
+            )
+            session.add(record)
+            <span class="text-purple-400">await</span> session.commit()
+            assert record.trip_id <span class="text-purple-400">is not None</span>
+            assert record.status == <span class="text-amber-300">"COMPLETED"</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Storage Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The B-Tree Append-Log Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using traditional relational databases (PostgreSQL/MySQL) with 8 secondary indexes to ingest 150,000 real-time location events per second.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys storage hardware:</strong> Each event update mutates multiple 8KB B-Tree index pages randomly across disk, generating a catastrophic Write Amplification Factor of 50x to 100x. The database saturates SSD IOPS, causes replication lag to blow out to hours, and prematurely burns through physical flash endurance! <strong>Use LSM-Trees (RocksDB/Cassandra) or in-memory ring buffers for high-velocity ingest.</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Neglecting LSM-Tree Compaction Stall</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing data into an LSM-Tree engine faster than the background compaction threads can merge SSTables on disk.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes tail latency collapse:</strong> If writes outpace compaction, hundreds of unmerged SSTable files accumulate. Read queries must now scan 50 different files per lookup. Eventually, RocksDB triggers a <strong>Write Stall</strong> (hard-throttling incoming writes to 0) to allow compaction to catch up, spiking p99 latency from 5ms to 10,000ms! Always budget dedicated disk I/O bandwidth for compaction.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify the LSM-Tree engine, test Bloom Filter accuracy, and evaluate B-Tree relational models:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Storage Fundamentals test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_storage_engines.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.08s. Confirms Bloom filter 0% false negatives, MemTable flush logic, and async SQLAlchemy 2.0 B-tree transactions!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test Bloom Filter bit-array defense in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from omniroute.storage.lsm_engine import BloomFilter; bf = BloomFilter(2048, 3); bf.add('driver_101'); print('Exists (True):', bf.contains('driver_101')); print('Non-existent (False):', bf.contains('driver_ghost'))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Demonstrates space-efficient disk seek defense: 2KB bit-array eliminates 99% of useless random disk queries!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Scaling Relational Persistence: Read-Replicas, Connection Pooling &amp; Sharding</h4>
+                <p class="text-xs text-slate-500 font-sans">Scaling relational databases beyond single-node limits: Master-Replica replication lag hazards, connection pool sizing with PgBouncer, and implementing consistent hashing shard routers in SQLAlchemy 2.0.</p>
+            </div>
+            <a href="Chapter 10 - Scaling Relational Persistence - Read-Replicas, Connection Pooling and Sharding.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

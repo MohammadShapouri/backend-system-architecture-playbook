@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Callable Objects &amp; Context Protocols - __call__, Reentrant Context Managers &amp; Resource Guards</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 07 - Execution Pipelines &amp; Transaction Context Guards)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Callable Invocations &amp; Resource Scope Protocols
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 07: Callable Objects &amp; Context Protocols - __call__, Reentrant Context Managers &amp; Resource Guards
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering stateful operational closures and deterministic lifecycle boundaries: Elevating class instances to first-class callable functions with <code class="font-mono text-emerald-400">__call__</code>, constructing non-leaking stateful pipeline operators, demystifying the low-level mechanics of <code class="font-mono text-emerald-400">__enter__</code> and <code class="font-mono text-emerald-400">__exit__</code>, architecting thread-safe reentrant resource guards, and implementing atomic transaction execution boundaries for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 2 Culmination</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 07: Pipeline Steps &amp; Atomic Transaction Guards</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 05 and 06, we engineered immutable value objects and observable domain collections. In Milestone 07, we implement EntityForge's <strong>Operational Execution Pipeline &amp; Resource Guard Architecture</strong>. Domain mutations must not execute haphazardly; they must traverse stateful, callable validation steps while running inside atomic, nestable transaction blocks. We construct callable pipeline operators using <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">__call__</code> and a production-grade <strong>Reentrant Transaction Guard</strong> with <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">__enter__</code> and <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">__exit__</code> that guarantees automatic state rollback upon mid-pipeline failure.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Callable Protocol (<code class="text-purple-300">__call__</code>) vs. Stateful Closures</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CPython Call Mechanics &amp; <code class="text-purple-300">PyObject_Call</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Context Protocol: <code class="text-purple-300">__enter__</code> &amp; <code class="text-purple-300">__exit__</code> (3 Args)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Exception Suppression Invariant (Truthiness of <code class="text-purple-300">__exit__</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Reentrant Context Managers (Recursion Depth Stacks)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">TransactionScopeGuard</code> &amp; Pipeline Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Callable Objects -->
+        <section id="callable-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: First-Class Callable Instances &amp; Closures</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In many languages, functions and class instances occupy entirely different architectural universes. In Python, following the foundational principle that <em>"everything is an object"</em>, <strong>functions are simply instances of the built-in <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">function</code> class</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                By implementing the <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">__call__</code> dunder method on any custom class, you grant instances of that class the execution semantics of a function. When CPython encounters parentheses applied to an identifier (<code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">obj(*args, **kwargs)</code>), it invokes <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">type(obj).__call__(obj, *args, **kwargs)</code>.
+            </p>
+
+            <!-- Callable Objects vs Closures Visual Comparison (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Stateful Functional Abstractions: Function Closures vs. Callable Objects
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Function Closure -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-sky-300 font-bold text-sm">1. Function Closure</span>
+                            <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-800">Lexical Scoping</span>
+                        </div>
+                        <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">make_rate_limiter</span>(limit: int):
+    count = 0
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">limiter</span>():
+        <span class="text-purple-400">nonlocal</span> count
+        count += 1
+        <span class="text-purple-400">return</span> count &lt;= limit
+    <span class="text-purple-400">return</span> limiter</pre>
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong class="text-slate-200">Lightweight:</strong> Low overhead for single, stateless or minimal-state execution callbacks.</li>
+                            <li><strong class="text-rose-400">Opaque State:</strong> Captured state variables reside in <code class="font-mono text-slate-300">__closure__</code> tuple cells. Difficult to inspect, serialize, reset, or unit test directly.</li>
+                            <li><strong class="text-rose-400">Single Operation:</strong> Only supports the direct execution signature; cannot cleanly expose companion management methods (e.g. <code class="font-mono">reset()</code>, <code class="font-mono">status()</code>).</li>
+                        </ul>
+                    </div>
+
+                    <!-- Callable Class Instance -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Callable Class Instance</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">__call__ Protocol</span>
+                        </div>
+                        <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">RateLimiter</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, limit: int):
+        self.limit = limit
+        self.count = 0
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__call__</span>(self) -> bool:
+        self.count += 1
+        <span class="text-purple-400">return</span> self.count &lt;= self.limit
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">reset</span>(self) -> <span class="text-rose-400">None</span>:
+        self.count = 0</pre>
+                        <ul class="text-[11px] text-slate-400 font-sans list-disc pl-4 space-y-1">
+                            <li><strong class="text-emerald-300">Transparent State:</strong> State attributes live directly on <code class="font-mono text-slate-300">self</code>. Trivially inspected by debuggers and serializable to database state.</li>
+                            <li><strong class="text-emerald-300">Multi-Faceted API:</strong> Executes as a function, but provides explicit companion control methods (<code class="font-mono">reset()</code>, <code class="font-mono">audit()</code>).</li>
+                            <li><strong class="text-emerald-300">Composition &amp; Inheritance:</strong> Can inherit shared validation behaviors, implement generic protocols, and adhere to structural interfaces!</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Context Protocol: __enter__ & __exit__ -->
+        <section id="context-protocol-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Context Protocol (__enter__ &amp; __exit__)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The Python <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">with</code> statement (introduced in PEP 343) provides deterministic lifecycle setup and teardown boundaries. It is not merely syntactic sugar for a <code class="font-mono text-slate-800">try...finally</code> block; it coordinates an explicit contract between your runtime code and the object guarding the boundary.
+            </p>
+
+            <!-- Execution Lifecycle Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The with Statement Lifecycle Pipeline
+                </div>
+
+                <div class="space-y-3 text-[11px]">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-purple-300 font-bold block">1. Target Evaluation &amp; Setup (__enter__)</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                CPython evaluates context expression and calls <code class="text-emerald-300 font-mono">manager.__enter__()</code>. The returned value is bound to the optional <code class="text-slate-300 font-mono">as target</code> variable.
+                            </span>
+                        </div>
+                        <span class="bg-purple-950 text-purple-300 px-2 py-0.5 rounded text-[10px] font-bold border border-purple-800">Phase 1: Enter</span>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-sky-300 font-bold block">2. Inner Block Execution</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                Business logic inside the indented <code class="text-slate-300 font-mono">with</code> block executes.
+                            </span>
+                        </div>
+                        <span class="bg-sky-950 text-sky-300 px-2 py-0.5 rounded text-[10px] font-bold border border-sky-800">Phase 2: Work</span>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-amber-300 font-bold block">3. Teardown &amp; Exception Inspection (__exit__)</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                CPython unconditionally invokes <code class="text-emerald-300 font-mono">manager.__exit__(exc_type, exc_val, exc_tb)</code>, passing either <code class="text-slate-500 font-mono">(None, None, None)</code> or exception details.
+                            </span>
+                        </div>
+                        <span class="bg-amber-950 text-amber-300 px-2 py-0.5 rounded text-[10px] font-bold border border-amber-800">Phase 3: Exit</span>
+                    </div>
+                </div>
+
+                <!-- Exception Suppression Invariant -->
+                <div class="p-4 bg-slate-950 rounded-xl border border-emerald-900/60 space-y-2 text-[11px] font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs block">// The Exception Suppression Invariant:</strong>
+                    <p class="text-slate-300 leading-relaxed">
+                        If an exception occurs within the inner block, <code class="font-mono text-purple-300">__exit__</code> receives its runtime type, instance value, and traceback.
+                    </p>
+                    <ul class="list-disc pl-5 space-y-1 text-slate-400 font-mono text-[10px]">
+                        <li>If <code class="text-emerald-300">__exit__</code> returns <code class="text-emerald-300">True</code>: The exception is <strong>completely swallowed and suppressed</strong>. Execution continues cleanly immediately following the <code class="text-slate-300">with</code> block!</li>
+                        <li>If <code class="text-rose-400">__exit__</code> returns <code class="text-rose-400">False</code> (or <code class="text-rose-400">None</code>): The exception <strong>bubbles up normally</strong> to the outer caller.</li>
+                        <li><strong>Architectural Standard:</strong> Only suppress exceptions if the manager explicitly resolves the failure (e.g. falling back to an in-memory replica on database network drops). Never return <code class="text-emerald-300">True</code> blindly!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Advanced Pattern: Reentrant Context Managers -->
+        <section id="reentrant-context-managers" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Advanced Architecture: Reentrancy &amp; Nested Transaction Stacks</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A simple context manager is often single-use: entering it a second time either raises a state error or closes prematurely when an inner block terminates.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In database transaction processing, workflow orchestration, and locking systems, architectures demand <strong>Reentrant Context Managers</strong>: guards that can be safely nested within themselves across recursive function calls or composite pipeline steps.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- How Reentrancy Works -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-900 font-mono text-sm">Recursion Depth Counter Pattern</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Nesting Invariant</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        To support safe nesting, the manager maintains an internal depth counter:
+                    </p>
+                    <ul class="text-xs text-slate-600 space-y-2 leading-relaxed list-disc pl-4">
+                        <li><strong>On __enter__:</strong> Increment <code class="font-mono text-slate-800">self._depth</code>. Only initiate the physical resource (e.g. acquire mutex, start top-level DB transaction) when <code class="font-mono text-slate-800">depth == 1</code>!</li>
+                        <li><strong>On __exit__:</strong> Decrement <code class="font-mono text-slate-800">self._depth</code>. <strong>Do NOT close the physical resource</strong> until <code class="font-mono text-slate-800">depth == 0</code>!</li>
+                        <li>Inner <code class="font-mono text-slate-800">with</code> blocks create logical nested savepoints without prematurely releasing the outer connection.</li>
+                    </ul>
+                </div>
+
+                <!-- Reentrancy Visual Code -->
+                <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 text-slate-200 space-y-2">
+                    <span class="text-emerald-400 font-bold text-[11px] block">// Nested Transaction Scoping Trace:</span>
+                    <pre class="text-[10px] text-slate-300 leading-relaxed overflow-x-auto">
+<span class="text-purple-400">with</span> tx_guard:          <span class="text-slate-500"># depth = 1 &rarr; BEGIN PHYSICAL TRANSACTION</span>
+    mutate_user_balance()
+    <span class="text-purple-400">with</span> tx_guard:      <span class="text-slate-500"># depth = 2 &rarr; SAVEPOINT level_2 (no commit/close!)</span>
+        mutate_order()
+    <span class="text-slate-500"># depth decrements to 1 (connection remains open and locked)</span>
+<span class="text-slate-500"># depth decrements to 0 &rarr; COMMIT PHYSICAL TRANSACTION</span></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Dunder Method Matrix: Invocation & Context Protocols -->
+        <section id="dunder-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Dunder Method Matrix: Invocation &amp; Lifecycle Scopes</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The strict behavioral contracts for callability and context management:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Method</th>
+                                <th class="py-2 px-2 font-bold font-sans">Invocation Signature</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Override (&check;)</th>
+                                <th class="py-2 px-2 font-bold font-sans">When NOT to Override (&cross;)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__call__</td>
+                                <td class="py-3 px-2 font-mono">instance(*args, **kwargs)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Stateful pipeline processors, strategy pattern dispatchers, parameterizable decorators maintaining historical metrics, memoized policy evaluators.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Pure functions without internal mutable state (use standard <code class="font-mono text-slate-800">def</code> functions), or when instance behavior is already clearly served by a standard named method (e.g. <code class="font-mono text-slate-800">.execute()</code>).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__enter__</td>
+                                <td class="py-3 px-2 font-mono">__enter__(self) &rarr; target</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Resource acquisition: opening database transactions, acquiring locks, starting high-resolution performance timers, establishing mock test boundaries.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Classes where setup is entirely static and does not have an accompanying mandatory teardown phase.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__exit__</td>
+                                <td class="py-3 px-2 font-mono">__exit__(self, exc_type, exc_val, exc_tb) &rarr; bool | None</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Guaranteed resource teardown: releasing locks, closing sockets, rolling back aborted transactions on failure, committing transactions on success.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Suppressing exceptions blindly by returning <code class="font-mono text-rose-700">True</code> on arbitrary unhandled crashes (causes catastrophic silent failures in production).
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 07 -->
+        <section id="entityforge-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 07: Callable Pipelines &amp; Reentrant Transaction Guards</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07 of <strong>EntityForge</strong>: implementing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/execution.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">ExecutionStep</code>: A stateful, callable pipeline step implementing <code class="font-mono text-purple-700 font-bold">__call__</code>. Tracks historical execution counts, accumulated latency, and success ratios while executing domain logic.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">TransactionScopeGuard</code>: A reentrant context manager supporting nested <code class="font-mono text-slate-800">with</code> blocks via a recursion depth counter. Integrates directly with Chapter 07's Transaction Undo Log concepts:
+                    <ul class="list-disc pl-5 text-xs text-slate-600 mt-1 space-y-0.5">
+                        <li>Level 1 (Root): Establishes transaction boundary. Commits on clean exit.</li>
+                        <li>Level > 1 (Nested): Records sub-scope depth. Does not commit until the outermost block completes.</li>
+                        <li>On Exception: Reverts all uncommitted mutations immediately and rolls back state.</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 07)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           ├── collections.py            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">execution.py</span>              <span class="text-slate-500"># Milestone 07: Callable Steps &amp; Reentrant Transaction Guards</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_collections.py       <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_execution.py</span>         <span class="text-slate-500"># Milestone 07: Callables, Contexts &amp; Rollback Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/execution.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Execution Core: <code class="text-purple-700">src/entityforge/core/execution.py</code></span>
+                    <span class="text-slate-400">Callable Operators &amp; Reentrant Contexts</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Callable Pipeline Steps &amp; Reentrant Guards (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Callable, Dict, List, Optional, Self, Type
+<span class="text-purple-400">from</span> types <span class="text-purple-400">import</span> TracebackType
+<span class="text-purple-400">from</span> entityforge.core.diagnostics <span class="text-purple-400">import</span> DiagnosticRendererMixin
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ExecutionStep</span>(DiagnosticRendererMixin):
+    <span class="text-slate-500">"""
+    CALLABLE PIPELINE OPERATOR:
+    Encapsulates domain transformation logic inside a stateful callable instance.
+    Implements __call__ to execute transparently as a first-class function.
+    """</span>
+    __slots__ = (<span class="text-amber-300">"_name"</span>, <span class="text-amber-300">"_action"</span>, <span class="text-amber-300">"_execution_count"</span>, <span class="text-amber-300">"_total_latency"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, name: str, action: Callable[[Any], Any]) -> <span class="text-rose-400">None</span>:
+        self._name = name
+        self._action = action
+        self._execution_count: int = 0
+        self._total_latency: float = 0.0
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">name</span>(self) -> str:
+        <span class="text-purple-400">return</span> self._name
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">execution_count</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._execution_count
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__call__</span>(self, payload: Any) -> Any:
+        <span class="text-slate-500">"""
+        FIRST-CLASS CALLABLE PROTOCOL:
+        Executes the wrapped domain action, recording latency and call metrics.
+        """</span>
+        start_time = time.perf_counter()
+        <span class="text-purple-400">try</span>:
+            result = self._action(payload)
+            <span class="text-purple-400">return</span> result
+        <span class="text-purple-400">finally</span>:
+            duration = time.perf_counter() - start_time
+            self._execution_count += 1
+            self._total_latency += duration
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">reset_metrics</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Resets performance audit counters."""</span>
+        self._execution_count = 0
+        self._total_latency = 0.0
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionScopeGuard</span>:
+    <span class="text-slate-500">"""
+    REENTRANT TRANSACTION CONTEXT MANAGER:
+    Maintains a recursion depth counter to support arbitrary nested 'with' blocks.
+    Guarantees state commit strictly at depth 0, and executes rollback on exceptions.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, state_store: Dict[str, Any]) -> <span class="text-rose-400">None</span>:
+        self._state_store: Dict[str, Any] = state_store
+        <span class="text-slate-500"># Stack of state snapshots supporting multi-level nested rollbacks:</span>
+        self._snapshot_stack: List[Dict[str, Any]] = []
+        <span class="text-slate-500"># Nesting depth tracking:</span>
+        self._depth: int = 0
+        self._is_committed: bool = <span class="text-rose-400">False</span>
+        self._rollback_count: int = 0
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">depth</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._depth
+
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">rollback_count</span>(self) -> int:
+        <span class="text-purple-400">return</span> self._rollback_count
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__enter__</span>(self) -> Self:
+        <span class="text-slate-500">"""
+        ENTER CONTEXT:
+        1. Capture snapshot of state before mutations begin.
+        2. Increment recursion depth counter.
+        """</span>
+        <span class="text-slate-500"># Capture deep copy / dictionary snapshot of active state</span>
+        self._snapshot_stack.append(self._state_store.copy())
+        self._depth += 1
+        self._is_committed = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">return</span> self
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__exit__</span>(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType]
+    ) -> bool:
+        <span class="text-slate-500">"""
+        EXIT CONTEXT:
+        1. If exception occurred &rarr; revert state to snapshot and pop stack.
+        2. If clean exit &rarr; decrement depth counter.
+        3. Only commit changes when outermost context (depth == 0) terminates cleanly!
+        """</span>
+        self._depth -= 1
+        previous_snapshot = self._snapshot_stack.pop()
+
+        <span class="text-purple-400">if</span> exc_type <span class="text-purple-400">is not None</span>:
+            <span class="text-slate-500"># Exception encountered: Roll back active state to previous snapshot!</span>
+            self._state_store.clear()
+            self._state_store.update(previous_snapshot)
+            self._rollback_count += 1
+            <span class="text-slate-500"># Return False: Do NOT suppress exception; allow it to bubble up to caller!</span>
+            <span class="text-purple-400">return False</span>
+
+        <span class="text-slate-500"># Outermost context completed successfully</span>
+        <span class="text-purple-400">if</span> self._depth == 0:
+            self._is_committed = <span class="text-rose-400">True</span>
+
+        <span class="text-purple-400">return False</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_execution.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_execution.py</code></span>
+                    <span class="text-slate-400">Callables, Reentrancy &amp; Rollback Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Execution &amp; Context Protocols Verification (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.execution <span class="text-purple-400">import</span> ExecutionStep, TransactionScopeGuard
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestExecutionAndContextProtocols</span>:
+    <span class="text-slate-500">"""Unit tests asserting __call__ stateful invocations and reentrant context rollbacks."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_execution_step_callable_protocol_and_metrics</span>(self):
+        # 1. Define transformation action
+        <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">normalize_string</span>(text: str) -> str:
+            <span class="text-purple-400">return</span> text.strip().upper()
+
+        step = ExecutionStep(name=<span class="text-amber-300">"Normalizer"</span>, action=normalize_string)
+        assert step.execution_count == 0
+
+        # 2. Invoke instance directly as a function via __call__
+        res1 = step(<span class="text-amber-300">"   user_alpha   "</span>)
+        res2 = step(<span class="text-amber-300">"  admin_beta "</span>)
+
+        assert res1 == <span class="text-amber-300">"USER_ALPHA"</span>
+        assert res2 == <span class="text-amber-300">"ADMIN_BETA"</span>
+        assert step.execution_count == 2
+
+        # 3. Reset internal metric state
+        step.reset_metrics()
+        assert step.execution_count == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_reentrant_transaction_guard_clean_commit</span>(self):
+        state = {<span class="text-amber-300">"balance_alice"</span>: 1000, <span class="text-amber-300">"balance_bob"</span>: 500}
+        tx = TransactionScopeGuard(state)
+
+        # 1. Nested reentrant context
+        <span class="text-purple-400">with</span> tx:
+            assert tx.depth == 1
+            state[<span class="text-amber-300">"balance_alice"</span>] -= 200
+
+            <span class="text-purple-400">with</span> tx:
+                assert tx.depth == 2
+                state[<span class="text-amber-300">"balance_bob"</span>] += 200
+
+            assert tx.depth == 1
+
+        # 2. Outermost context exited cleanly
+        assert tx.depth == 0
+        assert tx._is_committed <span class="text-purple-400">is True</span>
+        assert state[<span class="text-amber-300">"balance_alice"</span>] == 800
+        assert state[<span class="text-amber-300">"balance_bob"</span>] == 700
+        assert tx.rollback_count == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_reentrant_transaction_guard_rolls_back_on_failure</span>(self):
+        state = {<span class="text-amber-300">"order_id"</span>: <span class="text-amber-300">"ORD-101"</span>, <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"DRAFT"</span>}
+        tx = TransactionScopeGuard(state)
+
+        # Simulate transaction encountering mid-flight crash
+        <span class="text-purple-400">with</span> pytest.raises(RuntimeError, match=<span class="text-amber-300">r"Simulated database disk failure"</span>):
+            <span class="text-purple-400">with</span> tx:
+                state[<span class="text-amber-300">"status"</span>] = <span class="text-amber-300">"PROCESSING"</span>
+                <span class="text-purple-400">with</span> tx:
+                    state[<span class="text-amber-300">"status"</span>] = <span class="text-amber-300">"AUTHORIZED"</span>
+                    <span class="text-purple-400">raise</span> RuntimeError(<span class="text-amber-300">"Simulated database disk failure!"</span>)
+
+        # CRITICAL ROLLBACK INVARIANT:
+        # State must be perfectly reverted to initial snapshot!
+        assert state[<span class="text-amber-300">"status"</span>] == <span class="text-amber-300">"DRAFT"</span>
+        assert tx.depth == 0
+        assert tx._is_committed <span class="text-purple-400">is False</span>
+        assert tx.rollback_count == 1</pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blindly Returning True from __exit__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __exit__(self, *args): self.cleanup(); return True</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes catastrophic silent failures:</strong> Returning <code class="font-mono">True</code> tells Python that <em>all</em> exceptions inside the <code class="font-mono">with</code> block were successfully resolved. Even fatal syntax errors, <code class="font-mono">ZeroDivisionError</code>, or <code class="font-mono">KeyError</code> are swallowed silently! Code continues executing as if nothing went wrong, leaving data corrupted. Only return <code class="font-mono text-emerald-900 font-bold">True</code> if you explicitly handled that specific exception type.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Premature Resource Release in Nested Contexts</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing a single-use context manager that calls <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">self.conn.close()</code> inside <code class="font-mono text-rose-900 font-bold">__exit__</code> without checking depth.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks nested pipelines:</strong> If an inner helper method runs <code class="font-mono">with my_guard:</code>, its exit closes the connection immediately. When the outer calling function resumes, the connection is already dead, raising <code class="font-mono text-rose-950 font-bold">InterfaceError: Connection already closed</code>! Maintain a recursion depth counter and close strictly when <code class="font-mono">depth == 0</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Overusing __call__ for Complex Domain Entities</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__call__</code> on a core domain aggregate like <code class="font-mono text-rose-900 font-bold">UserEntity</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this obscures intent:</strong> What does executing <code class="font-mono">user()</code> actually do? Does it save the user? Authenticate them? Validate permissions? Calling an entity instance like a function is ambiguous and confusing. Reserve <code class="font-mono text-emerald-900 font-bold">__call__</code> for action-centric objects (Pipelines, Operators, Tasks, Strategies).
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Acquiring Resources Outside __enter__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Opening network sockets or acquiring locks inside <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__init__</code> instead of <code class="font-mono text-rose-900 font-bold">__enter__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes resource leaks:</strong> If an exception occurs between instantiating the manager and entering the <code class="font-mono">with</code> block, <code class="font-mono">__exit__</code> will <strong>never run</strong>! The acquired resource remains orphaned in memory. Always defer physical resource acquisition until <code class="font-mono text-emerald-900 font-bold">__enter__</code> executes.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the execution and context protocols test battery and inspect callability and rollback invariants:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge execution and context protocol unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_execution.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.06s. Confirms __call__ pipeline step execution, reentrant nesting depth, and exception rollbacks.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 07:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweight pooling, slotted state, diagnostic renderers, value objects, observable sequences, and execution guards with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect callable object type checking in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "class CallableOp:
+    def __call__(self, x): return x * 2
+op = CallableOp()
+print('Is op callable():', callable(op))
+print('Direct execution:', op(21))"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that implementing __call__ causes callable(instance) to return True and enables standard invocation syntax!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Class Relationships &amp; Composition - Association, Aggregation, Delegation &amp; Mixins</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering Phase 3: Moving from individual classes to system topologies. Escaping the Fragile Base Class trap, mastering Composition over Inheritance, implementing structural delegation with __getattr__, and designing clean stateless Mixins.</p>
+            </div>
+            <a href="Chapter 08 - Class Relationships and Composition - Association, Aggregation, Delegation and Mixins.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

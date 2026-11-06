@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Advanced Inheritance &amp; C3 Linearization - Cooperative Multiple Inheritance &amp; super() Mechanics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 09 - Dynamic Plugin Chains &amp; C3 Linearization)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Advanced Hierarchy &amp; MRO Algorithms
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 09: Advanced Inheritance &amp; C3 Linearization - Cooperative Multiple Inheritance &amp; super() Mechanics
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering non-trivial inheritance Directed Acyclic Graphs (DAGs): Deconstructing the mathematical formulation of the C3 Linearization algorithm, demystifying why <code class="font-mono text-emerald-400">super()</code> does not mean "call my parent", designing cooperative multiple inheritance chains with <code class="font-mono text-emerald-400">**kwargs</code> propagation, defusing method resolution deadlocks, and constructing an extensible middleware plugin pipeline for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 3 Progression</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 09: Cooperative Plugin Pipeline Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 08, we proved that composition must remain the primary architectural choice for domain modeling. However, production frameworks (such as Django, DRF, and Celery) often rely on cooperative multiple inheritance for <strong>extensible plugin and middleware stacks</strong>. In Milestone 09, we engineer EntityForge's <strong>Cooperative Plugin Pipeline</strong>: an extensible execution chain where independent operational modules (Validation, Telemetry, and Transformation) intercept and process entity payloads sequentially by cooperatively walking the runtime C3-linearized Method Resolution Order (MRO).
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Resolving the Classic Diamond Inheritance Problem</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The C3 Linearization Merge Algorithm Proof</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Runtime <code class="text-purple-300">super()</code> Proxy Dispatch Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cooperative Method Signatures &amp; <code class="text-purple-300">**kwargs</code> Absorption</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Diagnosing &amp; Preventing Inconsistent MRO Errors</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">CooperativePluginChain</code> Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Multiple Inheritance & The Diamond Problem -->
+        <section id="diamond-problem" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Diamond Problem &amp; MRO Resolution</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In object-oriented computer science, the <strong>Diamond Problem</strong> arises when a class subclasses two parents that both share a common ancestor. If both intermediate parents override an ancestor method, which implementation should the child execute, and how many times should the shared ancestor run?
+            </p>
+
+            <!-- Diamond Problem Visual Architecture (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Classic Diamond Inheritance Topology</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing class inheritance dependencies across a common base</p>
+                </div>
+
+                <div class="max-w-md mx-auto space-y-3">
+                    <!-- Top: Root Base -->
+                    <div class="flex justify-center">
+                        <div class="p-3 bg-slate-950 border border-slate-700 rounded-xl text-center w-48 shadow-lg">
+                            <span class="text-slate-300 font-bold block text-sm">BaseRoot</span>
+                            <span class="text-[9px] text-slate-500 font-sans">Common Ancestor</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors Up/Down -->
+                    <div class="flex justify-around text-slate-600 text-xs px-12">
+                        <span>&uarr; inherits</span>
+                        <span>inherits &uarr;</span>
+                    </div>
+
+                    <!-- Middle Tier: ParentA & ParentB -->
+                    <div class="flex justify-between gap-6">
+                        <div class="p-3 bg-purple-950/60 border border-purple-700 rounded-xl text-center flex-1">
+                            <span class="text-purple-300 font-bold block text-sm">ParentA</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Overrides .process()</span>
+                        </div>
+                        
+                        <div class="p-3 bg-sky-950/60 border border-sky-700 rounded-xl text-center flex-1">
+                            <span class="text-sky-300 font-bold block text-sm">ParentB</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Overrides .process()</span>
+                        </div>
+                    </div>
+
+                    <!-- Connectors Down -->
+                    <div class="flex justify-around text-slate-600 text-xs px-12">
+                        <span>&uarr; inherits</span>
+                        <span>inherits &uarr;</span>
+                    </div>
+
+                    <!-- Bottom Tier: Child -->
+                    <div class="flex justify-center">
+                        <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl text-center w-64 shadow-lg shadow-emerald-950/50">
+                            <span class="text-emerald-400 font-bold block text-sm">ConcreteChild</span>
+                            <span class="text-[9px] text-emerald-300 font-sans">class ConcreteChild(ParentA, ParentB)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs block">// Why Naive Depth-First Search (DFS) Failed:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        In legacy Python versions (&le; 2.2), MRO was computed using simple depth-first left-to-right search. In a diamond, DFS would search <code class="font-mono text-slate-300">ConcreteChild &rarr; ParentA &rarr; BaseRoot</code> <em>before</em> checking <code class="font-mono text-slate-300">ParentB</code>! This meant that an unspecialized method on <code class="font-mono text-slate-300">BaseRoot</code> would shadow an explicit specialization on <code class="font-mono text-slate-300">ParentB</code>, violating local precedence!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The C3 Linearization Algorithm -->
+        <section id="c3-linearization" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The C3 Linearization Algorithm</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To solve the Diamond Problem and guarantee mathematical consistency across all class hierarchies, Python 2.3 adopted the <strong>C3 Linearization Algorithm</strong> (developed by Barrett et al. for Dylan, formalized for Python by Michele Simionato).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                C3 enforces three non-negotiable mathematical properties:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Local Precedence Order:</strong> If class $C$ is declared as <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">class C(A, B):</code>, then $A$ must always precede $B$ in the MRO of $C$.</li>
+                <li><strong>Monotonicity:</strong> If class $A$ precedes class $B$ in the MRO of any parent class, then $A$ must precede $B$ in the MRO of all downstream subclasses.</li>
+                <li><strong>Extended Precedence:</strong> Subclasses must always be inspected before their base classes.</li>
+            </ol>
+
+            <!-- C3 Mathematical Merge Step-by-Step Box (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl border border-slate-800 text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Formal C3 Merge Equation Walkthrough
+                </div>
+
+                <div class="p-4 bg-slate-950 border border-emerald-500/30 rounded-xl space-y-2 text-center">
+                    <span class="text-emerald-300 text-sm font-bold block">
+                        L[C(B₁, B₂, ..., Bₙ)] = [C] + merge(L[B₁], L[B₂], ..., L[Bₙ], [B₁, B₂, ..., Bₙ])
+                    </span>
+                    <p class="text-[11px] text-slate-400 font-sans">
+                        The linearization of class $C$ is $C$ followed by the merge of the linearizations of its parents and the list of parents.
+                    </p>
+                </div>
+
+                <div class="space-y-3 font-sans text-xs text-slate-300">
+                    <strong class="text-sky-300 font-mono text-[11px] block">// The Merge Algorithm Rules:</strong>
+                    <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-[11px] leading-relaxed">
+                        <div>1. Look at the <strong>head</strong> (first element) of the first list in the merge collection.</div>
+                        <div>2. If that head is <strong>not in the tail</strong> (any position other than head) of any other list in the merge:
+                            <div class="pl-4 text-emerald-400 font-mono">
+                                &rarr; Add it to the output linearization.<br>
+                                &rarr; Remove it from all lists in the merge collection.<br>
+                                &rarr; Repeat from Step 1.
+                            </div>
+                        </div>
+                        <div>3. If that head <em>does</em> appear in the tail of another list:
+                            <div class="pl-4 text-amber-300 font-mono">
+                                &rarr; Skip it and inspect the head of the next list in the collection.
+                            </div>
+                        </div>
+                        <div>4. <strong>MRO Deadlock:</strong> If no list head can be safely chosen and non-empty lists remain, Python halts class creation immediately with an exception:
+                            <div class="pl-4 text-rose-400 font-mono font-bold">
+                                TypeError: Cannot create a consistent method resolution order (MRO)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trace Example -->
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                    <span class="text-purple-300 font-mono font-bold text-[11px] block">// Concrete Trace: class C(A, B) where A(Root), B(Root)</span>
+                    <div class="text-[10px] text-slate-400 font-mono space-y-1">
+                        <div>L[Root] = [Root, object]</div>
+                        <div>L[A] = [A, Root, object]</div>
+                        <div>L[B] = [B, Root, object]</div>
+                        <div class="pt-1 text-slate-200">L[C] = [C] + merge([A, Root, object], [B, Root, object], [A, B])</div>
+                        <div>&bull; Pick A (A not in tail of any list) &rarr; [C, A]</div>
+                        <div>&bull; merge([Root, object], [B, Root, object], [B]) &rarr; Root is in tail of second list! Skip Root. Pick B! &rarr; [C, A, B]</div>
+                        <div>&bull; merge([Root, object], [Root, object]) &rarr; Pick Root &rarr; [C, A, B, Root]</div>
+                        <div>&bull; Pick object &rarr; <span class="text-emerald-400 font-bold">Result: [C, A, B, Root, object]</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Runtime Mechanics of super() -->
+        <section id="super-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The super() Proxy Object</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The single most common misconception in Python object-oriented programming is that <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">super()</code> calls the parent class.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong><code class="font-mono">super()</code> does not call the parent class.</strong> In CPython, <code class="font-mono">super()</code> returns a dynamic <strong>proxy object</strong> that inspects the runtime MRO of the calling instance and dispatches to <strong>the next class in the sequence</strong>, which may be a completely unrelated sibling or mixin!
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- How super() Resolves -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Runtime Proxy Dispatch</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">The MRO Pointer Jump</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        When you execute <code class="font-mono text-purple-700">super().method()</code> inside class <code class="font-mono text-slate-800">ClassA</code>:
+                    </p>
+                    <div class="p-3 bg-slate-900 text-sky-300 rounded-xl font-mono text-[10px] space-y-1">
+                        <div># 1. CPython gets the full MRO of the instance:</div>
+                        <div class="text-slate-400">mro = instance.__class__.__mro__</div>
+                        <div># 2. Locates ClassA's position in that MRO:</div>
+                        <div class="text-slate-400">idx = mro.index(ClassA)</div>
+                        <div># 3. Searches subsequent classes (idx + 1 onwards) for method:</div>
+                        <div class="text-emerald-400">next_class = mro[idx + 1]  # Sibling or Mixin!</div>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        If <code class="font-mono">ClassA</code> and <code class="font-mono">ClassB</code> are siblings in a diamond, calling <code class="font-mono">super()</code> inside <code class="font-mono">ClassA</code> calls <code class="font-mono">ClassB</code>!
+                    </p>
+                </div>
+
+                <!-- Forms of super() -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Compiler Conventions</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Syntactic Forms of super()</h3>
+                    <ul class="text-xs text-slate-600 space-y-2 leading-relaxed">
+                        <li>
+                            <strong class="font-mono text-slate-800">super() (Zero-argument form):</strong><br>
+                            Standard Python 3 syntax. The compiler automatically injects the current class (<code class="font-mono text-purple-700">__class__</code>) via closure cell and the first argument (<code class="font-mono text-purple-700">self</code>).
+                        </li>
+                        <li>
+                            <strong class="font-mono text-slate-800">super(Type, obj) (Bound instance form):</strong><br>
+                            Explicitly searches <code class="font-mono">type(obj).__mro__</code> starting after <code class="font-mono">Type</code>. Binds methods to <code class="font-mono">obj</code>.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-slate-800">super(Type, Subclass) (Bound class form):</strong><br>
+                            Used in <code class="font-mono text-purple-700">@classmethod</code> factories. Dispatches classmethods across the MRO starting after <code class="font-mono">Type</code>.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Cooperative Multiple Inheritance Design Patterns -->
+        <section id="cooperative-design" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cooperative Multiple Inheritance: The Three Invariants</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                For multiple inheritance to operate safely without crashing, all classes participating in the hierarchy must be engineered <strong>cooperatively</strong>. If even one class fails to adhere to the cooperative contract, the entire MRO chain breaks.
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- Rule 1 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-emerald-700 font-mono text-sm">1. Universal super() Calls</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">Never Skip</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Every overridden method in every mixin and base class must invoke <code class="font-mono text-slate-800 font-bold">super().method()</code>. If any intermediate class omits this call, the chain stops prematurely, starving subsequent siblings!
+                    </p>
+                </div>
+
+                <!-- Rule 2 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-purple-700 font-mono text-sm">2. **kwargs Propagation</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Universal Kwargs</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Because a class cannot know what sibling class will follow it in the runtime MRO, methods must accept and forward <code class="font-mono text-slate-800 font-bold">**kwargs</code> so parameters needed by downstream classes are not rejected with a <code class="font-mono text-rose-700">TypeError</code>.
+                    </p>
+                </div>
+
+                <!-- Rule 3 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1">
+                        <span class="font-bold text-sky-700 font-mono text-sm">3. Root Terminal Anchor</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">Stopping Base</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The ultimate ancestor class at the root of the hierarchy must provide an implementation that absorbs unused <code class="font-mono text-slate-800 font-bold">**kwargs</code> and safely terminates the cooperative chain before hitting <code class="font-mono text-slate-800">object</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 09 -->
+        <section id="entityforge-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 09: Cooperative Plugin Pipeline Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 09 of <strong>EntityForge</strong>: implementing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/plugin.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">PluginBase</code>: The root terminal anchor that consumes extraneous <code class="font-mono text-slate-800">**kwargs</code> and safely terminates cooperative calls.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">ValidationPlugin</code>: Cooperatively validates incoming payload fields before forwarding.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">AuditTelemetryPlugin</code>: Cooperatively records execution metrics and timestamps before and after calling <code class="font-mono text-purple-700 font-bold">super().process()</code>.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">TransformationPlugin</code>: Cooperatively mutates payload values (e.g. data normalization).</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">StandardEntityPipeline</code>: A composite execution pipeline subclass inheriting all three plugins to demonstrate the onion-layered execution flow dictated by C3 Linearization.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 09)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           ├── collections.py            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>│           ├── execution.py              <span class="text-slate-500"># Milestone 07: Callable Steps &amp; Reentrant Guards</span></div>
+                <div>│           ├── aggregate.py              <span class="text-slate-500"># Milestone 08: Aggregate Roots, Composition &amp; Mixins</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">plugin.py</span>                 <span class="text-slate-500"># Milestone 09: Cooperative Plugins &amp; C3 Linearization</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_collections.py       <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_execution.py         <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        ├── test_aggregate.py         <span class="text-slate-500"># Milestone 08 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_plugin.py</span>            <span class="text-slate-500"># Milestone 09: MRO, super() &amp; Cooperative Chain Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/plugin.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Plugin Core: <code class="text-purple-700">src/entityforge/core/plugin.py</code></span>
+                    <span class="text-slate-400">Cooperative Multiple Inheritance</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Cooperative Plugin Pipeline &amp; C3 Linearization (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Optional
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PluginBase</span>:
+    <span class="text-slate-500">"""
+    COOPERATIVE TERMINAL ANCHOR:
+    Serves as the root stopping class for the cooperative super() chain.
+    Consumes unused **kwargs so calls do not fail upon reaching object.__init__.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, **kwargs: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Terminal anchor: Absorbs remaining kwargs without forwarding to object</span>
+        <span class="text-purple-400">super</span>().__init__()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process</span>(self, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        <span class="text-slate-500">"""Terminal processing step: Returns the processed payload directly."""</span>
+        <span class="text-purple-400">return</span> payload
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ValidationPlugin</span>(PluginBase):
+    <span class="text-slate-500">"""
+    COOPERATIVE VALIDATION STEP:
+    Inspects payload and ensures mandatory fields exist before forwarding down the MRO.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, required_fields: Optional[List[str]] = <span class="text-rose-400">None</span>, **kwargs: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Initialize own state</span>
+        self.required_fields = required_fields <span class="text-purple-400">or</span> []
+        <span class="text-slate-500"># Cooperatively forward kwargs to the next class in the runtime MRO!</span>
+        <span class="text-purple-400">super</span>().__init__(**kwargs)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process</span>(self, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        <span class="text-purple-400">for</span> field <span class="text-purple-400">in</span> self.required_fields:
+            <span class="text-purple-400">if</span> field <span class="text-purple-400">not in</span> payload:
+                <span class="text-purple-400">raise</span> KeyError(f<span class="text-amber-300">"Validation failed: Missing mandatory field '{field}'"</span>)
+        
+        <span class="text-slate-500"># Mark validation passed and cooperatively call next class in MRO</span>
+        payload[<span class="text-amber-300">"_validated"</span>] = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return</span> <span class="text-purple-400">super</span>().process(payload, **kwargs)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransformationPlugin</span>(PluginBase):
+    <span class="text-slate-500">"""
+    COOPERATIVE TRANSFORMATION STEP:
+    Normalizes string fields and enriches payload data.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, normalize_case: bool = <span class="text-rose-400">True</span>, **kwargs: Any) -> <span class="text-rose-400">None</span>:
+        self.normalize_case = normalize_case
+        <span class="text-purple-400">super</span>().__init__(**kwargs)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process</span>(self, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        <span class="text-purple-400">if</span> self.normalize_case <span class="text-purple-400">and</span> <span class="text-amber-300">"title"</span> <span class="text-purple-400">in</span> payload:
+            payload[<span class="text-amber-300">"title"</span>] = str(payload[<span class="text-amber-300">"title"</span>]).strip().title()
+
+        payload[<span class="text-amber-300">"_transformed"</span>] = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return</span> <span class="text-purple-400">super</span>().process(payload, **kwargs)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditTelemetryPlugin</span>(PluginBase):
+    <span class="text-slate-500">"""
+    COOPERATIVE AUDIT &amp; TELEMETRY STEP (Onion Middleware):
+    Measures total downstream pipeline latency and attaches audit markers.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, log_timing: bool = <span class="text-rose-400">True</span>, **kwargs: Any) -> <span class="text-rose-400">None</span>:
+        self.log_timing = log_timing
+        self.execution_audit: List[Dict[str, Any]] = []
+        <span class="text-purple-400">super</span>().__init__(**kwargs)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">process</span>(self, payload: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        start = time.perf_counter()
+        
+        <span class="text-slate-500"># Cooperatively invoke the remaining pipeline classes</span>
+        result = <span class="text-purple-400">super</span>().process(payload, **kwargs)
+        
+        duration = time.perf_counter() - start
+        <span class="text-purple-400">if</span> self.log_timing:
+            result[<span class="text-amber-300">"_latency_seconds"</span>] = duration
+
+        self.execution_audit.append({<span class="text-amber-300">"timestamp"</span>: time.time(), <span class="text-amber-300">"duration"</span>: duration})
+        <span class="text-purple-400">return</span> result
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StandardEntityPipeline</span>(AuditTelemetryPlugin, ValidationPlugin, TransformationPlugin):
+    <span class="text-slate-500">"""
+    COMPOSITE COOPERATIVE PIPELINE:
+    Multiple inheritance defines execution order via C3 Linearization:
+    MRO: StandardEntityPipeline &rarr; AuditTelemetryPlugin &rarr; ValidationPlugin
+         &rarr; TransformationPlugin &rarr; PluginBase &rarr; object
+    """</span>
+    <span class="text-purple-400">pass</span></pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_plugin.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_plugin.py</code></span>
+                    <span class="text-slate-400">MRO, super() &amp; Cooperative Chain Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Cooperative Inheritance &amp; MRO Tests (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.plugin <span class="text-purple-400">import</span> (
+    StandardEntityPipeline,
+    AuditTelemetryPlugin,
+    ValidationPlugin,
+    TransformationPlugin,
+    PluginBase,
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestCooperativeInheritance</span>:
+    <span class="text-slate-500">"""Unit tests asserting C3 linearization order, **kwargs propagation, and failure modes."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_c3_linearization_mro_sequence</span>(self):
+        # Expected C3 Order:
+        # StandardEntityPipeline -> AuditTelemetryPlugin -> ValidationPlugin
+        # -> TransformationPlugin -> PluginBase -> object
+        expected_mro = (
+            StandardEntityPipeline,
+            AuditTelemetryPlugin,
+            ValidationPlugin,
+            TransformationPlugin,
+            PluginBase,
+            object,
+        )
+        assert StandardEntityPipeline.__mro__ == expected_mro
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cooperative_initialization_propagates_all_kwargs</span>(self):
+        # Instantiating the pipeline passes arguments intended for 3 distinct plugins!
+        # Cooperative **kwargs propagation guarantees no class raises TypeError
+        pipeline = StandardEntityPipeline(
+            log_timing=<span class="text-rose-400">True</span>,                    # Consumed by AuditTelemetryPlugin
+            required_fields=[<span class="text-amber-300">"id"</span>, <span class="text-amber-300">"title"</span>],      # Consumed by ValidationPlugin
+            normalize_case=<span class="text-rose-400">True</span>                  # Consumed by TransformationPlugin
+        )
+
+        assert pipeline.log_timing <span class="text-purple-400">is True</span>
+        assert pipeline.required_fields == [<span class="text-amber-300">"id"</span>, <span class="text-amber-300">"title"</span>]
+        assert pipeline.normalize_case <span class="text-purple-400">is True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cooperative_execution_flow_across_mro</span>(self):
+        pipeline = StandardEntityPipeline(
+            required_fields=[<span class="text-amber-300">"id"</span>, <span class="text-amber-300">"title"</span>],
+            normalize_case=<span class="text-rose-400">True</span>,
+            log_timing=<span class="text-rose-400">True</span>
+        )
+
+        raw_payload = {<span class="text-amber-300">"id"</span>: 101, <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"   mastering python oop   "</span>}
+        result = pipeline.process(raw_payload)
+
+        # 1. Validation passed
+        assert result[<span class="text-amber-300">"_validated"</span>] <span class="text-purple-400">is True</span>
+
+        # 2. Transformation applied
+        assert result[<span class="text-amber-300">"_transformed"</span>] <span class="text-purple-400">is True</span>
+        assert result[<span class="text-amber-300">"title"</span>] == <span class="text-amber-300">"Mastering Python Oop"</span>  # Normalized!
+
+        # 3. Telemetry recorded
+        assert result[<span class="text-amber-300">"_latency_seconds"</span>] &gt;= 0.0
+        assert len(pipeline.execution_audit) == 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_validation_failure_halts_downstream_execution</span>(self):
+        pipeline = StandardEntityPipeline(required_fields=[<span class="text-amber-300">"id"</span>, <span class="text-amber-300">"mandatory_secret"</span>])
+        invalid_payload = {<span class="text-amber-300">"id"</span>: 102}
+
+        <span class="text-purple-400">with</span> pytest.raises(KeyError, match=<span class="text-amber-300">r"Missing mandatory field 'mandatory_secret'"</span>):
+            pipeline.process(invalid_payload)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_inconsistent_mro_raises_type_error_at_definition_time</span>(self):
+        # Create an intentional cyclic conflict:
+        # A inherits B, but child asks for (B, A) order!
+        class NodeA: pass
+        class NodeB(NodeA): pass
+
+        # C3 Linearization must detect that NodeA cannot precede NodeB while B inherits A!
+        <span class="text-purple-400">with</span> pytest.raises(TypeError, match=<span class="text-amber-300">r"Cannot create a consistent method resolution order"</span>):
+            class BrokenClass(NodeA, NodeB):
+                pass</pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Hardcoding Parent Class Names Instead of super()</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">ParentA.__init__(self)</code> and <code class="font-mono text-rose-900 font-bold">ParentB.__init__(self)</code> explicitly.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes severe bugs:</strong> Hardcoding parent names completely breaks the cooperative MRO chain! In a diamond hierarchy, the shared base class (<code class="font-mono">BaseRoot</code>) will be called <strong>multiple times</strong> (once by ParentA, once by ParentB), reinitializing connections and wiping state! Using <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">super()</code> guarantees every class in the MRO runs exactly once.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Mismatched Cooperative Signatures</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Defining cooperative methods without accepting <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">**kwargs</code> in every participating class.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes runtime crashes:</strong> Because you cannot predict at definition time which sibling class will sit after you in the runtime MRO, any unhandled argument passed down the chain raises <code class="font-mono text-rose-950 font-bold">TypeError: method() got an unexpected keyword argument</code>. Always accept and forward <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">**kwargs</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Failing to Terminate the Cooperative Chain</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">super().custom_method()</code> all the way up until it hits <code class="font-mono text-rose-900 font-bold">object</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails:</strong> Python's root <code class="font-mono">object</code> class only defines basic methods (<code class="font-mono">__init__</code>, <code class="font-mono">__repr__</code>, <code class="font-mono">__eq__</code>, etc.). If you call a custom domain method on <code class="font-mono">super()</code> and let it reach <code class="font-mono">object</code>, Python raises <code class="font-mono text-rose-950 font-bold">AttributeError: 'object' object has no attribute 'custom_method'</code>. Always provide a root base class to absorb and terminate the call.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Passing Arguments to object.__init__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Forwarding unconsumed <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">**kwargs</code> into <code class="font-mono text-rose-900 font-bold">super().__init__(**kwargs)</code> when the next class is <code class="font-mono text-rose-900 font-bold">object</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this raises an immediate error:</strong> In Python 3, <code class="font-mono">object.__init__()</code> takes zero arguments. If any unconsumed kwargs are passed to it, Python raises <code class="font-mono text-rose-950 font-bold">TypeError: object.__init__() takes exactly one argument (the instance to initialize)</code>. The root terminal anchor must strip all remaining kwargs!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the cooperative plugin test battery and inspect runtime C3 Linearization orders:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge cooperative inheritance unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_plugin.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.06s. Confirms C3 MRO order, cooperative **kwargs propagation, pipeline validation, and deadlock detection.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 09:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweight pooling, slotted state, diagnostic renderers, value objects, observable sequences, execution guards, aggregate roots, and cooperative plugins with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect runtime super() method resolution in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from entityforge.core.plugin import StandardEntityPipeline; print('Linear MRO:'); [print(f' {i}.', cls.__name__) for i, cls in enumerate(StandardEntityPipeline.__mro__)]"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Displays the step-by-step C3 sequence executed by CPython at runtime!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Interfaces, Contracts &amp; Structural Subtyping - ABCs, typing.Protocol &amp; Runtime Duck Typing</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving to formal contracts: Nominal subtyping with abc.ABC, static duck typing with PEP 544 typing.Protocol, runtime verification with @runtime_checkable, and engineering pluggable repository drivers.</p>
+            </div>
+            <a href="Chapter 10 - Interfaces, Contracts and Structural Subtyping - ABCs, typing.Protocol and Runtime Duck Typing.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

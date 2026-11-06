@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 11: Graph Data Structures &amp; Pathfinding - Adjacency Lists, BFS, DFS &amp; Dijkstra</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python Data Structures &amp; Algorithmic Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">MemForge (Milestone 11 - Graph Relationship &amp; Dependency Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 11 &bull; Network Topologies &amp; Traversal Engines
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 11: Graph Data Structures &amp; Pathfinding - Adjacency Lists, BFS, DFS &amp; Dijkstra
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Modeling non-linear entity relationships and dependency networks: Comparing memory-heavy Adjacency Matrices against cache-sparse Adjacency Lists, finding unweighted shortest paths with Breadth-First Search (BFS), detecting deadlock cycles in Directed Acyclic Graphs (DAGs) with Depth-First Search (DFS), computing optimal weighted traversal with Dijkstra's algorithm, and engineering an entity relationship engine for <strong>MemForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 4 Milestone</span>
+                    <h2 class="text-2xl font-extrabold">MemForge Milestone 11: Entity Relationship Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Modern multi-model databases do not treat documents in complete isolation; real-world records form interconnected entity networks (e.g. social followings, foreign-key dependency cascades, permission hierarchies, and microservice call trees). In Milestone 11, we construct MemForge's <strong>Entity Relationship Engine</strong> (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">GraphRelationshipEngine</code>): an in-memory weighted graph that models entity connections, tracks degrees of separation, resolves migration dependencies via topological sorting, and finds least-cost traversal routes via heap-backed Dijkstra pathfinding.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 11 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Adjacency Matrix vs. Adjacency List Space Proofs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> BFS Unweighted Shortest Path &amp; Degrees of Separation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> DFS 3-Color Cycle Detection in Dependency DAGs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Kahn's Topological Sorting for Migration Order</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Heap-Accelerated Dijkstra Pathfinding ($O((V+E)\log V)$)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> MemForge <code class="text-purple-300">GraphRelationshipEngine</code> Implementation</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Graph Representations -->
+        <section id="graph-representations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Graph Topologies &amp; Representation Mathematics</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Formally, a <strong>Graph</strong> is an ordered pair $G = (V, E)$, where $V$ is a finite set of <strong>Vertices</strong> (or Nodes) representing entities, and $E \subseteq V \times V$ is a set of <strong>Edges</strong> representing relationships between them. Edges can be <em>Directed</em> (one-way relationships, like following an account or a foreign key reference) or <em>Undirected</em> (mutual symmetric connections, like network hardware peers).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When representing graphs in memory, software engineers face a critical architectural decision between two primary data structures:
+            </p>
+
+            <!-- Adjacency Matrix vs List Visual Comparison (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-8 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Adjacency Matrix (Dense 2D Grid) vs. Adjacency List (Sparse Hash Mapping)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Evaluating space complexity, sparse graph allocations, and iteration costs</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8 items-start">
+                    <!-- Adjacency Matrix -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">1. Adjacency Matrix (Dense Grid)</span>
+                            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold">Space: O(|V|²)</span>
+                        </div>
+
+                        <!-- 2D Matrix Table Visual -->
+                        <div class="space-y-1 text-[10px]">
+                            <span class="text-slate-400 font-sans block">// 2D Grid: M[u][v] = weight</span>
+                            <div class="grid grid-cols-5 gap-1 text-center font-bold">
+                                <div class="bg-slate-800 text-slate-500 p-1">u\v</div>
+                                <div class="bg-slate-800 text-sky-300 p-1">A</div>
+                                <div class="bg-slate-800 text-sky-300 p-1">B</div>
+                                <div class="bg-slate-800 text-sky-300 p-1">C</div>
+                                <div class="bg-slate-800 text-sky-300 p-1">D</div>
+
+                                <div class="bg-slate-800 text-sky-300 p-1">A</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-emerald-950 text-emerald-300 p-1 border border-emerald-600">4.0</div>
+                                <div class="bg-emerald-950 text-emerald-300 p-1 border border-emerald-600">2.0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+
+                                <div class="bg-slate-800 text-sky-300 p-1">B</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-emerald-950 text-emerald-300 p-1 border border-emerald-600">5.0</div>
+
+                                <div class="bg-slate-800 text-sky-300 p-1">C</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-emerald-950 text-emerald-300 p-1 border border-emerald-600">1.0</div>
+
+                                <div class="bg-slate-800 text-sky-300 p-1">D</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                                <div class="bg-slate-900 text-slate-600 p-1">0</div>
+                            </div>
+                        </div>
+
+                        <ul class="space-y-1.5 text-[11px] text-slate-400 font-sans list-disc pl-4">
+                            <li><strong class="text-slate-200">Edge Query:</strong> Instant $O(1)$ lookup via direct array index <code class="font-mono">matrix[u][v]</code>.</li>
+                            <li><strong class="text-rose-400">Memory Catastrophe:</strong> Requires allocating $|V|^2$ slots. For 100,000 entities, this requires 10 billion slots ($\approx 80\text{ GB RAM}$), even if each node has only 2 connections!</li>
+                            <li><strong class="text-rose-400">Neighbor Traversal:</strong> Iterating over the neighbors of vertex $u$ forces scanning all $|V|$ columns ($O(|V|)$ time).</li>
+                        </ul>
+                    </div>
+
+                    <!-- Adjacency List -->
+                    <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Adjacency List (Sparse Mapping)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold">Space: O(|V| + |E|)</span>
+                        </div>
+
+                        <!-- Hash Adjacency List Visual -->
+                        <div class="space-y-2 text-[10px]">
+                            <span class="text-slate-400 font-sans block">// Dict of Dicts: adj[u] = {v: weight}</span>
+                            <div class="space-y-1 font-mono">
+                                <div class="bg-slate-900 p-1.5 rounded flex items-center gap-2 border border-slate-800">
+                                    <span class="text-sky-300 font-bold">"A":</span>
+                                    <span class="text-emerald-300">{"B": 4.0, "C": 2.0}</span>
+                                </div>
+                                <div class="bg-slate-900 p-1.5 rounded flex items-center gap-2 border border-slate-800">
+                                    <span class="text-sky-300 font-bold">"B":</span>
+                                    <span class="text-emerald-300">{"D": 5.0}</span>
+                                </div>
+                                <div class="bg-slate-900 p-1.5 rounded flex items-center gap-2 border border-slate-800">
+                                    <span class="text-sky-300 font-bold">"C":</span>
+                                    <span class="text-emerald-300">{"D": 1.0}</span>
+                                </div>
+                                <div class="bg-slate-900 p-1.5 rounded flex items-center gap-2 border border-slate-800">
+                                    <span class="text-sky-300 font-bold">"D":</span>
+                                    <span class="text-slate-500">{} (No outgoing edges)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <ul class="space-y-1.5 text-[11px] text-slate-400 font-sans list-disc pl-4">
+                            <li><strong class="text-slate-200">Optimal Memory:</strong> Consumes memory strictly proportional to existing connections ($O(|V| + |E|)$). 100,000 nodes with 2 edges each takes only a few megabytes.</li>
+                            <li><strong class="text-slate-200">Neighbor Traversal:</strong> Iterating over outgoing edges of $u$ takes optimal $O(\text{degree}(u))$ time without touching disconnected entities.</li>
+                            <li><strong class="text-slate-200">The Industry Standard:</strong> Powering Neo4j, graph databases, social networks, and compiler dependency managers.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Traversal Algorithms: BFS, DFS & Topological Sort -->
+        <section id="traversals-topological" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Mechanics: BFS, DFS &amp; Topological Sorting</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Unlike trees (which are acyclic and possess a designated root), arbitrary graphs can contain cycles, disjoint islands (unconnected components), and complex branching. Graph traversals require systematic visited tracking to prevent infinite loops.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- BFS -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 font-mono text-sm">1. Breadth-First Search (BFS)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-mono font-bold">Queue Driven</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Explores neighbors layer-by-layer radiating outward from the source vertex using an in-memory queue (<code class="font-mono text-slate-800 font-bold">collections.deque</code>).
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>Shortest Path Guarantee:</strong> On <em>unweighted graphs</em>, BFS is mathematically guaranteed to find the path with the minimum number of edge transitions.</li>
+                        <li><strong>Degrees of Separation:</strong> Ideal for finding immediate social circles (1st, 2nd, 3rd-degree network connections) and breadth-limited crawl operations.</li>
+                        <li><strong>Complexity:</strong> Time $O(|V| + |E|)$ | Space $O(|V|)$.</li>
+                    </ul>
+                </div>
+
+                <!-- DFS & Cycle Detection -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 font-mono text-sm">2. Depth-First Search (DFS) &amp; Cycles</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-mono font-bold">Stack / Recursive</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Explores along each branch to its maximum depth before backtracking.
+                    </p>
+                    <ul class="list-disc pl-4 text-xs text-slate-600 space-y-1">
+                        <li><strong>3-Color State Cycle Detection:</strong> Classifies vertices into three states: <code class="font-mono text-slate-500">UNVISITED</code> (0), <code class="font-mono text-amber-600 font-bold">VISITING</code> (1, currently in the call stack), and <code class="font-mono text-emerald-600 font-bold">VISITED</code> (2, completed).</li>
+                        <li><strong>The Cycle Proof:</strong> If DFS encounters a neighbor that is currently in the <code class="font-mono text-amber-600">VISITING</code> state, a back-edge exists, proving an inescapable cycle!</li>
+                        <li><strong>Complexity:</strong> Time $O(|V| + |E|)$ | Space $O(|V|)$.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Topological Sort Callout -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-emerald-400 font-bold text-sm uppercase tracking-wider">Topological Sorting (Kahn's Algorithm &amp; In-Degree Processing)</span>
+                    <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">DAG Only</span>
+                </div>
+                <p class="text-slate-300 font-sans text-xs leading-relaxed">
+                    A <strong>Topological Sort</strong> of a Directed Acyclic Graph (DAG) is a linear ordering of vertices such that for every directed edge $u \to v$, vertex $u$ appears before vertex $v$ in the sequence.
+                </p>
+                <div class="p-3 bg-slate-950 rounded-xl space-y-2 text-slate-300 font-sans text-xs">
+                    <strong class="text-sky-300 font-mono text-[11px] block">// How Kahn's In-Degree Algorithm Resolves Migration Order:</strong>
+                    <ol class="list-decimal pl-5 space-y-1 font-mono text-[10px] text-slate-400">
+                        <li>Calculate the <strong>in-degree</strong> (count of incoming edges) for every vertex in the graph.</li>
+                        <li>Initialize a queue with all vertices whose in-degree is exactly 0 (entities with zero dependencies).</li>
+                        <li>Pop vertex $u$ from the queue, append to execution order, and decrement the in-degree of all its neighbors $v$.</li>
+                        <li>If a neighbor's in-degree drops to 0, push it into the queue.</li>
+                        <li><strong>Deadlock Invariant:</strong> If the final output length is less than $|V|$, the graph contains a cyclic dependency, making topological resolution impossible!</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Shortest Path: Dijkstra's Algorithm with Min-Heap -->
+        <section id="dijkstra-algorithm" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Algorithmic Optimization: Heap-Backed Dijkstra Pathfinding</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When edges carry variable positive costs or weights (such as network latency in milliseconds, physical distance, or query cost), Breadth-First Search fails because the path with the fewest edges is not necessarily the path with the lowest aggregate weight.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Invented by Edsger W. Dijkstra in 1956, <strong>Dijkstra's Algorithm</strong> computes the single-source shortest path across non-negative weighted graphs:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-sans text-xs">
+                <span class="font-mono text-xs font-bold text-purple-700 uppercase tracking-widest block">The Priority Queue Acceleration</span>
+                <h3 class="text-base font-bold text-slate-900 font-mono">Edge Relaxation &amp; The Min-Heap Pipeline</h3>
+                <p class="text-slate-600 leading-relaxed">
+                    Naive Dijkstra scans all unvisited nodes to locate the smallest tentative distance, running in $O(|V|^2)$ time. In production systems, we pair Dijkstra with Python's <code class="font-mono text-slate-800 font-bold">heapq</code> (Chapter 05), accelerating execution to <strong>$O((|V| + |E|) \log |V|)$</strong>:
+                </p>
+
+                <!-- Step-by-Step Box -->
+                <div class="p-4 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] space-y-2 border border-slate-800">
+                    <div>1. Initialize distances map: <code class="text-emerald-400">dist = {source: 0.0, all_others: &infin;}</code></div>
+                    <div>2. Min-Heap stores entries: <code class="text-sky-300">(current_cumulative_distance, node_id, path_history)</code></div>
+                    <div>3. While heap is non-empty:</div>
+                    <div class="pl-4">a. Pop entry with smallest cumulative distance: <code class="text-purple-300">(d, u, path)</code></div>
+                    <div class="pl-4">b. If <code class="text-amber-300">d &gt; dist[u]</code>, discard as a stale lazy heap entry!</div>
+                    <div class="pl-4">c. If <code class="text-emerald-400">u == target</code>, termination reached! Return optimal cost and path.</div>
+                    <div class="pl-4">d. For each neighbor $v$ of $u$ with weight $w$:</div>
+                    <div class="pl-8 text-slate-400">
+                        <span class="text-emerald-400 font-bold">new_dist = d + w</span><br>
+                        if new_dist &lt; dist[v]:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;dist[v] = new_dist<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;heapq.heappush(heap, (new_dist, v, path + [v]))
+                    </div>
+                </div>
+
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] leading-relaxed">
+                    <strong>Non-Negative Weight Constraint:</strong> Dijkstra relies on a greedy property: once a node is settled, its shortest path cannot be improved by exploring further edges. If a graph contains <em>negative edge weights</em>, Dijkstra breaks; you must use the <strong>Bellman-Ford algorithm</strong> ($O(|V| \cdot |E|)$) instead.
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: MemForge Milestone 11 -->
+        <section id="memforge-milestone-11" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">MemForge Milestone 11: Entity Relationship Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 11 of <strong>MemForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/memforge/graph/relationship.py</code>: an in-memory graph relationship and dependency engine.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The Relationship Engine features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>Sparse Adjacency List representation using nested dictionaries (<code class="font-mono text-slate-800">dict[str, dict[str, float]]</code>).</li>
+                <li><strong>BFS Degrees of Separation:</strong> Explores entity connections up to a maximum depth limit.</li>
+                <li><strong>DFS 3-Color Cycle Detection:</strong> Identifies circular foreign keys and recursive dependencies.</li>
+                <li><strong>Kahn's Topological Sort:</strong> Computes valid transactional migration orders for interconnected tables.</li>
+                <li><strong>Heap-Accelerated Dijkstra:</strong> Calculates lowest-cost connection routes across weighted relationships.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// MemForge Project Layout (Milestone 11)</div>
+                <div>memforge/</div>
+                <div>├── src/</div>
+                <div>│   └── memforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       ├── analytics/</div>
+                <div>│       ├── cache/</div>
+                <div>│       ├── scheduler/</div>
+                <div>│       ├── index/</div>
+                <div>│       ├── txn/</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">graph/</span></div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">relationship.py</span>          <span class="text-slate-500"># Milestone 11: Graph Relationship &amp; Pathfinding Engine</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_buffer.py</div>
+                <div>        ├── test_hash_map.py</div>
+                <div>        ├── test_telemetry.py</div>
+                <div>        ├── test_lru_cache.py</div>
+                <div>        ├── test_priority_queue.py</div>
+                <div>        ├── test_sorted_index.py</div>
+                <div>        ├── test_undo_log.py</div>
+                <div>        ├── test_avl_tree.py</div>
+                <div>        ├── test_btree.py</div>
+                <div>        ├── test_trie.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_graph.py</span>             <span class="text-slate-500"># Milestone 11: BFS, DFS Cycles &amp; Dijkstra Tests</span></div>
+            </div>
+
+            <!-- File 1: src/memforge/graph/relationship.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Graph Engine: <code class="text-purple-700">src/memforge/graph/relationship.py</code></span>
+                    <span class="text-slate-400">Adjacency List &amp; Traversal Algorithms</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Graph Engine - Entity Relationships &amp; Pathfinding (Milestone 11)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> heapq
+<span class="text-purple-400">from</span> collections <span class="text-purple-400">import</span> deque
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List, Optional, Set, Tuple
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">CyclicDependencyError</span>(Exception):
+    <span class="text-slate-500">"""Raised when topological sorting detects an unresolvable cycle."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">GraphRelationshipEngine</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION GRAPH RELATIONSHIP ENGINE:
+    Maintains a weighted adjacency list: src_entity -> {dst_entity: weight}.
+    Provides BFS degrees of separation, 3-color DFS cycle detection,
+    Kahn's topological sorting, and heap-backed Dijkstra shortest path.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self):
+        <span class="text-slate-500"># Sparse Adjacency List: node_id -> {neighbor_id: edge_weight}</span>
+        self._adj: Dict[str, Dict[str, float]] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_entity</span>(self, entity_id: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Registers an entity node in the graph if not already present."""</span>
+        <span class="text-purple-400">if</span> entity_id <span class="text-purple-400">not in</span> self._adj:
+            self._adj[entity_id] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">add_relationship</span>(
+        self,
+        src: str,
+        dst: str,
+        weight: float = 1.0,
+        bidirectional: bool = <span class="text-rose-400">False</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Adds a weighted directed edge from src to dst."""</span>
+        <span class="text-purple-400">if</span> weight &lt; 0:
+            <span class="text-purple-400">raise</span> ValueError(<span class="text-amber-300">"Edge weight must be non-negative for Dijkstra pathfinding."</span>)
+
+        self.add_entity(src)
+        self.add_entity(dst)
+        self._adj[src][dst] = weight
+
+        <span class="text-purple-400">if</span> bidirectional:
+            self._adj[dst][src] = weight
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_degrees_of_separation</span>(self, start_id: str, max_depth: int = 2) -> Dict[str, int]:
+        <span class="text-slate-500">"""
+        BREADTH-FIRST SEARCH (BFS):
+        Computes shortest unweighted hop distance from start_id up to max_depth.
+        Returns mapping: entity_id -> hop_count.
+        """</span>
+        <span class="text-purple-400">if</span> start_id <span class="text-purple-400">not in</span> self._adj:
+            <span class="text-purple-400">return</span> {}
+
+        visited: Dict[str, int] = {start_id: 0}
+        queue: deque[Tuple[str, int]] = deque([(start_id, 0)])
+
+        <span class="text-purple-400">while</span> queue:
+            curr_node, depth = queue.popleft()
+
+            <span class="text-purple-400">if</span> depth &gt;= max_depth:
+                <span class="text-purple-400">continue</span>
+
+            <span class="text-purple-400">for</span> neighbor <span class="text-purple-400">in</span> self._adj[curr_node]:
+                <span class="text-purple-400">if</span> neighbor <span class="text-purple-400">not in</span> visited:
+                    visited[neighbor] = depth + 1
+                    queue.append((neighbor, depth + 1))
+
+        <span class="text-purple-400">return</span> visited
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">detect_cycle</span>(self) -> bool:
+        <span class="text-slate-500">"""
+        3-COLOR DEPTH-FIRST SEARCH (DFS) CYCLE DETECTOR:
+        0 = UNVISITED | 1 = VISITING (In active stack) | 2 = VISITED (Completed)
+        Returns True if a directed cycle exists.
+        """</span>
+        state: Dict[str, int] = {node: 0 <span class="text-purple-400">for</span> node <span class="text-purple-400">in</span> self._adj}
+
+        <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_has_cycle_dfs</span>(u: str) -> bool:
+            state[u] = 1  <span class="text-slate-500"># Mark VISITING</span>
+
+            <span class="text-purple-400">for</span> v <span class="text-purple-400">in</span> self._adj[u]:
+                <span class="text-purple-400">if</span> state[v] == 1:
+                    <span class="text-slate-500"># Found back-edge to a node currently in stack -> Cycle detected!</span>
+                    <span class="text-purple-400">return True</span>
+                <span class="text-purple-400">if</span> state[v] == 0 <span class="text-purple-400">and</span> _has_cycle_dfs(v):
+                    <span class="text-purple-400">return True</span>
+
+            state[u] = 2  <span class="text-slate-500"># Mark VISITED</span>
+            <span class="text-purple-400">return False</span>
+
+        <span class="text-purple-400">for</span> node <span class="text-purple-400">in</span> self._adj:
+            <span class="text-purple-400">if</span> state[node] == 0:
+                <span class="text-purple-400">if</span> _has_cycle_dfs(node):
+                    <span class="text-purple-400">return True</span>
+
+        <span class="text-purple-400">return False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">resolve_execution_order</span>(self) -> List[str]:
+        <span class="text-slate-500">"""
+        KAHN'S TOPOLOGICAL SORTING:
+        Computes a valid linear execution order for dependencies in O(|V| + |E|) time.
+        Raises CyclicDependencyError if circular deadlocks exist!
+        """</span>
+        <span class="text-slate-500"># 1. Compute in-degree for every vertex</span>
+        in_degree: Dict[str, int] = {node: 0 <span class="text-purple-400">for</span> node <span class="text-purple-400">in</span> self._adj}
+        <span class="text-purple-400">for</span> u <span class="text-purple-400">in</span> self._adj:
+            <span class="text-purple-400">for</span> v <span class="text-purple-400">in</span> self._adj[u]:
+                in_degree[v] += 1
+
+        <span class="text-slate-500"># 2. Queue vertices with in-degree == 0 (zero dependencies)</span>
+        queue: deque[str] = deque([node <span class="text-purple-400">for</span> node, deg <span class="text-purple-400">in</span> in_degree.items() <span class="text-purple-400">if</span> deg == 0])
+        order: List[str] = []
+
+        <span class="text-purple-400">while</span> queue:
+            u = queue.popleft()
+            order.append(u)
+
+            <span class="text-purple-400">for</span> v <span class="text-purple-400">in</span> self._adj[u]:
+                in_degree[v] -= 1
+                <span class="text-purple-400">if</span> in_degree[v] == 0:
+                    queue.append(v)
+
+        <span class="text-slate-500"># 3. Deadlock validation</span>
+        <span class="text-purple-400">if</span> len(order) &lt; len(self._adj):
+            <span class="text-purple-400">raise</span> CyclicDependencyError(<span class="text-amber-300">"Graph contains cyclic dependencies; topological order impossible."</span>)
+
+        <span class="text-purple-400">return</span> order
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">shortest_path_dijkstra</span>(self, src: str, dst: str) -> Tuple[float, List[str]]:
+        <span class="text-slate-500">"""
+        HEAP-ACCELERATED DIJKSTRA PATHFINDING:
+        Finds the least-cost weighted path from src to dst.
+        Complexity: O((|V| + |E|) log |V|) using heapq min-heap.
+        Returns: (total_cost, [path_nodes])
+        """</span>
+        <span class="text-purple-400">if</span> src <span class="text-purple-400">not in</span> self._adj <span class="text-purple-400">or</span> dst <span class="text-purple-400">not in</span> self._adj:
+            <span class="text-purple-400">return</span> (float(<span class="text-amber-300">"inf"</span>), [])
+
+        <span class="text-slate-500"># Distance directory: node -> lowest known cost</span>
+        distances: Dict[str, float] = {src: 0.0}
+        <span class="text-slate-500"># Min-Heap stores entries: (cumulative_cost, node_id, path_list)</span>
+        heap: List[Tuple[float, str, List[str]]] = [(0.0, src, [src])]
+
+        <span class="text-purple-400">while</span> heap:
+            curr_dist, u, path = heapq.heappop(heap)
+
+            <span class="text-purple-400">if</span> u == dst:
+                <span class="text-slate-500"># Optimal destination reached!</span>
+                <span class="text-purple-400">return</span> (curr_dist, path)
+
+            <span class="text-slate-500"># Skip stale lazy heap entries</span>
+            <span class="text-purple-400">if</span> curr_dist &gt; distances.get(u, float(<span class="text-amber-300">"inf"</span>)):
+                <span class="text-purple-400">continue</span>
+
+            <span class="text-purple-400">for</span> v, weight <span class="text-purple-400">in</span> self._adj[u].items():
+                new_dist = curr_dist + weight
+                <span class="text-purple-400">if</span> new_dist &lt; distances.get(v, float(<span class="text-amber-300">"inf"</span>)):
+                    distances[v] = new_dist
+                    heapq.heappush(heap, (new_dist, v, path + [v]))
+
+        <span class="text-slate-500"># Destination unreachable</span>
+        <span class="text-purple-400">return</span> (float(<span class="text-amber-300">"inf"</span>), [])</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_graph.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_graph.py</code></span>
+                    <span class="text-slate-400">BFS, DFS Cycles &amp; Dijkstra Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># MemForge Test Suite - Graph Relationship Engine Tests (Milestone 11)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> memforge.graph.relationship <span class="text-purple-400">import</span> (
+    GraphRelationshipEngine, 
+    CyclicDependencyError
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestGraphRelationshipEngine</span>:
+    <span class="text-slate-500">"""Unit tests asserting BFS degrees of separation, DFS cycles, and Dijkstra paths."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_bfs_degrees_of_separation</span>(self):
+        graph = GraphRelationshipEngine()
+        <span class="text-slate-500"># Network: Alice -> Bob -> Charlie -> Dave</span>
+        graph.add_relationship(<span class="text-amber-300">"Alice"</span>, <span class="text-amber-300">"Bob"</span>)
+        graph.add_relationship(<span class="text-amber-300">"Bob"</span>, <span class="text-amber-300">"Charlie"</span>)
+        graph.add_relationship(<span class="text-amber-300">"Charlie"</span>, <span class="text-amber-300">"Dave"</span>)
+
+        <span class="text-slate-500"># Max depth 2 from Alice should reach Bob (depth 1) and Charlie (depth 2), NOT Dave</span>
+        degrees = graph.get_degrees_of_separation(<span class="text-amber-300">"Alice"</span>, max_depth=2)
+        assert degrees[<span class="text-amber-300">"Alice"</span>] == 0
+        assert degrees[<span class="text-amber-300">"Bob"</span>] == 1
+        assert degrees[<span class="text-amber-300">"Charlie"</span>] == 2
+        assert <span class="text-amber-300">"Dave"</span> <span class="text-purple-400">not in</span> degrees
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dfs_cycle_detection_in_dag</span>(self):
+        graph = GraphRelationshipEngine()
+        graph.add_relationship(<span class="text-amber-300">"users"</span>, <span class="text-amber-300">"orders"</span>)
+        graph.add_relationship(<span class="text-amber-300">"orders"</span>, <span class="text-amber-300">"invoices"</span>)
+
+        <span class="text-slate-500"># Acyclic DAG</span>
+        assert graph.detect_cycle() is <span class="text-rose-400">False</span>
+
+        <span class="text-slate-500"># Introduce cycle: invoices -> users</span>
+        graph.add_relationship(<span class="text-amber-300">"invoices"</span>, <span class="text-amber-300">"users"</span>)
+        assert graph.detect_cycle() is <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_kahn_topological_sort_and_deadlock_detection</span>(self):
+        graph = GraphRelationshipEngine()
+        <span class="text-slate-500"># Dependencies: schema -> tables -> indexes -> app</span>
+        graph.add_relationship(<span class="text-amber-300">"schema"</span>, <span class="text-amber-300">"tables"</span>)
+        graph.add_relationship(<span class="text-amber-300">"tables"</span>, <span class="text-amber-300">"indexes"</span>)
+        graph.add_relationship(<span class="text-amber-300">"indexes"</span>, <span class="text-amber-300">"app"</span>)
+
+        order = graph.resolve_execution_order()
+        assert order == [<span class="text-amber-300">"schema"</span>, <span class="text-amber-300">"tables"</span>, <span class="text-amber-300">"indexes"</span>, <span class="text-amber-300">"app"</span>]
+
+        <span class="text-slate-500"># Add circular deadlock: app -> schema</span>
+        graph.add_relationship(<span class="text-amber-300">"app"</span>, <span class="text-amber-300">"schema"</span>)
+        <span class="text-purple-400">with</span> pytest.raises(CyclicDependencyError):
+            graph.resolve_execution_order()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_heap_dijkstra_shortest_weighted_path</span>(self):
+        graph = GraphRelationshipEngine()
+        <span class="text-slate-500"># Diamond Network:</span>
+        <span class="text-slate-500"># A -> B (weight 4.0), A -> C (weight 1.0)</span>
+        <span class="text-slate-500"># B -> D (weight 1.0), C -> D (weight 5.0)</span>
+        <span class="text-slate-500"># Path A->B->D = 5.0 | Path A->C->D = 6.0</span>
+        graph.add_relationship(<span class="text-amber-300">"A"</span>, <span class="text-amber-300">"B"</span>, weight=4.0)
+        graph.add_relationship(<span class="text-amber-300">"A"</span>, <span class="text-amber-300">"C"</span>, weight=1.0)
+        graph.add_relationship(<span class="text-amber-300">"B"</span>, <span class="text-amber-300">"D"</span>, weight=1.0)
+        graph.add_relationship(<span class="text-amber-300">"C"</span>, <span class="text-amber-300">"D"</span>, weight=5.0)
+
+        cost, path = graph.shortest_path_dijkstra(<span class="text-amber-300">"A"</span>, <span class="text-amber-300">"D"</span>)
+        assert cost == 5.0
+        assert path == [<span class="text-amber-300">"A"</span>, <span class="text-amber-300">"B"</span>, <span class="text-amber-300">"D"</span>]</pre>
+            </div>
+        </section>
+
+        <!-- 5. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting the Visited Set in BFS/DFS</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">for neighbor in adj[u]: queue.append(neighbor)</code> without tracking visited vertices.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this freezes production:</strong> In any graph with cycles (or bidirectional edges), a traversal without a <code class="font-mono">visited: set()</code> bounces infinitely back and forth between vertices (<code class="font-mono">A &rarr; B &rarr; A &rarr; B</code>), running until memory runs out or the process freezes!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Running Dijkstra on Negative Weights</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Applying <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">shortest_path_dijkstra()</code> to graphs containing negative edge weights.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this yields incorrect results:</strong> Dijkstra is a greedy algorithm based on the assumption that accumulating edge weights is monotonically non-decreasing. A negative edge breaks this invariant, causing Dijkstra to finalize sub-optimal paths. Use <strong>Bellman-Ford</strong> when negative weights exist!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Adjacency Matrix Memory Blowup</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Instantiating a 2D matrix <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">[[0] * V for _ in range(V)]</code> for sparse social or transactional networks.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes OOM crashes:</strong> For 100,000 entities, a matrix requires allocating 10,000,000,000 slots. A nested dictionary adjacency list (<code class="font-mono">dict[str, dict]</code>) consumes space strictly proportional to real edges ($O(V + E)$), taking mere megabytes.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Recursive DFS Stack Overflow</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using naive recursive functions to traverse deep graphs with thousands of sequential edges.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes:</strong> In linear topologies, recursive DFS exceeds Python's default 1,000-frame recursion limit, raising <code class="font-mono text-rose-950 font-bold">RecursionError</code>. For deep graphs, use an explicit iterative loop with a Python list acting as a stack.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating MemForge Milestone 11</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the Graph Relationship Engine test suite and verify pathfinding algorithms:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute MemForge graph engine unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_graph.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 4 passed in ~0.08s. Confirms BFS separation, DFS cycle detection, Kahn's topological sort, and Dijkstra shortest paths.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 11:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates low-level byte buffers, custom hash tables, telemetry multisets, LRU buffer pools, priority heaps, range indices, undo chains, AVL trees, B-Trees, prefix Tries, and graph networks.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Interactive demonstration of Dijkstra pathfinding on diamond network:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "from memforge.graph.relationship import GraphRelationshipEngine; g = GraphRelationshipEngine(); g.add_relationship('A', 'B', 4.0); g.add_relationship('A', 'C', 1.0); g.add_relationship('B', 'D', 1.0); g.add_relationship('C', 'D', 5.0); cost, path = g.shortest_path_dijkstra('A', 'D'); print('Optimal Path:', path); print('Cost:', cost)"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that Dijkstra selects path A &rarr; B &rarr; D (cost 5.0) instead of A &rarr; C &rarr; D (cost 6.0).
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 12 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 12: Inverted Indexes &amp; Capstone Integration - Multi-Model Storage &amp; Full-Text Search</h4>
+                <p class="text-xs text-slate-500 font-sans">The Grand Finale: Uniting all 11 previous milestones into the complete MemForge engine. Implementing Inverted Indexing for full-text search, end-to-end memory profiling with tracemalloc, and comprehensive multi-model test batteries.</p>
+            </div>
+            <a href="Chapter 12 - Inverted Indexes and Capstone Integration - Multi-Model Storage and Full-Text Search.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 12 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>MemForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

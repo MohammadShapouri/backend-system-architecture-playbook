@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 16: Distributed Transactions: Sagas vs. Two-Phase Commit &amp; Dual-Writes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 16 - Distributed Saga Orchestration)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 16 &bull; Distributed Consistency &amp; Transactions
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Distributed Transactions: Sagas vs. Two-Phase Commit &amp; Dual-Writes
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Coordinating multi-service data consistency without distributed deadlocks: Why Two-Phase Commit (2PC) fails in cloud environments, building <strong>Orchestrated Sagas with compensating rollbacks</strong>, managing the point-of-no-return <strong>Pivot Step</strong>, and engineering the distributed clearing fabric of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 16: The Multi-Service Trip Booking Saga</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 15, we streamed telemetry across append-only commit logs. In Milestone 16, we confront <strong>multi-service transactional consistency</strong>. When a passenger books and pays for a premium ride in OmniRoute, three separate microservices must mutate state: the <strong>Wallet Service</strong> locks funds, the <strong>Fleet Service</strong> reserves driver capacity, and the <strong>Dispatch Service</strong> creates the legal trip agreement. Because these services own independent databases, monolithic ACID transactions cannot span them. We engineer a production <strong>Saga Orchestrator State Machine</strong> in FastAPI and async SQLAlchemy 2.0 with semantic compensating actions, persistent step execution logs, and idempotent rollback handlers.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 16 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Death of ACID Across Microservice Boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Why Two-Phase Commit (2PC/XA) Fails at Cloud Scale</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Saga Pattern: Choreography vs. Orchestration</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Pivot Transaction &amp; Irreversible Actions</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Semantic Compensations vs. Physical Rollbacks</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Saga Orchestrator in FastAPI &amp; Async SQLAlchemy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Automated PyTest Mid-Saga Failure &amp; Compensation Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Distributed Transaction Theory -->
+        <section id="distributed-tx-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Distributed Systems Theory</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Death of Local ACID: Why 2PC Collapses in the Cloud</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In single-node monolithic databases, achieving **Atomicity, Consistency, Isolation, and Durability (ACID)** is straightforward: the storage engine locks modified rows in memory and writes modifications to a local Write-Ahead Log (WAL). If anything fails, calling <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">ROLLBACK</code> instantly reverts uncommitted pages.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In microservices, the **Database-per-Service** pattern is mandatory to maintain team autonomy and loose coupling. A single business transaction must now execute across multiple independent databases over an unreliable network.
+            </p>
+
+            <!-- 2PC vs Saga Comparison Cards -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- 2PC -->
+                <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-rose-800/60 pb-2">
+                        <span class="text-rose-400 font-bold text-sm">Two-Phase Commit (2PC / XA) &bull; Cloud Trap</span>
+                        <span class="text-[10px] bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded font-bold">Blocking / Fragile</span>
+                    </div>
+                    <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                        A central coordinator asks all databases: <em>"Can you commit?"</em> (Phase 1: Prepare). Nodes acquire row locks and reply YES. The coordinator then sends <em>"Commit!"</em> (Phase 2).
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                        <div>&bull; Latency: Locks held across multiple network roundtrips!</div>
+                        <div>&bull; Single Point of Failure: If coordinator crashes, nodes hold locks forever!</div>
+                        <div>&bull; Scalability: Throughput plummets to the slowest node in the network.</div>
+                        <div class="text-rose-400 font-bold">&cross; Cloud Reality: 2PC availability approaches zero as services scale.</div>
+                    </div>
+                </div>
+
+                <!-- Saga -->
+                <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                        <span class="text-emerald-400 font-bold text-sm">The Saga Pattern &bull; Cloud Standard</span>
+                        <span class="text-[10px] bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded font-bold">BASE Consistency</span>
+                    </div>
+                    <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                        Formalized by Hector Garcia-Molina in 1987. Breaks a distributed transaction into a sequence of **independent local ACID transactions**.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                        <div>&bull; Lock Duration: Sub-millisecond! Locks released immediately per step.</div>
+                        <div>&bull; Fault Tolerance: If Step $N$ fails, compensating transactions ($C_{N-1} \dots C_1$) unwind state.</div>
+                        <div>&bull; Availability: Unlocked high-concurrency throughput across services.</div>
+                        <div class="text-emerald-400 font-bold">&check; Production Standard: Embraces Eventual Consistency safely.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine booking a complete summer vacation: <strong>Step 1: Reserve Flight</strong> &rarr; <strong>Step 2: Reserve Hotel</strong> &rarr; <strong>Step 3: Rent Car</strong>.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Under **Two-Phase Commit (2PC)**, the travel website calls the airline, the hotel, and the car agency and says: <em>"Hold these exact seats and rooms on freeze, and don't let anyone else book them or hang up the phone while I finish."</em> If the rental car agent's computer freezes, the airline and hotel remain trapped on the phone for 20 minutes with empty rooms locked!
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Under a **Saga**, you pay for the flight immediately (Local ACID). You then book the hotel room immediately (Local ACID). If the rental car turns out to be sold out, you do not panic: you trigger **Compensating Actions** in reverse order! You cancel the hotel reservation (issuing a full refund) and cancel the flight ticket (issuing a refund). The trip is unwound safely without holding global locks.
+                </p>
+            </div>
+        </section>
+
+        <!-- SAGA ARCHITECTURE: CHOREOGRAPHY VS. ORCHESTRATION -->
+        <section id="choreography-vs-orchestration" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Saga Architecture
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Choreography vs. Orchestration: Selecting the Coordination Topology
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Decentralized Event Mesh vs. Centralized State Machine Coordinator
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                There are two architectural paradigms for coordinating a distributed Saga:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Choreography -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 text-sm block">1. Choreography (Event-Driven Mesh)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Services listen to event topics on Kafka/RabbitMQ and execute local transactions in response to events. There is no central controller.
+                    </p>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong>Pros:</strong> Highly decoupled for simple 2-step workflows.<br>
+                        <strong class="text-rose-700">Cons:</strong> "Spaghetti choreography" at scale. Difficult to understand the global transaction state, detect timeouts, or debug rollbacks when 10 services emit circular events.
+                    </p>
+                </div>
+
+                <!-- Orchestration -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-emerald-700 text-sm block">2. Orchestration (Central State Machine)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A dedicated <strong>Saga Orchestrator</strong> class commands participants to execute steps via point-to-point RPC or command messages.
+                    </p>
+                    <p class="text-[10px] text-slate-500 font-sans">
+                        <strong class="text-emerald-700">Pros:</strong> Complete observability. The orchestrator persists a clear state machine, tracks timeouts, and handles compensations deterministically.<br>
+                        <strong>Cons:</strong> Requires building and maintaining the orchestrator state engine.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Visual Flowchart: Orchestrated Saga Pipeline -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The OmniRoute Trip Booking Saga Orchestrator Pipeline
+                </div>
+
+                <div class="space-y-6">
+                    <!-- Forward Flow -->
+                    <div class="space-y-2">
+                        <span class="text-emerald-400 font-bold block text-center">// 1. Normal Forward Execution Flow (All Steps Commit Locally)</span>
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                            <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Step 1: Wallet Service</span>
+                                <span class="text-[9px] text-slate-400">Deducts $50 hold locally</span>
+                            </div>
+                            <div class="text-emerald-400 font-bold">&rarr;</div>
+                            <div class="p-3 bg-slate-950 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Step 2: Fleet Service</span>
+                                <span class="text-[9px] text-slate-400">Locks driver capacity locally</span>
+                            </div>
+                            <div class="text-emerald-400 font-bold">&rarr;</div>
+                            <div class="p-3 bg-emerald-950/80 border-2 border-emerald-400 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-200 font-bold block">Step 3: Dispatch (PIVOT)</span>
+                                <span class="text-[9px] text-slate-300">Creates legal trip record</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rollback Flow -->
+                    <div class="space-y-2 border-t border-slate-800 pt-4">
+                        <span class="text-rose-400 font-bold block text-center">// 2. Failure at Step 2 &rarr; Automatic Compensating Rollback in Reverse!</span>
+                        <div class="flex flex-col md:flex-row items-center justify-between gap-2 text-center">
+                            <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-emerald-300 font-bold block">Compensate 1: Refund Hold</span>
+                                <span class="text-[9px] text-slate-400">Releases $50 back to passenger</span>
+                            </div>
+                            <div class="text-rose-400 font-bold">&larr; unwinds &larr;</div>
+                            <div class="p-3 bg-rose-950/80 border border-rose-500 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-rose-300 font-bold block">Step 2 FAILS!</span>
+                                <span class="text-[9px] text-rose-200">Driver cancelled / unreachable</span>
+                            </div>
+                            <div class="text-slate-600 font-bold">&larr; skipped &larr;</div>
+                            <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                                <span class="text-slate-500 font-bold block">Step 3 (Never Reached)</span>
+                                <span class="text-[9px] text-slate-600">Zero state modified</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Pivot Step Principle:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Every Saga has a <strong>Pivot Transaction</strong>. It is the point of no return. Steps before the pivot are compensable. Once the pivot transaction commits, subsequent steps <strong>MUST NEVER FAIL</strong>; they are retryable until success! Placing irreversible actions (e.g. sending SMS notifications or pushing funds to external banking rails) <em>after</em> the pivot guarantees system integrity.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SAGA ISOLATION ANOMALIES & DUAL-WRITES -->
+        <section id="saga-isolation" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Consistency Anomalies
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Lack of Isolation in Sagas: Taming Semantic Anomalies
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Dirty Reads &bull; Lost Updates &bull; Semantic Locking Countermeasures
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                The greatest challenge of the Saga Pattern is **the lack of ACID Isolation**. Because each local transaction commits immediately, intermediate states are visible to other concurrent transactions before the entire Saga finishes:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Anomaly 1: Dirty Read -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-rose-700 text-sm block">1. The Dirty Read Anomaly</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Saga 1 reserves $50 from a passenger's wallet. Before Saga 1 finishes Step 2, the passenger checks their balance on mobile and sees $0. Saga 1 subsequently fails Step 2 and refunds the $50. The passenger witnessed a temporary phantom balance!
+                    </p>
+                    <p class="text-[10px] text-emerald-800 font-sans font-bold">
+                        &check; Remedy: Semantic Locking. Instead of directly deducting balance, set `status = "PENDING_HOLD"`.
+                    </p>
+                </div>
+
+                <!-- Anomaly 2: Lost Update -->
+                <div class="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="font-bold text-rose-700 text-sm block">2. The Lost Update Anomaly</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Saga 1 reads driver capacity and sets it to BUSY. Before Saga 1 commits, Saga 2 overwrites the driver status to AVAILABLE, ignoring Saga 1's ongoing reservation.
+                    </p>
+                    <p class="text-[10px] text-emerald-800 font-sans font-bold">
+                        &check; Remedy: Optimistic Concurrency Control (OCC) with version numbers or monotonic fencing tokens.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 16 -->
+        <section id="omniroute-milestone-16" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 16: Distributed Saga Orchestrator Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 16 for <strong>OmniRoute</strong>: an enterprise-grade Distributed Saga Orchestrator featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>State Machine Execution Coordinator:</strong> Manages lifecycle states (<code class="font-mono text-xs">STARTED</code>, <code class="font-mono text-xs">COMPENSATING</code>, <code class="font-mono text-xs">COMPLETED</code>, <code class="font-mono text-xs">ROLLED_BACK</code>).</li>
+                <li><strong>Step Execution &amp; Rollback Contracts:</strong> Every forward action defines an explicit, mathematically sound, idempotent compensating inverse.</li>
+                <li><strong>Persistent Audit Logging (SQLAlchemy 2.0 Async):</strong> Persisting saga step transitions into an audit table for total operational traceability.</li>
+                <li><strong>Automated PyTest Battery:</strong> Verifying complete happy-path execution, mid-saga failure recovery, and compensation integrity.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 16)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── transactions/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>            <span class="text-slate-500"># Milestone 16: Saga State &amp; Wallet Models (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">saga_orchestrator.py</span> <span class="text-slate-500"># Milestone 16: Central Orchestration Engine &amp; Steps</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>            <span class="text-slate-500"># Milestone 16: FastAPI Booking Saga REST API</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_distributed_sagas.py</span> <span class="text-slate-500"># Milestone 16 Rollback &amp; Compensation PyTest Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/transactions/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Saga Audit &amp; Wallet Storage Entities: <code class="text-purple-700">src/omniroute/transactions/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Transactions - Saga Execution Audit &amp; Wallet Models</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Float, DateTime, Enum <span class="text-purple-400">as</span> SAEnum
+<span class="text-purple-400">import</span> enum
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SagaStatus</span>(str, enum.Enum):
+    STARTED = <span class="text-amber-300">"STARTED"</span>
+    EXECUTING = <span class="text-amber-300">"EXECUTING"</span>
+    COMPENSATING = <span class="text-amber-300">"COMPENSATING"</span>
+    COMPLETED = <span class="text-amber-300">"COMPLETED"</span>
+    ROLLED_BACK = <span class="text-amber-300">"ROLLED_BACK"</span>
+    FAILED = <span class="text-amber-300">"FAILED"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SagaInstanceModel</span>(Base):
+    <span class="text-slate-500">"""
+    PERSISTENT SAGA STATE MACHINE LOG:
+    Tracks distributed transaction status, current step, and error reasons.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"saga_instances"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    saga_type: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    status: Mapped[SagaStatus] = mapped_column(SAEnum(SagaStatus), default=SagaStatus.STARTED, nullable=<span class="text-rose-400">False</span>)
+    payload_json: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    error_reason: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">True</span>)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PassengerWalletModel</span>(Base):
+    <span class="text-slate-500">"""Simulates the Passenger Wallet Service database table."""</span>
+    __tablename__ = <span class="text-amber-300">"passenger_wallets"</span>
+
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=<span class="text-rose-400">True</span>)
+    balance: Mapped[float] = mapped_column(Float, default=0.0, nullable=<span class="text-rose-400">False</span>)
+    reserved_hold: Mapped[float] = mapped_column(Float, default=0.0, nullable=<span class="text-rose-400">False</span>)</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/transactions/saga_orchestrator.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Saga Orchestrator &amp; Step Definitions: <code class="text-purple-700">src/omniroute/transactions/saga_orchestrator.py</code></span>
+                    <span class="text-slate-400">State Machine &amp; Compensations</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Transactions - Distributed Saga Orchestrator</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Dict, Any
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> omniroute.transactions.models <span class="text-purple-400">import</span> (
+    SagaInstanceModel, SagaStatus, PassengerWalletModel
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ISagaStep</span>(ABC):
+    <span class="text-slate-500">"""Saga Step Contract: Must define forward action and idempotent compensation."""</span>
+    <span class="text-purple-400">@property</span>
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">name</span>(self) -> str: ...
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool: ...
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool: ...
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># STEP 1: Reserve Passenger Funds</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ReserveFundsStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"ReservePassengerFunds"</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        user_id = context[<span class="text-amber-300">"user_id"</span>]
+        amount = context[<span class="text-amber-300">"amount"</span>]
+
+        stmt = select(PassengerWalletModel).where(PassengerWalletModel.user_id == user_id)
+        res = <span class="text-purple-400">await</span> session.execute(stmt)
+        wallet = res.scalar_one_or_none()
+
+        <span class="text-purple-400">if not</span> wallet <span class="text-purple-400">or</span> (wallet.balance - wallet.reserved_hold) &lt; amount:
+            <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Insufficient funds</span>
+
+        wallet.reserved_hold += amount
+        context[<span class="text-amber-300">"funds_held"</span>] = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        <span class="text-purple-400">if not</span> context.get(<span class="text-amber-300">"funds_held"</span>):
+            <span class="text-purple-400">return True</span>  <span class="text-slate-500"># Idempotent no-op if step never executed</span>
+
+        user_id = context[<span class="text-amber-300">"user_id"</span>]
+        amount = context[<span class="text-amber-300">"amount"</span>]
+
+        stmt = select(PassengerWalletModel).where(PassengerWalletModel.user_id == user_id)
+        res = <span class="text-purple-400">await</span> session.execute(stmt)
+        wallet = res.scalar_one_or_none()
+
+        <span class="text-purple-400">if</span> wallet:
+            wallet.reserved_hold = max(0.0, wallet.reserved_hold - amount)
+
+        context[<span class="text-amber-300">"funds_held"</span>] = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">return True</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># STEP 2: Lock Driver Capacity</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LockDriverCapacityStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"LockDriverCapacity"</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        driver_id = context[<span class="text-amber-300">"driver_id"</span>]
+        <span class="text-slate-500"># Simulate checking driver availability</span>
+        <span class="text-purple-400">if</span> driver_id == <span class="text-amber-300">"driver_offline_error"</span>:
+            <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Simulates failure at Step 2!</span>
+
+        context[<span class="text-amber-300">"driver_locked"</span>] = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        context[<span class="text-amber-300">"driver_locked"</span>] = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">return True</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># STEP 3: Confirm Dispatch Agreement (THE PIVOT STEP)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ConfirmDispatchPivotStep</span>(ISagaStep):
+    name = <span class="text-amber-300">"ConfirmDispatchPivot"</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">execute</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        <span class="text-slate-500"># THE PIVOT TRANSACTION: Once this executes, the ride is legally created.</span>
+        context[<span class="text-amber-300">"dispatch_confirmed"</span>] = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">compensate</span>(self, context: Dict[str, Any], session: AsyncSession) -> bool:
+        <span class="text-slate-500"># Pivot step is irreversible! Must return True or require human intervention.</span>
+        <span class="text-purple-400">return True</span>
+
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># SAGA ORCHESTRATOR ENGINE</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SagaOrchestrator</span>:
+    <span class="text-slate-500">"""
+    DISTRIBUTED SAGA ORCHESTRATOR:
+    Coordinates forward step execution. If any step fails, triggers
+    compensating actions in strict reverse (LIFO) order!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, steps: List[ISagaStep]):
+        self.steps = steps
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">run</span>(
+        self, saga_instance: SagaInstanceModel, context: Dict[str, Any], session: AsyncSession
+    ) -> bool:
+        saga_instance.status = SagaStatus.EXECUTING
+        executed_steps: List[ISagaStep] = []
+
+        <span class="text-purple-400">for</span> step <span class="text-purple-400">in</span> self.steps:
+            <span class="text-purple-400">try</span>:
+                success = <span class="text-purple-400">await</span> step.execute(context, session)
+                <span class="text-purple-400">if</span> success:
+                    executed_steps.append(step)
+                <span class="text-purple-400">else</span>:
+                    <span class="text-slate-500"># Step reported domain failure &rarr; Rollback</span>
+                    saga_instance.error_reason = f<span class="text-amber-300">"Step failed: {step.name}"</span>
+                    <span class="text-purple-400">await</span> self._compensate(executed_steps, context, saga_instance, session)
+                    <span class="text-purple-400">return False</span>
+            <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+                saga_instance.error_reason = f<span class="text-amber-300">"Step exception in {step.name}: {str(exc)}"</span>
+                <span class="text-purple-400">await</span> self._compensate(executed_steps, context, saga_instance, session)
+                <span class="text-purple-400">return False</span>
+
+        saga_instance.status = SagaStatus.COMPLETED
+        <span class="text-purple-400">await</span> session.commit()
+        <span class="text-purple-400">return True</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_compensate</span>(
+        self,
+        executed_steps: List[ISagaStep],
+        context: Dict[str, Any],
+        saga_instance: SagaInstanceModel,
+        session: AsyncSession
+    ) -> <span class="text-rose-400">None</span>:
+        saga_instance.status = SagaStatus.COMPENSATING
+        <span class="text-slate-500"># Reverse LIFO order compensation:</span>
+        <span class="text-purple-400">for</span> step <span class="text-purple-400">in</span> reversed(executed_steps):
+            <span class="text-purple-400">try</span>:
+                <span class="text-purple-400">await</span> step.compensate(context, session)
+            <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> comp_exc:
+                saga_instance.status = SagaStatus.FAILED
+                <span class="text-purple-400">await</span> session.commit()
+                <span class="text-purple-400">raise</span> comp_exc
+
+        saga_instance.status = SagaStatus.ROLLED_BACK
+        <span class="text-purple-400">await</span> session.commit()</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Saga Trip Booking Router: <code class="text-purple-700">src/omniroute/transactions/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Async Database Reporting</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.transactions.models <span class="text-purple-400">import</span> SagaInstanceModel, SagaStatus
+<span class="text-purple-400">from</span> omniroute.transactions.saga_orchestrator <span class="text-purple-400">import</span> (
+    SagaOrchestrator, ReserveFundsStep, LockDriverCapacityStep, ConfirmDispatchPivotStep
+)
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/sagas"</span>, tags=[<span class="text-amber-300">"Saga Transactions"</span>])
+
+<span class="text-slate-500"># Instantiated trip booking saga definition</span>
+trip_booking_orchestrator = SagaOrchestrator([
+    ReserveFundsStep(),
+    LockDriverCapacityStep(),
+    ConfirmDispatchPivotStep()
+])
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BookTripRequestDTO</span>(BaseModel):
+    user_id: str
+    driver_id: str
+    amount: float = Field(..., gt=0.0)
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/trip/book"</span>,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"Execute Distributed Trip Booking Saga"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">book_trip_saga</span>(
+    dto: BookTripRequestDTO,
+    db: AsyncSession = Depends(get_session)
+):
+    saga_record = SagaInstanceModel(
+        saga_type=<span class="text-amber-300">"TRIP_BOOKING_SAGA"</span>,
+        payload_json=json.dumps(dto.model_dump())
+    )
+    db.add(saga_record)
+    <span class="text-purple-400">await</span> db.commit()
+    <span class="text-purple-400">await</span> db.refresh(saga_record)
+
+    context = dto.model_dump()
+    success = <span class="text-purple-400">await</span> trip_booking_orchestrator.run(saga_record, context, db)
+
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"saga_id"</span>: saga_record.id,
+        <span class="text-amber-300">"status"</span>: saga_record.status.value,
+        <span class="text-amber-300">"success"</span>: success,
+        <span class="text-amber-300">"error_reason"</span>: saga_record.error_reason
+    }</pre>
+            </div>
+
+            <!-- File 4: tests/test_distributed_sagas.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Distributed Saga Test Suite: <code class="text-purple-700">tests/test_distributed_sagas.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+
+<span class="text-purple-400">from</span> omniroute.transactions.models <span class="text-purple-400">import</span> (
+    Base, SagaInstanceModel, SagaStatus, PassengerWalletModel
+)
+<span class="text-purple-400">from</span> omniroute.transactions.saga_orchestrator <span class="text-purple-400">import</span> (
+    SagaOrchestrator, ReserveFundsStep, LockDriverCapacityStep, ConfirmDispatchPivotStep
+)
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDistributedSagasSuite</span>:
+    <span class="text-slate-500">"""Verifies Saga forward execution, compensating unwinds, and idempotency."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_saga_happy_path_completes</span>(self, in_memory_db):
+        orchestrator = SagaOrchestrator([
+            ReserveFundsStep(),
+            LockDriverCapacityStep(),
+            ConfirmDispatchPivotStep()
+        ])
+
+        <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+            <span class="text-slate-500"># Seed passenger wallet with $100</span>
+            wallet = PassengerWalletModel(user_id=<span class="text-amber-300">"p_101"</span>, balance=100.0, reserved_hold=0.0)
+            session.add(wallet)
+
+            saga = SagaInstanceModel(saga_type=<span class="text-amber-300">"TRIP"</span>, payload_json=<span class="text-amber-300">"{}"</span>)
+            session.add(saga)
+            <span class="text-purple-400">await</span> session.commit()
+
+            context = {<span class="text-amber-300">"user_id"</span>: <span class="text-amber-300">"p_101"</span>, <span class="text-amber-300">"driver_id"</span>: <span class="text-amber-300">"d_202"</span>, <span class="text-amber-300">"amount"</span>: 45.0}
+            success = <span class="text-purple-400">await</span> orchestrator.run(saga, context, session)
+
+            assert success <span class="text-purple-400">is True</span>
+            assert saga.status == SagaStatus.COMPLETED
+            assert context[<span class="text-amber-300">"dispatch_confirmed"</span>] <span class="text-purple-400">is True</span>
+            assert wallet.reserved_hold == 45.0
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_saga_compensates_and_rolls_back_on_step2_failure</span>(self, in_memory_db):
+        orchestrator = SagaOrchestrator([
+            ReserveFundsStep(),
+            LockDriverCapacityStep(),
+            ConfirmDispatchPivotStep()
+        ])
+
+        <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+            <span class="text-slate-500"># Seed passenger wallet with $100</span>
+            wallet = PassengerWalletModel(user_id=<span class="text-amber-300">"p_102"</span>, balance=100.0, reserved_hold=0.0)
+            session.add(wallet)
+
+            saga = SagaInstanceModel(saga_type=<span class="text-amber-300">"TRIP"</span>, payload_json=<span class="text-amber-300">"{}"</span>)
+            session.add(saga)
+            <span class="text-purple-400">await</span> session.commit()
+
+            <span class="text-slate-500"># Pass offline driver to trigger failure at Step 2</span>
+            context = {<span class="text-amber-300">"user_id"</span>: <span class="text-amber-300">"p_102"</span>, <span class="text-amber-300">"driver_id"</span>: <span class="text-amber-300">"driver_offline_error"</span>, <span class="text-amber-300">"amount"</span>: 50.0}
+            success = <span class="text-purple-400">await</span> orchestrator.run(saga, context, session)
+
+            assert success <span class="text-purple-400">is False</span>
+            assert saga.status == SagaStatus.ROLLED_BACK
+            assert <span class="text-amber-300">"Step failed: LockDriverCapacity"</span> <span class="text-purple-400">in</span> saga.error_reason
+
+            <span class="text-slate-500"># PROOF OF COMPENSATION: Wallet hold must be refunded to 0!</span>
+            assert wallet.reserved_hold == 0.0
+            assert context[<span class="text-amber-300">"funds_held"</span>] <span class="text-purple-400">is False</span></pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Distributed Transaction Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Placing Irreversible Actions Before the Pivot Step</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Executing non-compensable actions (such as sending a customer push notification or triggering an un-cancellable bank wire transfer) before all compensable reservation steps have succeeded.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes disasters:</strong> If the saga fails on a subsequent step, you cannot mathematically un-send a push notification or un-ring a physical bell! You leave customers bewildered and balances corrupted. <strong>Irreversible actions must occur strictly AFTER the Pivot Step!</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Non-Idempotent Compensations</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing compensating actions that blindly refund amounts without checking whether the step actually succeeded or if a refund was already processed.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this bleeds money:</strong> When a network partition drops the acknowledgment of a compensation, the orchestrator retries. If the compensation is non-idempotent, it credits the customer's wallet a second and third time! <strong>Compensations must be strictly idempotent.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 16</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the distributed transaction test suite and verify Saga compensation rollbacks:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Distributed Saga test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_distributed_sagas.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.12s. Confirms forward execution completion, mid-pipeline compensation rollbacks, and wallet refund safety!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate Saga State Transitions in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from omniroute.transactions.models import SagaStatus; print('Saga States:', [s.value for s in SagaStatus])"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Displays: <code class="text-emerald-400 font-mono">['STARTED', 'EXECUTING', 'COMPENSATING', 'COMPLETED', 'ROLLED_BACK', 'FAILED']</code>
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 17 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 17: Designing Distributed Ledgers: Double-Entry Bookkeeping &amp; Immutability</h4>
+                <p class="text-xs text-slate-500 font-sans">Engineering zero-loss financial systems: Mathematical double-entry bookkeeping, debit/credit invariant validation, write skew defense, and serializable isolation levels in PostgreSQL.</p>
+            </div>
+            <a href="Chapter 17 - Designing Distributed Ledgers - Double-Entry Bookkeeping and Immutability.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 17 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

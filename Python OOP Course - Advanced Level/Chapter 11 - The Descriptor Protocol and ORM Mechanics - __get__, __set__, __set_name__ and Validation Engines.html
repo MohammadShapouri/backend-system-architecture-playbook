@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 11: The Descriptor Protocol &amp; ORM Mechanics - __get__, __set__, __set_name__ &amp; Validation Engines</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 11 - Declarative Descriptors &amp; ORM Validation)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 11 &bull; Metaprogramming &amp; Attribute Mechanics
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 11: The Descriptor Protocol &amp; ORM Mechanics - __get__, __set__, __set_name__ &amp; Validation Engines
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Unlocking Python's secret engine: Deconstructing how the Descriptor Protocol powers properties, bound methods, and ORMs, mastering the priority warfare between Data and Non-Data descriptors, capturing field identities automatically with PEP 487 <code class="font-mono text-emerald-400">__set_name__</code>, solving the shared-state memory leak trap, and engineering a declarative ORM-style validation engine for <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Metaprogramming Core</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 11: Declarative Field Validation Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Throughout earlier chapters, our entities relied on manual <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">@property</code> definitions or generic state dictionaries to validate attributes. However, writing redundant getters and setters across 50 domain models violates DRY and pollutes domain classes with boilerplate. In Milestone 11, we construct EntityForge's <strong>Declarative Descriptor Validation Engine</strong>: reusable, type-enforcing field descriptors (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">StringField</code>, <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">IntegerField</code>, <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">EmailField</code>) that intercept reads and writes, validate domain constraints, and automatically infer their storage names via PEP 487 without requiring a metaclass.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 11 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Descriptor Protocol (<code class="text-purple-300">__get__</code>, <code class="text-purple-300">__set__</code>, <code class="text-purple-300">__delete__</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Data Descriptors vs. Non-Data Descriptors</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PEP 487 <code class="text-purple-300">__set_name__</code> Automated Binding</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Solving the Shared-State Memory Leak Trap</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Class-Level vs. Instance-Level Access (<code class="text-purple-300">instance is None</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">Field</code> Declarative Validation Core</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Python's Descriptor Engine -->
+        <section id="descriptor-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Python's Secret Engine</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Most developers believe that Python features like methods, <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@property</code>, <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@classmethod</code>, and <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">@staticmethod</code> are hardcoded language primitives built directly into the CPython grammar.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In reality, they are all powered by a single underlying protocol: the <strong>Descriptor Protocol</strong>. A descriptor is simply an object that customizes attribute access by implementing at least one of the following special methods:
+            </p>
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-slate-200 space-y-1">
+                    <span class="text-emerald-400 font-bold block text-sm">__get__(self, instance, owner)</span>
+                    <span class="text-slate-400 font-sans text-xs">Invoked when the attribute is read. Receives the calling instance (or <code class="font-mono text-slate-300">None</code> if accessed via the class) and the owner class.</span>
+                </div>
+                <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-slate-200 space-y-1">
+                    <span class="text-sky-300 font-bold block text-sm">__set__(self, instance, value)</span>
+                    <span class="text-slate-400 font-sans text-xs">Invoked when an attribute assignment occurs: <code class="font-mono text-slate-300">instance.attr = value</code>. Defines mutation and validation rules.</span>
+                </div>
+                <div class="p-4 bg-slate-900 rounded-xl border border-slate-800 text-slate-200 space-y-1">
+                    <span class="text-purple-300 font-bold block text-sm">__delete__(self, instance)</span>
+                    <span class="text-slate-400 font-sans text-xs">Invoked when <code class="font-mono text-slate-300">del instance.attr</code> is executed. Manages state destruction or prevents field deletion.</span>
+                </div>
+            </div>
+
+            <!-- Data vs Non-Data Descriptors Visual Matrix (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Precedence Hierarchy: Data Descriptors vs. Non-Data Descriptors
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Data Descriptor -->
+                    <div class="p-5 bg-slate-950 border border-purple-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-purple-300 font-bold text-sm">1. Data Descriptor</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-bold border border-purple-800">Defines __set__ or __delete__</span>
+                        </div>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong class="text-purple-300 font-mono">Priority:</strong> <strong>Wins over instance __dict__!</strong> If a class defines a Data Descriptor named <code class="font-mono text-slate-200">age</code>, setting <code class="font-mono text-slate-200">instance.__dict__['age'] = 99</code> is ignored during reads; <code class="font-mono">__get__</code> is executed unconditionally!</li>
+                            <li><strong class="text-purple-300 font-mono">Built-in Examples:</strong> <code class="font-mono text-slate-200">@property</code> (when a setter is defined), <code class="font-mono text-slate-200">__slots__</code> member descriptors, and ORM fields.</li>
+                        </ul>
+                        <div class="p-2.5 bg-slate-900 rounded-lg text-purple-300 font-mono text-[10px]">
+                            class Field: def __get__(); def __set__()
+                        </div>
+                    </div>
+
+                    <!-- Non-Data Descriptor -->
+                    <div class="p-5 bg-slate-950 border border-emerald-900/60 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-emerald-400 font-bold text-sm">2. Non-Data Descriptor</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded font-bold border border-emerald-800">Defines __get__ ONLY</span>
+                        </div>
+                        <ul class="text-[11px] text-slate-300 font-sans space-y-2 leading-relaxed">
+                            <li><strong class="text-emerald-400 font-mono">Priority:</strong> <strong>Yields to instance __dict__!</strong> If an entry with the same name exists in <code class="font-mono text-slate-200">instance.__dict__</code>, the dictionary value shadows the descriptor completely.</li>
+                            <li><strong class="text-emerald-400 font-mono">Built-in Examples:</strong> Standard functions/methods, <code class="font-mono text-slate-200">@classmethod</code>, and <code class="font-mono text-slate-200">@staticmethod</code>. (This is why you can monkey-patch methods on a specific instance!).</li>
+                        </ul>
+                        <div class="p-2.5 bg-slate-900 rounded-lg text-emerald-300 font-mono text-[10px]">
+                            class Method: def __get__()  # No __set__
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. PEP 487 & The __set_name__ Revolution -->
+        <section id="set-name-revolution" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: PEP 487 &amp; The `__set_name__` Revolution</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Prior to Python 3.6, writing custom descriptors suffered from an infamous ergonomics problem: <strong>descriptors did not know what attribute name they were assigned to on the class!</strong>
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Developers had to write redundant boilerplate, passing the variable name twice: <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-rose-700 font-bold">username = StringField("username")</code>. Alternatively, complex frameworks like Django and SQLAlchemy were forced to use heavy metaclasses to inspect the class dictionary at definition time and inject the names.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>PEP 487</strong> solved this permanently by introducing the <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">__set_name__(self, owner, name)</code> callback:
+            </p>
+
+            <!-- PEP 487 Execution Pipeline Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Automated __set_name__ Handshake During Class Creation
+                </div>
+
+                <div class="space-y-3 text-[11px]">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-purple-300 font-bold block">1. Class Body Execution</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                Python executes the class body. Descriptors are instantiated: <code class="text-emerald-300 font-mono">email = EmailField()</code>.
+                            </span>
+                        </div>
+                        <span class="bg-purple-950 text-purple-300 px-2 py-0.5 rounded text-[10px] font-bold border border-purple-800">Phase 1</span>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-sky-300 font-bold block">2. CPython Type Construction</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                <code class="text-slate-300 font-mono">type.__new__</code> constructs the new class object (<code class="text-slate-300 font-mono">UserEntity</code>).
+                            </span>
+                        </div>
+                        <span class="bg-sky-950 text-sky-300 px-2 py-0.5 rounded text-[10px] font-bold border border-sky-800">Phase 2</span>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-slate-950 border border-emerald-900/60 rounded-xl flex items-center justify-between">
+                        <div>
+                            <span class="text-emerald-300 font-bold block">3. Automated PEP 487 Callback (__set_name__)</span>
+                            <span class="text-[10px] text-slate-400 font-sans">
+                                CPython scans the class dictionary and calls <code class="text-emerald-300 font-mono">descriptor.__set_name__(UserEntity, "email")</code> automatically!
+                            </span>
+                        </div>
+                        <span class="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-800">PEP 487 Auto-Hook</span>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-sans text-slate-300 space-y-1">
+                    <strong class="text-emerald-400 font-mono text-xs block">// Why This Matters in Senior Architecture:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        The descriptor dynamically learns its own attribute identifier (<code class="font-mono text-slate-300">name = "email"</code>) and computes its private instance storage key (<code class="font-mono text-slate-300">self._storage_name = f"_{name}"</code>) with zero user input, zero duplication, and zero metaclass complexity!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Storage Strategy: Solving the Shared State Leak -->
+        <section id="storage-strategies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Strategies: Solving the Shared-State Memory Leak</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When a developer writes their first custom descriptor, they almost always fall into the <strong>Shared-State Memory Leak Trap</strong>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Fatal Shared State Trap -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-rose-200 pb-2">
+                        <span class="font-bold text-rose-900 font-mono text-sm">&cross; The Fatal Shared State Trap</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">Catastrophic Leak</span>
+                    </div>
+                    <pre class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">BrokenField</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__set__</span>(self, instance, value):
+        self.val = value  <span class="text-slate-500"># FATAL: Stored on the descriptor instance!</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__get__</span>(self, instance, owner):
+        <span class="text-purple-400">return</span> self.val</pre>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this causes production outages:</strong> Descriptors are instantiated <em>once</em> at the class level. There is only <strong>one single descriptor instance shared across all 100,000 entity instances</strong>! Setting <code class="font-mono">user_b.name = "Bob"</code> overwrites <code class="font-mono">user_a.name</code>!
+                    </p>
+                </div>
+
+                <!-- Production Standard Storage -->
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <div class="flex items-center justify-between border-b border-emerald-200 pb-2">
+                        <span class="font-bold text-emerald-900 font-mono text-sm">&check; Production Instance Storage</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Instance Isolated</span>
+                    </div>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ProductionField</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__set_name__</span>(self, owner, name):
+        self.storage_name = f<span class="text-amber-300">"_{name}"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__set__</span>(self, instance, value):
+        <span class="text-slate-500"># Store state inside the specific instance's __dict__:</span>
+        instance.__dict__[self.storage_name] = value
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__get__</span>(self, instance, owner):
+        <span class="text-purple-400">if</span> instance <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">return</span> self  <span class="text-slate-500"># Class-level access guard</span>
+        <span class="text-purple-400">return</span> instance.__dict__.get(self.storage_name)</pre>
+                    <p class="text-xs text-emerald-900 leading-relaxed">
+                        State is strictly stored in <code class="font-mono">instance.__dict__</code> under a protected name. Each instance maintains completely isolated data, with zero cross-instance pollution!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Dunder Method Matrix: The Descriptor Protocol -->
+        <section id="dunder-matrix" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Dunder Method Matrix: The Complete Descriptor Protocol</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The full contractual specification for Python descriptors:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Method</th>
+                                <th class="py-2 px-2 font-bold font-sans">Invocation Timing</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Override (&check;)</th>
+                                <th class="py-2 px-2 font-bold font-sans">When NOT to Override (&cross;)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__set_name__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">__set_name__(self, owner, name)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    <strong>Mandatory for reusable field descriptors.</strong> Captures the attribute name automatically at class construction time and prepares instance storage keys.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Ad-hoc descriptor instances created dynamically at runtime after class construction has already finished.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__get__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">__get__(self, instance, owner)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Reading attribute values, computing dynamic transformations, binding methods. Must always check <code class="font-mono text-slate-800">if instance is None: return self</code>!
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Descriptors that strictly handle write-only logging or write-only security authorization guards.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__set__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">__set__(self, instance, value)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Type enforcement, range/boundary validation, dirty-flag tracking, ORM data conversion. Transforms the descriptor into a <strong>Data Descriptor</strong>.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Read-only cached properties (use a Non-Data descriptor so the computed value can be cached directly in <code class="font-mono text-slate-800">instance.__dict__</code>).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__delete__</td>
+                                <td class="py-3 px-2 font-mono text-[10px]">__delete__(self, instance)</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Cleaning up storage slots on <code class="font-mono text-slate-800">del instance.attr</code>, clearing foreign-key relational caches, or strictly raising <code class="font-mono text-slate-800">AttributeError</code> to block field deletion.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Standard models where attribute deletion is simply ignored or not part of the business domain.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 11 -->
+        <section id="entityforge-milestone-11" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 11: Declarative Validation Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 11 of <strong>EntityForge</strong>: constructing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/descriptors.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">Field</code>: The abstract base Data Descriptor implementing PEP 487 <code class="font-mono text-purple-700 font-bold">__set_name__</code>, isolated instance <code class="font-mono text-slate-800">__dict__</code> storage, deletion blocking, and class-level introspection guards.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">StringField</code>: Validates string types, minimum/maximum length boundaries, and regex patterns.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">IntegerField</code>: Enforces integers and numerical boundaries ($v_{\min} \le x \le v_{\max}$).</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">EmailField</code>: Enforces valid email syntax via regex validation.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">DeclarativeEntityModel</code>: A base model that allows declarative entity definitions with zero property boilerplate.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 11)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           ├── lifecycle.py              <span class="text-slate-500"># Milestone 02: Flyweights &amp; Lifecycle Pooling</span></div>
+                <div>│           ├── state.py                  <span class="text-slate-500"># Milestone 03: Slotted State &amp; Interception Proxy</span></div>
+                <div>│           ├── diagnostics.py            <span class="text-slate-500"># Milestone 04: DiagnosticRendererMixin &amp; Format Engine</span></div>
+                <div>│           ├── value_object.py           <span class="text-slate-500"># Milestone 05: Value Objects &amp; Ordering Contracts</span></div>
+                <div>│           ├── collections.py            <span class="text-slate-500"># Milestone 06: Observable EntityCollection Sequence</span></div>
+                <div>│           ├── execution.py              <span class="text-slate-500"># Milestone 07: Callable Steps &amp; Reentrant Guards</span></div>
+                <div>│           ├── aggregate.py              <span class="text-slate-500"># Milestone 08: Aggregate Roots, Composition &amp; Mixins</span></div>
+                <div>│           ├── plugin.py                 <span class="text-slate-500"># Milestone 09: Cooperative Plugins &amp; C3 Linearization</span></div>
+                <div>│           ├── contracts.py              <span class="text-slate-500"># Milestone 10: Protocols, ABCs &amp; Dependency Injection</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">descriptors.py</span>            <span class="text-slate-500"># Milestone 11: Descriptors &amp; Declarative Field Validation</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        ├── test_lifecycle.py         <span class="text-slate-500"># Milestone 02 Tests</span></div>
+                <div>        ├── test_state.py             <span class="text-slate-500"># Milestone 03 Tests</span></div>
+                <div>        ├── test_diagnostics.py       <span class="text-slate-500"># Milestone 04 Tests</span></div>
+                <div>        ├── test_value_object.py      <span class="text-slate-500"># Milestone 05 Tests</span></div>
+                <div>        ├── test_collections.py       <span class="text-slate-500"># Milestone 06 Tests</span></div>
+                <div>        ├── test_execution.py         <span class="text-slate-500"># Milestone 07 Tests</span></div>
+                <div>        ├── test_aggregate.py         <span class="text-slate-500"># Milestone 08 Tests</span></div>
+                <div>        ├── test_plugin.py            <span class="text-slate-500"># Milestone 09 Tests</span></div>
+                <div>        ├── test_contracts.py         <span class="text-slate-500"># Milestone 10 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_descriptors.py</span>       <span class="text-slate-500"># Milestone 11: Descriptors, Data Isolation &amp; Validation</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/descriptors.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Descriptors Core: <code class="text-purple-700">src/entityforge/core/descriptors.py</code></span>
+                    <span class="text-slate-400">PEP 487 Declarative Validation Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Declarative Descriptors &amp; Validation Engine (Milestone 11)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">import</span> re
+<span class="text-purple-400">from</span> abc <span class="text-purple-400">import</span> ABC, abstractmethod
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Optional, Self, Type
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity, EntityIdentity
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Field</span>(ABC):
+    <span class="text-slate-500">"""
+    ABSTRACT DATA DESCRIPTOR BASE CLASS:
+    Implements PEP 487 __set_name__, isolated instance storage, and deletion guards.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, default: Any = <span class="text-rose-400">None</span>, required: bool = <span class="text-rose-400">True</span>) -> <span class="text-rose-400">None</span>:
+        self.default = default
+        self.required = required
+        self.field_name: str = <span class="text-amber-300">""</span>
+        self.storage_name: str = <span class="text-amber-300">""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__set_name__</span>(self, owner: Type[Any], name: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        PEP 487 AUTOMATED BINDING:
+        CPython calls this at class creation time, injecting the attribute name.
+        """</span>
+        self.field_name = name
+        # Prefix with protected underscore to isolate storage in instance __dict__
+        self.storage_name = f<span class="text-amber-300">"_{name}"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__get__</span>(self, instance: Optional[Any], owner: Type[Any]) -> Any:
+        <span class="text-slate-500">"""
+        CLASS-LEVEL ACCESS GUARD:
+        If accessed from class (e.g. User.email), return descriptor instance itself!
+        If accessed from instance (user.email), return stored value.
+        """</span>
+        <span class="text-purple-400">if</span> instance <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">return</span> self
+        
+        <span class="text-purple-400">return</span> instance.__dict__.get(self.storage_name, self.default)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__set__</span>(self, instance: Any, value: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Validates value and stores in instance.__dict__ directly."""</span>
+        <span class="text-purple-400">if</span> value <span class="text-purple-400">is None</span>:
+            <span class="text-purple-400">if</span> self.required:
+                <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' is mandatory and cannot be None."</span>)
+            instance.__dict__[self.storage_name] = <span class="text-rose-400">None</span>
+            <span class="text-purple-400">return</span>
+
+        # Execute subclass-specific domain validation
+        validated_value = self.validate(value)
+        instance.__dict__[self.storage_name] = validated_value
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__delete__</span>(self, instance: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Blocks attribute deletion to maintain domain schema invariants."""</span>
+        <span class="text-purple-400">raise</span> AttributeError(f<span class="text-amber-300">"Cannot delete mandatory field '{self.field_name}'."</span>)
+
+    <span class="text-purple-400">@abstractmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate</span>(self, value: Any) -> Any:
+        <span class="text-slate-500">"""Subclasses must implement domain validation logic."""</span>
+        <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StringField</span>(Field):
+    <span class="text-slate-500">"""Validates string types, length boundaries, and non-empty invariants."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        min_length: int = 1,
+        max_length: Optional[int] = <span class="text-rose-400">None</span>,
+        default: Any = <span class="text-rose-400">None</span>,
+        required: bool = <span class="text-rose-400">True</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().__init__(default=default, required=required)
+        self.min_length = min_length
+        self.max_length = max_length
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate</span>(self, value: Any) -> str:
+        <span class="text-purple-400">if not isinstance</span>(value, str):
+            <span class="text-purple-400">raise</span> TypeError(f<span class="text-amber-300">"Field '{self.field_name}' must be a str, got '{type(value).__name__}'."</span>)
+        
+        cleaned = value.strip()
+        <span class="text-purple-400">if</span> len(cleaned) &lt; self.min_length:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' length must be >= {self.min_length}."</span>)
+        <span class="text-purple-400">if</span> self.max_length <span class="text-purple-400">and</span> len(cleaned) &gt; self.max_length:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' length must be <= {self.max_length}."</span>)
+        
+        <span class="text-purple-400">return</span> cleaned
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">IntegerField</span>(Field):
+    <span class="text-slate-500">"""Validates integer types and numerical bounds."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        min_value: Optional[int] = <span class="text-rose-400">None</span>,
+        max_value: Optional[int] = <span class="text-rose-400">None</span>,
+        default: Any = <span class="text-rose-400">None</span>,
+        required: bool = <span class="text-rose-400">True</span>
+    ) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().__init__(default=default, required=required)
+        self.min_value = min_value
+        self.max_value = max_value
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate</span>(self, value: Any) -> int:
+        <span class="text-purple-400">if not isinstance</span>(value, int) <span class="text-purple-400">or isinstance</span>(value, bool):
+            <span class="text-purple-400">raise</span> TypeError(f<span class="text-amber-300">"Field '{self.field_name}' must be an int, got '{type(value).__name__}'."</span>)
+        
+        <span class="text-purple-400">if</span> self.min_value <span class="text-purple-400">is not None and</span> value &lt; self.min_value:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' must be >= {self.min_value}."</span>)
+        <span class="text-purple-400">if</span> self.max_value <span class="text-purple-400">is not None and</span> value &gt; self.max_value:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' must be <= {self.max_value}."</span>)
+        
+        <span class="text-purple-400">return</span> value
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EmailField</span>(StringField):
+    <span class="text-slate-500">"""Enforces email formatting using regular expression matching."""</span>
+    EMAIL_REGEX = re.compile(<span class="text-amber-300">r"^[\w\.-]+@[\w\.-]+\.\w+$"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate</span>(self, value: Any) -> str:
+        cleaned = <span class="text-purple-400">super</span>().validate(value)
+        <span class="text-purple-400">if not</span> self.EMAIL_REGEX.match(cleaned):
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Field '{self.field_name}' has invalid email format: '{cleaned}'"</span>)
+        <span class="text-purple-400">return</span> cleaned.lower()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DeclarativeEntityModel</span>(BaseEntity):
+    <span class="text-slate-500">"""
+    DECLARATIVE BASE MODEL:
+    Allows entities to declare descriptors at the class level and automatically
+    populates them during initialization with full validation.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, entity_id: EntityIdentity, **kwargs: Any) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().__init__(entity_id=entity_id)
+        # Assign attributes through descriptors to trigger __set__ validation
+        <span class="text-purple-400">for</span> key, val <span class="text-purple-400">in</span> kwargs.items():
+            setattr(self, key, val)</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_descriptors.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_descriptors.py</code></span>
+                    <span class="text-slate-400">Descriptors, Isolation &amp; Validation Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Descriptors &amp; Validation Verification (Milestone 11)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> EntityIdentity
+<span class="text-purple-400">from</span> entityforge.core.descriptors import (
+    DeclarativeEntityModel,
+    StringField,
+    IntegerField,
+    EmailField,
+    Field,
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserProfile</span>(DeclarativeEntityModel):
+    <span class="text-slate-500">"""Declarative domain model defined with reusable field descriptors."""</span>
+    username = StringField(min_length=3, max_length=20)
+    age = IntegerField(min_value=18, max_value=120)
+    email = EmailField()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDescriptorValidationEngine</span>:
+    <span class="text-slate-500">"""Unit tests asserting PEP 487 naming, data isolation, validation, and class access."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_pep_487_set_name_captures_field_identifiers</span>(self):
+        # Descriptors must automatically learn their class-level variable names
+        assert UserProfile.username.field_name == <span class="text-amber-300">"username"</span>
+        assert UserProfile.username.storage_name == <span class="text-amber-300">"_username"</span>
+        assert UserProfile.email.field_name == <span class="text-amber-300">"email"</span>
+        assert UserProfile.email.storage_name == <span class="text-amber-300">"_email"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_class_level_access_returns_descriptor_instance</span>(self):
+        # CRITICAL INTROSPECTION INVARIANT:
+        # Accessing descriptor via Class MUST return the descriptor instance itself!
+        assert isinstance(UserProfile.username, StringField)
+        assert isinstance(UserProfile.email, EmailField)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_valid_model_instantiation_and_isolation</span>(self):
+        id1 = EntityIdentity.generate()
+        id2 = EntityIdentity.generate()
+
+        user1 = UserProfile(id1, username=<span class="text-amber-300">"alice"</span>, age=28, email=<span class="text-amber-300">"Alice@Example.com"</span>)
+        user2 = UserProfile(id2, username=<span class="text-amber-300">"bob_dev"</span>, age=35, email=<span class="text-amber-300">"bob@test.org"</span>)
+
+        # 1. State properly initialized and normalized
+        assert user1.username == <span class="text-amber-300">"alice"</span>
+        assert user1.age == 28
+        assert user1.email == <span class="text-amber-300">"alice@example.com"</span>  # Lowercased by EmailField
+
+        # 2. DATA ISOLATION INVARIANT:
+        # User 2 mutations must NEVER bleed into User 1!
+        assert user2.username == <span class="text-amber-300">"bob_dev"</span>
+        assert user2.age == 35
+
+        user1.age = 29
+        assert user1.age == 29
+        assert user2.age == 35  # User 2 untouched!
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_validation_boundaries_raise_expected_errors</span>(self):
+        ident = EntityIdentity.generate()
+
+        # 1. StringField length violations
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"username' length must be >="</span>):
+            UserProfile(ident, username=<span class="text-amber-300">"al"</span>, age=20, email=<span class="text-amber-300">"a@b.com"</span>)
+
+        # 2. IntegerField bounds violations
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"age' must be >="</span>):
+            UserProfile(ident, username=<span class="text-amber-300">"alice"</span>, age=17, email=<span class="text-amber-300">"a@b.com"</span>)
+
+        # 3. EmailField format violations
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"invalid email format"</span>):
+            UserProfile(ident, username=<span class="text-amber-300">"alice"</span>, age=25, email=<span class="text-amber-300">"not-an-email"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_descriptor_deletion_is_blocked</span>(self):
+        user = UserProfile(EntityIdentity.generate(), username=<span class="text-amber-300">"alice"</span>, age=25, email=<span class="text-amber-300">"a@b.com"</span>)
+
+        # __delete__ blocks attribute deletion
+        <span class="text-purple-400">with</span> pytest.raises(AttributeError, match=<span class="text-amber-300">r"Cannot delete mandatory field"</span>):
+            del user.email</pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Infinite Recursion in Descriptor Methods</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">setattr(instance, self.field_name, value)</code> inside <code class="font-mono text-rose-900 font-bold">__set__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes the process:</strong> Calling <code class="font-mono">setattr()</code> with the public attribute name invokes the descriptor's <code class="font-mono">__set__</code> method again, which calls <code class="font-mono">setattr()</code> again, triggering an immediate <code class="font-mono text-rose-950 font-bold">RecursionError</code>! Always store state under a private mangled storage key inside <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">instance.__dict__[self.storage_name] = value</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Omitting the 'instance is None' Guard in __get__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__get__</code> without checking <code class="font-mono text-rose-900 font-bold">if instance is None: return self</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this breaks frameworks:</strong> When ORMs, documentation generators, or schema introspectors inspect the model via the class (e.g. <code class="font-mono">UserProfile.email</code>), <code class="font-mono">instance</code> is <code class="font-mono">None</code>. Omitting this check raises an immediate <code class="font-mono text-rose-950 font-bold">AttributeError: 'NoneType' object has no attribute '__dict__'</code>!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Instantiating Descriptors in __init__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">self.name = StringField()</code> inside <code class="font-mono text-rose-900 font-bold">__init__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why descriptors fail on instances:</strong> CPython's descriptor lookup mechanism <strong>only activates when descriptors are declared at the CLASS level</strong>! If you attach a descriptor to an instance, Python treats it as a plain, inert object attribute and never calls <code class="font-mono">__get__</code> or <code class="font-mono">__set__</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Shared Descriptor Memory Leak</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Storing state on the descriptor instance itself: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">self.value = value</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes data corruption:</strong> There is only one descriptor instance shared across all entity instances. Mutating <code class="font-mono">self.value</code> leaks state across all users and causes subtle, hard-to-diagnose race conditions!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 11</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the descriptor validation test battery and verify PEP 487 naming hooks:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge descriptor validation unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_descriptors.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 5 passed in ~0.06s. Confirms PEP 487 __set_name__ auto-binding, data isolation, type/bounds validation, and class access.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 through 11:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Validates identity metamodels, Flyweights, slotted state, diagnostic renderers, value objects, collections, execution guards, aggregates, cooperative plugins, protocols, and descriptors with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Exploration -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically inspect PEP 487 __set_name__ execution in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "class TracedDescriptor:
+    def __set_name__(self, owner, name):
+        print(f'__set_name__ invoked! Owner: {owner.__name__}, Name: {name}')
+class Model:
+    email_address = TracedDescriptor()"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice how __set_name__ executes automatically during class definition without instantiating Model!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 12 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 12: Metaclasses &amp; Class Construction - type Mechanics, __init_subclass__ &amp; Declarative Models</h4>
+                <p class="text-xs text-slate-500 font-sans">Entering deep Python metaprogramming: The 4-phase class creation lifecycle, constructing custom metaclasses with __prepare__, modern alternatives with PEP 487 __init_subclass__, and building a declarative domain schema compiler.</p>
+            </div>
+            <a href="Chapter 12 - Metaclasses and Class Construction - type Mechanics, __init_subclass__ and Declarative Models.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 12 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

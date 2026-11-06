@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 8: Asynchronous Programming &amp; High-Throughput Performance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 08 - Concurrency, Async DB, Streaming &amp; Background Pipeline)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 08 &bull; Concurrency &amp; Systems Engineering
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Async Programming &amp; High-Throughput Performance
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Demystifying cooperative multitasking: The single-threaded event loop, when to write <code class="font-mono text-emerald-400">async def</code> vs. regular <code class="font-mono text-emerald-400">def</code>, how sync library calls freeze your entire backend, Async SQLAlchemy integration, memory-safe StreamingResponses, defensive HTTP client timeouts, and building NoteVault's non-blocking background task pipeline.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 08: Non-Blocking Analytics &amp; Exports</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        Users need to export their entire knowledge base into compressed archive bundles, stream multi-megabyte CSV data line-by-line without memory spikes, and log activity audits. If handled inside standard request-response cycles, formatting 1,000 notes blocks the client for seconds. In this milestone, we implement non-blocking asynchronous endpoints, leverage FastAPI's <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">BackgroundTasks</code>, integrate Async SQLAlchemy with <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">AsyncSession</code>, stream large responses safely, enforce strict HTTP client timeouts, and establish clear architectural boundaries for when tasks must be offloaded to external workers like Celery or ARQ.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 08 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> I/O-Bound vs. CPU-Bound systems</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Event Loop &amp; OS Multiplexing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">async def</code> vs. plain <code class="text-purple-300">def</code> threadpools</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The "Sync Library Trap" Danger Zone</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Async SQLAlchemy &amp; <code class="text-purple-300">AsyncSession</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Defensive HTTP client timeouts (<code class="text-purple-300">httpx.Timeout</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Memory-safe <code class="text-purple-300">StreamingResponse</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Asynchronous background export pipeline</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Concurrency -->
+        <section id="cs-concurrency" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: I/O-Bound vs. CPU-Bound Systems</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Before writing a single line of asynchronous code, you must diagnose what resource your code is actually waiting for. In software engineering, hardware bottlenecks fall strictly into two categories:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- I/O Bound -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-mono font-bold text-xs">I/O</span>
+                        <h3 class="font-bold text-slate-900 text-base">I/O-Bound (95% of Web Backends)</h3>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The CPU runs idle while waiting for external hardware devices or network sockets: waiting for a database query to complete, waiting for an external HTTP API (Stripe, OpenAI) to respond, or waiting for a file to read from an SSD.
+                    </p>
+                    <div class="text-[11px] font-mono text-sky-800 bg-sky-50 p-3 rounded-lg border border-sky-200 space-y-1">
+                        <div>CPU compute time: ~0.5 milliseconds</div>
+                        <div>Waiting for Network / DB: ~50.0 milliseconds</div>
+                        <div class="text-sky-900 font-bold">&rarr; Solution: Async / Await cooperative event looping.</div>
+                    </div>
+                </div>
+
+                <!-- CPU Bound -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-mono font-bold text-xs">CPU</span>
+                        <h3 class="font-bold text-slate-900 text-base">CPU-Bound (Compute-Heavy)</h3>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        The processor core is operating at 100% capacity performing mathematical calculations: video transcoding, image resizing, calculating password hashes with Bcrypt, or running machine learning inference.
+                    </p>
+                    <div class="text-[11px] font-mono text-amber-900 bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-1">
+                        <div>CPU compute time: ~2,500 milliseconds (Pinned to 100%)</div>
+                        <div>Waiting for external I/O: 0.0 milliseconds</div>
+                        <div class="text-amber-950 font-bold">&rarr; Solution: Multi-processing or worker threadpools.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU bound myth -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 space-y-1">
+                <p class="font-bold">The Great Async Myth:</p>
+                <p class="text-amber-800 text-[11px] leading-relaxed">
+                    <strong>Async/await does not make slow calculations run faster.</strong> If a math algorithm takes 3 seconds of continuous CPU computation, wrapping it inside an <code class="font-mono bg-amber-100 px-1 rounded font-bold">async def</code> function will still take 3 seconds. Worse, it will freeze the event loop and prevent any other user requests from being processed during those 3 seconds!
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. The Mechanics of the Event Loop: epoll, kqueue, & Cooperative Multitasking -->
+        <section id="event-loop-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Event Loop &amp; Cooperative Multitasking</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Traditional multi-threaded servers (like Apache) allocate an operating system thread to every client connection. Operating system threads are expensive: each thread allocates 8MB of stack memory and incurs <strong>context switching overhead</strong>, where the CPU core must flush its registers and cache lines to switch between threads thousands of times per second.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI runs on an <strong>Event Loop</strong> (powered by Python's <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">asyncio</code> and compiled C-code via <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">uvloop</code>). The event loop runs in a <strong>single operating system thread</strong>. It achieves massive concurrency through <strong>Cooperative Multitasking</strong>:
+            </p>
+
+            <!-- Detailed Event Loop ASCII / Flexbox Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs overflow-x-auto">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Cooperative Event Loop Lifecycle</span>
+                    <p class="text-slate-400 text-xs mt-1">A single thread interleaves thousands of concurrent waiting tasks</p>
+                </div>
+
+                <div class="flex flex-col gap-3 max-w-2xl mx-auto">
+                    <!-- Task 1 -->
+                    <div class="flex items-center gap-3">
+                        <span class="w-20 text-sky-300 font-bold">Task A:</span>
+                        <div class="flex-1 bg-slate-950 p-2 rounded-lg border border-slate-800 flex gap-1">
+                            <span class="bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded">Compute (0.1ms)</span>
+                            <span class="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded flex-1 text-center">await db.fetch() &bull; YIELDS CONTROL TO LOOP</span>
+                            <span class="bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded">Return (0.1ms)</span>
+                        </div>
+                    </div>
+
+                    <!-- Task 2 -->
+                    <div class="flex items-center gap-3">
+                        <span class="w-20 text-purple-300 font-bold">Task B:</span>
+                        <div class="flex-1 bg-slate-950 p-2 rounded-lg border border-slate-800 flex gap-1">
+                            <span class="bg-slate-700 text-slate-400 px-2 py-0.5 rounded">Queued</span>
+                            <span class="bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded">Runs while A waits (0.2ms)</span>
+                            <span class="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded flex-1 text-center">await stripe.charge() &bull; YIELDS CONTROL</span>
+                        </div>
+                    </div>
+
+                    <!-- Task 3 -->
+                    <div class="flex items-center gap-3">
+                        <span class="w-20 text-emerald-300 font-bold">Task C:</span>
+                        <div class="flex-1 bg-slate-950 p-2 rounded-lg border border-slate-800 flex gap-1">
+                            <span class="bg-slate-700 text-slate-400 px-2 py-0.5 rounded">Queued</span>
+                            <span class="bg-slate-700 text-slate-400 px-2 py-0.5 rounded">Queued</span>
+                            <span class="bg-emerald-500 text-slate-950 font-bold px-2 py-0.5 rounded">Runs while A &amp; B wait!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <p class="text-emerald-400 font-bold">// How the Operating System Kernel Participates:</p>
+                    <p class="leading-relaxed font-sans text-slate-400">
+                        When Task A hits <code class="font-mono text-emerald-300">await db.fetch()</code>, Python registers the raw network socket file descriptor with the OS kernel using <strong>epoll</strong> (Linux) or <strong>kqueue</strong> (macOS). The thread does <em>not</em> sit in a busy-wait loop. The OS kernel awakens the event loop only when network packets physically arrive at the network card!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Grand Question: async def vs plain def -->
+        <section id="async-vs-def" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Great Dilemma: <code>async def</code> vs. Plain <code>def</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                One of the most powerful features of FastAPI is that it supports both <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-emerald-600">async def</code> and traditional synchronous <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-purple-700">def</code>. However, choosing the wrong one can degrade performance.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- async def Card -->
+                <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-900 text-sm">async def route()</span>
+                        <span class="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Runs on Main Event Loop</span>
+                    </div>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        FastAPI assumes you know what you are doing. It runs this function directly on the single-threaded event loop.
+                    </p>
+                    <div class="text-[11px] text-emerald-900 space-y-1">
+                        <p><strong>When to use:</strong></p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li>When using non-blocking asynchronous drivers (e.g., <code class="font-mono">AsyncSession</code> in SQLAlchemy, <code class="font-mono">httpx.AsyncClient</code>, <code class="font-mono">redis.asyncio</code>).</li>
+                            <li>When your code contains explicit <code class="font-mono">await</code> expressions.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- plain def Card -->
+                <div class="bg-purple-50 border border-purple-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-purple-900 text-sm">def route() (Standard Synchronous)</span>
+                        <span class="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Runs in Starlette Threadpool</span>
+                    </div>
+                    <p class="text-xs text-purple-800 leading-relaxed">
+                        FastAPI detects that this function is synchronous. To protect the event loop from freezing, FastAPI runs this function in an external <strong>worker threadpool</strong> (via AnyIO).
+                    </p>
+                    <div class="text-[11px] text-purple-900 space-y-1">
+                        <p><strong>When to use:</strong></p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li>When using synchronous, blocking database drivers (like standard <code class="font-mono">psycopg2</code>, SQLite, or synchronous SQLAlchemy <code class="font-mono">Session</code> from Chapter 6!).</li>
+                            <li>When calling CPU-heavy utility functions.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deep Dive Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Function Declaration</th>
+                            <th class="p-3">Execution Location</th>
+                            <th class="p-3">What happens if you run blocking I/O?</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 text-emerald-700 font-bold">async def my_endpoint()</td>
+                            <td class="p-3 font-semibold">Single-Threaded Event Loop</td>
+                            <td class="p-3 text-rose-600 font-bold">&cross; FREEZES THE ENTIRE SERVER FOR ALL USERS</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 text-purple-700 font-bold">def my_endpoint()</td>
+                            <td class="p-3 font-semibold">AnyIO Worker Threadpool (40 threads default)</td>
+                            <td class="p-3 text-emerald-600 font-semibold">&check; SAFE: Only blocks that one worker thread</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Deep Dive: Async SQLAlchemy vs Synchronous Session -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-mono font-bold">Architecture Deep Dive</span>
+                    Async SQLAlchemy: Connecting the Database to the Event Loop
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    In Chapter 6, we used standard synchronous <code class="font-mono text-slate-800">SessionLocal</code> with <code class="font-mono text-slate-800">create_engine()</code>. Because the database driver is synchronous, our route handlers in Chapter 6 were written as standard <code class="font-mono text-purple-700 font-bold">def create_note(...)</code> so FastAPI runs them safely in worker threads.
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    If you want pure <code class="font-mono text-emerald-700 font-bold">async def</code> endpoints with zero threadpool context-switching overhead, you must upgrade your persistence layer to <strong>SQLAlchemy's Async Extension</strong> using <code class="font-mono text-purple-700">create_async_engine</code> and <code class="font-mono text-purple-700">AsyncSession</code>:
+                </p>
+                
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-slate-500"># 1. Asynchronous connection string uses async drivers:</span>
+<span class="text-slate-500"># SQLite: sqlite+aiosqlite:///./notevault.db</span>
+<span class="text-slate-500"># PostgreSQL: postgresql+asyncpg://user:pass@localhost:5432/notevault</span>
+ASYNC_DB_URL = <span class="text-amber-300">"sqlite+aiosqlite:///./notevault.db"</span>
+
+async_engine = create_async_engine(ASYNC_DB_URL, echo=<span class="text-rose-400">False</span>)
+AsyncSessionLocal = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=<span class="text-rose-400">False</span>)
+
+<span class="text-slate-500"># 2. Asynchronous dependency with clean async context management:</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_async_db</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">async with</span> AsyncSessionLocal() <span class="text-purple-400">as</span> session:
+        <span class="text-purple-400">yield</span> session
+
+<span class="text-slate-500"># 3. Executing queries asynchronously without blocking the loop:</span>
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/async-notes"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">read_notes_async</span>(db: AsyncSession = Depends(get_async_db)):
+    result = <span class="text-purple-400">await</span> db.execute(select(NoteModel))
+    notes = result.scalars().all()
+    <span class="text-purple-400">return</span> notes</pre>
+                
+                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px] text-slate-600 font-sans">
+                    <strong>Rule:</strong> Never mix paradigms. If your route uses <code class="font-mono text-purple-700">AsyncSession</code>, write <code class="font-mono text-emerald-700">async def</code> and <code class="font-mono text-emerald-700">await</code> every query. If your route uses synchronous <code class="font-mono text-purple-700">Session</code>, write regular <code class="font-mono text-purple-700">def</code> so AnyIO handles the thread offload.
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. The Sync Library Trap (Danger Zone) & Defensive Timeouts -->
+        <section id="sync-library-trap" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The "Sync Library Trap": Common Bottlenecks &amp; Defensive Timeouts</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                This is the #1 mistake junior and intermediate engineers make in FastAPI: declaring a route as <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-bold">async def</code>, but calling a standard synchronous Python library inside it.
+            </p>
+
+            <!-- Danger Zone Mapping Grid -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="text-rose-500 font-bold">&#9888;</span>
+                    The Danger Zone: Replace These Immediately in Async Routes
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    If you use any library from the left column inside an <code class="font-mono text-emerald-600 font-bold">async def</code> route without an external threadpool, you neutralize FastAPI's concurrency advantages:
+                </p>
+
+                <div class="grid sm:grid-cols-2 gap-4 text-xs font-mono">
+                    <!-- Left: Toxic -->
+                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                        <span class="text-rose-900 font-bold block text-sm">&cross; DANGER: Synchronous / Blocking</span>
+                        <ul class="space-y-2 text-rose-800 text-[11px]">
+                            <li><code class="bg-rose-100 px-1 py-0.5 rounded font-bold">time.sleep(5)</code> &rarr; Blocks event loop</li>
+                            <li><code class="bg-rose-100 px-1 py-0.5 rounded font-bold">import requests; requests.get()</code> &rarr; Blocks socket</li>
+                            <li><code class="bg-rose-100 px-1 py-0.5 rounded font-bold">open('file.txt', 'r').read()</code> &rarr; Blocks on disk I/O</li>
+                            <li><code class="bg-rose-100 px-1 py-0.5 rounded font-bold">psycopg2 / standard sqlite3</code> &rarr; Blocks socket</li>
+                        </ul>
+                    </div>
+
+                    <!-- Right: Async Replacements -->
+                    <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                        <span class="text-emerald-900 font-bold block text-sm">&check; ASYNC-NATIVE REPLACEMENTS</span>
+                        <ul class="space-y-2 text-emerald-800 text-[11px]">
+                            <li><code class="bg-emerald-100 px-1 py-0.5 rounded font-bold">await asyncio.sleep(5)</code> &rarr; Yields control cleanly</li>
+                            <li><code class="bg-emerald-100 px-1 py-0.5 rounded font-bold">import httpx; await client.get()</code> &rarr; Non-blocking socket</li>
+                            <li><code class="bg-emerald-100 px-1 py-0.5 rounded font-bold">import aiofiles; await f.read()</code> &rarr; Non-blocking disk</li>
+                            <li><code class="bg-emerald-100 px-1 py-0.5 rounded font-bold">asyncpg / aiosqlite</code> &rarr; Non-blocking SQL</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Defensive HTTP Client Timeouts Callout -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#128737;&#65039;</span>
+                    Defensive HTTP Clients: Never Call Outbound APIs Without Explicit Timeouts
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed font-sans">
+                    Switching from <code class="font-mono bg-amber-100 px-1 rounded">requests</code> to <code class="font-mono bg-amber-100 px-1 rounded">httpx.AsyncClient</code> is essential, but doing so without configuring timeouts leaves your application vulnerable. By default, if an external service hangs, your socket stays open indefinitely, consuming memory and connection slots until your server hits resource limits.
+                </p>
+                <pre class="bg-slate-900 text-amber-300 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">import</span> httpx
+
+<span class="text-slate-500"># DEFENSIVE ENGINEERING: Always configure granular timeout boundaries</span>
+timeout_config = httpx.Timeout(
+    timeout=10.0,   <span class="text-slate-500"># 10s maximum total duration for request/response</span>
+    connect=3.0,   <span class="text-slate-500"># 3s to complete TCP and TLS handshakes</span>
+    read=5.0,      <span class="text-slate-500"># 5s max wait between incoming byte chunks</span>
+    write=5.0      <span class="text-slate-500"># 5s max wait sending outbound request bytes</span>
+)
+
+<span class="text-purple-400">async with</span> httpx.AsyncClient(timeout=timeout_config) <span class="text-purple-400">as</span> client:
+    <span class="text-purple-400">try</span>:
+        response = <span class="text-purple-400">await</span> client.get(<span class="text-amber-300">"https://api.external-partner.com/verify"</span>)
+        response.raise_for_status()
+    <span class="text-purple-400">except</span> httpx.TimeoutException:
+        <span class="text-slate-500"># Fail fast and gracefully return a 504 Gateway Timeout or fallback response</span>
+        <span class="text-purple-400">raise</span> HTTPException(status_code=504, detail=<span class="text-amber-300">"External verification partner timed out."</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Streaming Large Responses & Chunked Uploads -->
+        <section id="streaming-large-responses" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Memory-Safe Streaming: Chunked Transfers &amp; <code>StreamingResponse</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When a user requests a massive dataset (e.g., exporting 50,000 notes or downloading a 500MB media file), assembling the entire JSON string or file payload into memory as a Python variable causes sudden memory spikes. Under concurrent load, multiple users downloading large files can trigger the Linux kernel's <strong>OOM (Out Of Memory) Killer</strong>, crashing your Uvicorn process.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Memory Ingestion (UploadFile) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-mono font-bold">In</span>
+                        Safe Uploads: <code>UploadFile</code> vs. <code>bytes</code>
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Never use <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-rose-600">file: bytes = File(...)</code> for client uploads. That forces Python to allocate contiguous memory for the entire payload upfront.
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Always declare <code class="font-mono text-purple-700 font-bold">file: UploadFile = File(...)</code>. Under the hood, Starlette uses a Python <code class="font-mono text-slate-800">SpooledTemporaryFile</code>: files under 1MB remain in memory, but files exceeding 1MB are automatically rolled over to an OS disk spool, preventing memory leaks during large file ingestion.
+                    </p>
+                </div>
+
+                <!-- Memory Egress (StreamingResponse) -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-mono font-bold">Out</span>
+                        Safe Egress: <code>StreamingResponse</code>
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Instead of compiling a 50MB string and returning it all at once, an asynchronous generator yields small chunks (e.g., 64KB). The server streams these chunks as they are generated using HTTP <strong>Chunked Transfer Encoding</strong>.
+                    </p>
+                    <div class="bg-slate-900 p-3 rounded-lg text-emerald-400 font-mono text-[11px]">
+                        RAM consumption stays completely flat at ~64KB regardless of whether the exported dataset is 100KB or 5GB!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Background Tasks vs. Distributed Task Queues -->
+        <section id="background-tasks-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Background Processing: In-Process vs. Distributed Queues</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When a user requests a slow operation (e.g., sending an email notification, computing analytics, or exporting data to a CSV/ZIP file), you must not force the client to wait for that operation to finish.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- FastAPI BackgroundTasks -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900">FastAPI BackgroundTasks (Built-in)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Runs in-process <em>after</em> the HTTP response is sent back to the client.
+                    </p>
+                    <div class="text-[11px] text-slate-600 space-y-1">
+                        <p class="text-emerald-600 font-bold">&check; Perfect for:</p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li>Sending simple transactional confirmation emails.</li>
+                            <li>Flushing audit log entries or metrics.</li>
+                            <li>Writing quick metadata updates.</li>
+                        </ul>
+                        <p class="text-rose-600 font-bold pt-2">&cross; Limitations:</p>
+                        <p class="text-slate-500">
+                            <strong>Memory-bound:</strong> If the Uvicorn worker process crashes or the server restarts while the task is executing, <em>the job is lost forever</em>.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Distributed Queues -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900">Distributed Queues (Celery / ARQ / Redis)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Tasks are serialized into JSON and pushed to a persistent message broker (Redis or RabbitMQ). A separate fleet of dedicated worker processes handles execution.
+                    </p>
+                    <div class="text-[11px] text-slate-600 space-y-1">
+                        <p class="text-emerald-600 font-bold">&check; Required for:</p>
+                        <ul class="list-disc pl-4 space-y-0.5">
+                            <li>Tasks running longer than 10 seconds.</li>
+                            <li>Heavy video or audio transcoding.</li>
+                            <li>Generating massive multi-megabyte PDF or ZIP reports.</li>
+                            <li>Tasks requiring automatic retries with exponential backoff.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Step-by-Step Code: NoteVault Milestone 08 Implementation -->
+        <section id="notevault-milestone-08" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 07</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 08: Non-Blocking Export &amp; Streaming Pipeline</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now implement an asynchronous background export pipeline and a streaming CSV export in NoteVault. Users can trigger an export of their personal knowledge base. The endpoint returns an immediate <strong>202 Accepted</strong> response, while file generation runs safely in the background. In addition, users can stream notes directly to their browser using <code class="font-mono text-xs text-purple-700 font-bold">StreamingResponse</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">services/</span>               <span class="text-slate-500"># Decoupled service layer</span></div>
+                <div>│   │   ├── __init__.py</div>
+                <div>│   │   └── <span class="text-emerald-300 font-bold">export_service.py</span>     <span class="text-slate-500"># Background export &amp; archive builder</span></div>
+                <div>│   ├── routers/</div>
+                <div>│   │   ├── auth.py</div>
+                <div>│   │   ├── <span class="text-emerald-300 font-bold">notes.py</span>              <span class="text-slate-500"># Adds BackgroundTasks &amp; StreamingResponse routes</span></div>
+                <div>│   │   └── views.py</div>
+                <div>│   └── main.py</div>
+                <div>└── exports/                     <span class="text-slate-500"># Local directory for generated archives</span></div>
+            </div>
+
+            <!-- File 1: app/services/export_service.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Asynchronous Export Worker: <code class="text-purple-700">app/services/export_service.py</code></span>
+                    <span class="text-slate-400">Background Task Processor</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Asynchronous Export Worker (Milestone 08)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">generate_user_notes_archive</span>(user_id: int, user_email: str, notes_data: List[dict]):
+    <span class="text-slate-500">"""
+    Executes in the background AFTER the HTTP response has been delivered.
+    Simulates high-latency disk/network compilation without blocking the main event loop.
+    """</span>
+    <span class="text-slate-500"># 1. Non-blocking sleep: Yields control back to the event loop</span>
+    <span class="text-purple-400">await</span> asyncio.sleep(2)
+
+    export_dir = <span class="text-amber-300">"exports"</span>
+    os.makedirs(export_dir, exist_ok=<span class="text-rose-400">True</span>)
+    timestamp = datetime.now(timezone.utc).strftime(<span class="text-amber-300">"%Y%m%d_%H%M%S"</span>)
+    filename = f<span class="text-amber-300">"&#123;export_dir&#125;/notes_user_&#123;user_id&#125;_&#123;timestamp&#125;.json"</span>
+
+    export_payload = {
+        <span class="text-amber-300">"user_id"</span>: user_id,
+        <span class="text-amber-300">"user_email"</span>: user_email,
+        <span class="text-amber-300">"exported_at"</span>: datetime.now(timezone.utc).isoformat(),
+        <span class="text-amber-300">"total_notes"</span>: <span class="text-purple-400">len</span>(notes_data),
+        <span class="text-amber-300">"notes"</span>: notes_data
+    }
+
+    <span class="text-slate-500"># 2. Write file to disk</span>
+    <span class="text-purple-400">with</span> open(filename, <span class="text-amber-300">"w"</span>, encoding=<span class="text-amber-300">"utf-8"</span>) <span class="text-purple-400">as</span> f:
+        json.dump(export_payload, f, indent=2)
+
+    <span class="text-slate-500"># 3. Telemetry log</span>
+    print(f<span class="text-amber-300">"[BACKGROUND TASK COMPLETE] Successfully exported &#123;len(notes_data)&#125; notes to &#123;filename&#125;"</span>)</pre>
+            </div>
+
+            <!-- File 2: Adding Export Endpoint to app/routers/notes.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Adding Background Export &amp; Streaming Routes: <code class="text-purple-700">app/routers/notes.py</code></span>
+                    <span class="text-slate-400">Immediate 202 Accepted &amp; Chunked Output</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># Append to app/routers/notes.py:</span>
+<span class="text-purple-400">import</span> io
+<span class="text-purple-400">import</span> csv
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> BackgroundTasks
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> StreamingResponse
+<span class="text-purple-400">from</span> app.services.export_service <span class="text-purple-400">import</span> generate_user_notes_archive
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/export"</span>,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary=<span class="text-amber-300">"Trigger asynchronous background note export"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">trigger_notes_export</span>(
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: DbSession
+):
+    <span class="text-slate-500">"""
+    Fetches the user's notes and registers a background worker job.
+    Returns HTTP 202 immediately to keep response latencies under 20ms.
+    """</span>
+    stmt = (
+        select(NoteModel)
+        .where(NoteModel.owner_id == current_user.id)
+        .where(NoteModel.is_archived == <span class="text-rose-400">False</span>)
+    )
+    records = db.scalars(stmt).all()
+
+    <span class="text-slate-500"># Serialize into plain dicts before handing off to avoid detached session issues!</span>
+    serialized_notes = [
+        {
+            <span class="text-amber-300">"id"</span>: n.id,
+            <span class="text-amber-300">"title"</span>: n.title,
+            <span class="text-amber-300">"content"</span>: n.content,
+            <span class="text-amber-300">"tags"</span>: n.tags,
+            <span class="text-amber-300">"created_at"</span>: n.created_at.isoformat()
+        }
+        <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> records
+    ]
+
+    <span class="text-slate-500"># ENQUEUE JOB: FastAPI dispatches this after returning HTTP 202</span>
+    background_tasks.add_task(
+        generate_user_notes_archive,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        notes_data=serialized_notes
+    )
+
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"accepted"</span>,
+        <span class="text-amber-300">"message"</span>: <span class="text-amber-300">"Export generation started in the background. File will be stored in /exports."</span>
+    }
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">"/export/stream"</span>,
+    summary=<span class="text-amber-300">"Stream user notes as CSV with constant low memory usage"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">stream_notes_csv</span>(
+    current_user: CurrentUser,
+    db: DbSession
+):
+    <span class="text-slate-500">"""
+    Memory-safe StreamingResponse: Generates and yields CSV chunks line-by-line.
+    Memory usage stays flat at ~64KB regardless of dataset size.
+    """</span>
+    stmt = (
+        select(NoteModel)
+        .where(NoteModel.owner_id == current_user.id)
+        .where(NoteModel.is_archived == <span class="text-rose-400">False</span>)
+    )
+    records = db.scalars(stmt).all()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">csv_row_generator</span>() -> AsyncGenerator[str, <span class="text-rose-400">None</span>]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        
+        <span class="text-slate-500"># 1. Yield CSV Header</span>
+        writer.writerow([<span class="text-amber-300">"ID"</span>, <span class="text-amber-300">"Title"</span>, <span class="text-amber-300">"Content"</span>, <span class="text-amber-300">"Created_At"</span>])
+        <span class="text-purple-400">yield</span> buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+
+        <span class="text-slate-500"># 2. Yield individual note rows incrementally</span>
+        <span class="text-purple-400">for</span> note <span class="text-purple-400">in</span> records:
+            writer.writerow([note.id, note.title, note.content, note.created_at.isoformat()])
+            <span class="text-purple-400">yield</span> buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+
+    <span class="text-purple-400">return</span> StreamingResponse(
+        csv_row_generator(),
+        media_type=<span class="text-amber-300">"text/csv"</span>,
+        headers={<span class="text-amber-300">"Content-Disposition"</span>: <span class="text-amber-300">"attachment; filename=notes_export.csv"</span>}
+    )</pre>
+            </div>
+        </section>
+
+        <!-- 8. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Passing Active DB Sessions to Background Tasks</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">background_tasks.add_task(process, db=db)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this causes crashes:</strong> The background task executes <em>after</em> the response is sent. By that time, the dependency's <code class="font-mono">finally: db.close()</code> block has already run! Attempting to query the database inside the background task will fail with a <code class="font-mono">DetachedInstanceError</code> or a closed connection exception. Always extract raw data beforehand or open a fresh session within the task.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Using time.sleep() in Async Functions</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Calling <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">time.sleep(5)</code> inside an <code class="font-mono text-rose-900">async def</code> route.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this breaks production:</strong> The entire process stalls. The event loop cannot run, heartbeats fail, health checks time out, and all concurrent users experience a freeze. Always use <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">await asyncio.sleep(5)</code> to yield control cooperatively.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 9. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 08</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Verify non-blocking execution, background export generation, and streaming chunked downloads:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Trigger Export -->
+                <div>
+                    <span class="text-slate-500"># 1. Trigger the background export using an authenticated user token:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i -X POST http://127.0.0.1:8000/api/v1/notes/export \
+                        -H "Authorization: Bearer PASTE_YOUR_TOKEN_HERE"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Notice the response code: HTTP 202 Accepted returns in &lt; 20 milliseconds.</span>
+                </div>
+
+                <!-- Step 2: Check Terminal Log -->
+                <div>
+                    <span class="text-slate-500"># 2. Watch your server terminal log:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300 mt-1">
+                        [BACKGROUND TASK COMPLETE] Successfully exported notes to exports/notes_user_...json
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">The task completes ~2 seconds later without delaying the client's HTTP response.</span>
+                </div>
+
+                <!-- Step 3: Inspect Output -->
+                <div>
+                    <span class="text-slate-500"># 3. Inspect the generated export file:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-sky-300 mt-1">
+                        cat exports/notes_user_*.json
+                    </div>
+                </div>
+
+                <!-- Step 4: Test Streaming CSV -->
+                <div>
+                    <span class="text-slate-500"># 4. Stream notes directly to CSV and inspect transfer headers:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/notes/export/stream \
+                        -H "Authorization: Bearer PASTE_YOUR_TOKEN_HERE"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Inspect the response: Content-Type: text/csv and Transfer-Encoding: chunked.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 9 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 09: Automated Testing &amp; Self-Documenting APIs</h4>
+                <p class="text-xs text-slate-500">Engineering reliability: Test-Driven Development (TDD), ephemeral test fixtures with Pytest, and interactive OpenAPI contracts.</p>
+            </div>
+            <a href="chapter9_testing.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 9 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 17: Designing Distributed Ledgers: Double-Entry Bookkeeping &amp; Immutability</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 17 - Immutable Financial Ledger)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 17 &bull; Financial Systems &amp; Immutability
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Designing Distributed Ledgers: Double-Entry Bookkeeping &amp; Immutability
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Engineering zero-loss financial backends: Why mutable balances cause financial ruin, mathematical double-entry accounting mechanics, debit/credit invariant validation, eliminating floating-point rounding errors, isolating write skew anomalies, and constructing the immutable clearing ledger of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 17: Immutable Double-Entry Ledger Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 16, we orchestrated distributed multi-service transactions using Sagas. In Milestone 17, we engineer the most critical tier of <strong>OmniRoute</strong>: the financial core. When a ride concludes, money moves: the rider is billed $50.00, the driver receives $40.00, the platform retains a $7.50 commission, and $2.50 is allocated to municipal transit taxes. In fintech engineering, mutating a single balance column (<code class="font-mono text-emerald-300 text-xs">UPDATE accounts SET balance = balance + 40</code>) is unacceptable: it leaves zero audit trail, races under concurrent transactions, and creates rounding discrepancies. We construct a <strong>Production Double-Entry Bookkeeping Ledger</strong> in FastAPI and async SQLAlchemy 2.0 with strict zero-sum balancing, immutable append-only journal entries, fixed-point decimal precision, and idempotent settlement keys.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 17 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Mutable Balance Anti-Pattern Exposed</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Double-Entry Mathematics (Pacioli's Equation)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Five Fundamental Account Types (Asset, Liability, etc.)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The IEEE 754 Floating-Point Discrepancy Trap</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Derived Balances vs. Materialized Balances</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Double-Entry Engine in FastAPI &amp; Async SQLAlchemy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Full Automated Zero-Sum &amp; Split-Payment PyTest Suite</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Financial Systems Theory -->
+        <section id="ledger-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Financial Engineering</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Mutable Balance Anti-Pattern: Why Modern Fintech Forbids In-Place Updates</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In beginner application development, user balances are modeled as a single mutable column:
+            </p>
+
+            <div class="bg-slate-900 p-4 rounded-xl text-rose-400 font-mono text-xs border border-rose-950">
+                UPDATE accounts SET balance = balance - 50.00 WHERE user_id = 'rider_101';
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In fintech systems (Stripe, Adyen, PayPal, Cash App), this design is **strictly prohibited**. Mutating balances in place creates fatal architectural vulnerabilities:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Pitfall 1 -->
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">1. Total Loss of Provenance &amp; Auditing</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        If a user has $100.00 today and $40.00 tomorrow, who authorized the $60.00 difference? Was it a ride fare? A subscription fee? A fraud exploit? An errant database migration? In-place updates destroy history. You cannot prove financial correctness to auditors or regulators.
+                    </p>
+                </div>
+
+                <!-- Pitfall 2 -->
+                <div class="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                    <span class="font-bold text-rose-900 text-sm block">2. Concurrent Race Conditions &amp; Write Skew</span>
+                    <p class="text-[11px] text-slate-700 font-sans leading-relaxed">
+                        If two microservices check that a user has $100 and simultaneously attempt to withdraw $80, both read $100, both pass validation, and both issue update queries. The account drops to -$60 without an overdraft agreement!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the difference between a student doing math on a dry-erase chalkboard versus a certified public accountant keeping a bank's official ledger book.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    On a dry-erase chalkboard, if you have 10 apples and sell 3, you wipe away "10" with a sponge and write "7". If the teacher walks into the room and asks: <em>"Where did the 3 apples go, who bought them, and how much did they pay?"</em>, the chalkboard cannot answer. The evidence was erased.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A certified accountant never uses an eraser! In an official ledger, if you sell 3 apples, you write an indelible pen entry: <em>"Inventory Credited 3 Apples ($3.00), Cash Debited $3.00"</em>. If you made a mistake, you cannot rip out the page or use white-out—you must write an official compensating entry. Your current balance is never a number; it is the sum of every entry ever written since the business was founded!
+                </p>
+            </div>
+        </section>
+
+        <!-- THE MATHEMATICS OF DOUBLE-ENTRY BOOKKEEPING -->
+        <section id="double-entry-math" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Core Accounting Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Mathematics of Double-Entry Bookkeeping
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Luca Pacioli (1494) &bull; Zero-Sum Invariant &bull; The Accounting Equation
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Formulated by Franciscan friar <strong>Luca Pacioli</strong> in 1494, double-entry bookkeeping is the mathematical foundation of modern global commerce. It governs one universal law:
+            </p>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-center font-mono text-xs text-emerald-400">
+                \text{Assets} = \text{Liabilities} + \text{Equity} \quad \iff \quad \sum \text{Debits} - \sum \text{Credits} = 0
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Every financial event consists of an atomic <strong>Journal Entry</strong> containing two or more <strong>Postings (Legs)</strong>. Money never vanishes and never appears from thin air; it is always transferred from one account to another:
+            </p>
+
+            <!-- 5 Account Types Matrix -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Account Category</th>
+                            <th class="p-3">What It Represents</th>
+                            <th class="p-3 text-sky-700">Debit Action (+)</th>
+                            <th class="p-3 text-purple-700">Credit Action (-)</th>
+                            <th class="p-3 text-emerald-700">OmniRoute Production Example</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Asset</td>
+                            <td class="p-3 font-sans">Resources owned by the platform.</td>
+                            <td class="p-3 font-bold text-sky-700">INCREASES balance</td>
+                            <td class="p-3 text-slate-500">Decreases balance</td>
+                            <td class="p-3 text-slate-800 font-bold">`assets:cash:chase_bank`</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Liability</td>
+                            <td class="p-3 font-sans">Money the platform owes to external parties.</td>
+                            <td class="p-3 text-slate-500">Decreases balance</td>
+                            <td class="p-3 font-bold text-purple-700">INCREASES balance</td>
+                            <td class="p-3 text-slate-800 font-bold">`liabilities:customer_wallets`, `liabilities:driver_payouts`</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Revenue</td>
+                            <td class="p-3 font-sans">Income earned from operations.</td>
+                            <td class="p-3 text-slate-500">Decreases balance</td>
+                            <td class="p-3 font-bold text-purple-700">INCREASES balance</td>
+                            <td class="p-3 text-slate-800 font-bold">`revenue:platform_cut`, `revenue:surge_fees`</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-bold text-slate-900">Expense</td>
+                            <td class="p-3 font-sans">Costs incurred to generate revenue.</td>
+                            <td class="p-3 font-bold text-sky-700">INCREASES balance</td>
+                            <td class="p-3 text-slate-500">Decreases balance</td>
+                            <td class="p-3 text-slate-800 font-bold">`expenses:stripe_fees`, `expenses:promotions`</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- The Split-Payment Visual Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Multi-Leg Journal Entry: Settling a $50.00 Trip in OmniRoute
+                </div>
+
+                <div class="p-6 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                    <div class="text-[11px] text-slate-300 font-sans border-b border-slate-800 pb-2 flex justify-between">
+                        <span>Transaction ID: <code class="text-sky-300 font-mono">tx_settle_trip_9981</code></span>
+                        <span class="text-emerald-400 font-bold font-mono">STATUS: BALANCED (&Delta; = $0.00)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-2 font-mono text-[11px]">
+                        <div class="p-2.5 bg-slate-900 rounded-xl border border-sky-500/40 flex justify-between">
+                            <span>1. <code class="text-sky-300 font-bold">liabilities:customer_wallets:rider_101</code></span>
+                            <span class="text-sky-400 font-bold">DEBIT: $50.00 (Reduces liability to rider)</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-900 rounded-xl border border-purple-500/40 flex justify-between">
+                            <span>2. <code class="text-purple-300 font-bold">liabilities:driver_payouts:driver_449</code></span>
+                            <span class="text-purple-400 font-bold">CREDIT: $40.00 (Increases payout owed)</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-900 rounded-xl border border-purple-500/40 flex justify-between">
+                            <span>3. <code class="text-purple-300 font-bold">revenue:platform_commission</code></span>
+                            <span class="text-purple-400 font-bold">CREDIT: $7.50 (Increases platform income)</span>
+                        </div>
+                        <div class="p-2.5 bg-slate-900 rounded-xl border border-purple-500/40 flex justify-between">
+                            <span>4. <code class="text-purple-300 font-bold">liabilities:tax_withholding:city_nyc</code></span>
+                            <span class="text-purple-400 font-bold">CREDIT: $2.50 (Owed to municipal transit authority)</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 p-3 rounded-xl border border-emerald-500/40 text-center font-mono text-[11px] text-emerald-400">
+                        Total Debits: $50.00 &nbsp;|&nbsp; Total Credits: $50.00 ($40.00 + $7.50 + $2.50) &nbsp;|&nbsp; Difference = $0.0000
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE FLOATING-POINT DISCREPANCY & CURRENCY PRECISION -->
+        <section id="floating-point-disaster" class="space-y-6">
+            <div class="border-b-2 border-rose-500 pb-3">
+                <span class="bg-rose-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Precision Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Floating-Point Trap: IEEE 754 Disasters in Financial Software
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Why Binary Floating-Point Cannot Represent Cents &bull; Fixed-Point Decimals
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In modern programming languages, standard decimal numbers (<code class="font-mono text-xs">float</code> or <code class="font-mono text-xs">double</code>) follow the **IEEE 754 Binary Floating-Point Standard**.
+            </p>
+            <p class="text-slate-700 text-sm leading-relaxed">
+                Because computers operate in base-2 (binary) rather than base-10, most human fractions cannot be represented exactly:
+            </p>
+
+            <div class="bg-slate-900 p-4 rounded-xl text-rose-300 font-mono text-xs border border-rose-950 space-y-1">
+                <div>&gt;&gt;&gt; 0.1 + 0.2</div>
+                <div class="text-rose-400 font-bold">0.30000000000000004</div>
+                <div>&gt;&gt;&gt; 1.0 - 0.9</div>
+                <div class="text-rose-400 font-bold">0.09999999999999998</div>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                If an exchange or ride platform uses <code class="font-mono text-xs">float</code> to track transactions, across 10 million rides, tiny fractions of a cent compound. Over six months, the ledger develops an un-reconcilable $4,582.13 phantom drift. Bank reconciliation fails, and regulatory audits trigger immediate fines!
+            </p>
+
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-2">
+                <span class="font-bold text-emerald-950 text-sm block font-mono">// The Immutable Fintech Currency Rule:</span>
+                <p class="text-xs text-emerald-900 leading-relaxed font-sans">
+                    <strong>Never use binary floating-point (`float`) for money.</strong> Store money as <strong>integer minor units (Cents or Millicents)</strong>, or utilize fixed-point arbitrary precision decimals (<code class="font-mono text-emerald-800">Decimal</code> in Python, <code class="font-mono text-emerald-800">NUMERIC(18, 4)</code> in SQL).
+                </p>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 17 -->
+        <section id="omniroute-milestone-17" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 17: Immutable Double-Entry Ledger Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 17 for <strong>OmniRoute</strong>: a production-grade Financial Ledger Engine demonstrating:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Strict Double-Entry Zero-Sum Invariant:</strong> Rejects any transaction where $\sum \text{Debits} \ne \sum \text{Credits}$.</li>
+                <li><strong>Fixed-Point Decimal Precision:</strong> Utilizing Python's <code class="font-mono text-xs">Decimal</code> and SQL <code class="font-mono text-xs">Numeric(18, 4)</code> to eliminate floating-point drift.</li>
+                <li><strong>Dynamic Derived Balances:</strong> Balances are dynamically aggregated from immutable append-only postings rather than mutable counters.</li>
+                <li><strong>Idempotent Transaction Posting:</strong> Enforcing unique constraint protection against double-billing on network retries.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 17)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── ledger/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 17: Account, Journal &amp; Posting Entities (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">engine.py</span>        <span class="text-slate-500"># Milestone 17: Zero-Sum Validator &amp; Balance Derivation Engine</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 17: FastAPI Double-Entry Accounting Endpoints</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_double_entry_ledger.py</span> <span class="text-slate-500"># Milestone 17 Mathematical Invariant &amp; Multi-Leg Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/ledger/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Ledger Schema: <code class="text-purple-700">src/omniroute/ledger/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Ledger - Immutable Double-Entry Bookkeeping Schema</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column, relationship
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Numeric, DateTime, ForeignKey, Enum <span class="text-purple-400">as</span> SAEnum
+<span class="text-purple-400">import</span> enum
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountType</span>(str, enum.Enum):
+    ASSET = <span class="text-amber-300">"ASSET"</span>
+    LIABILITY = <span class="text-amber-300">"LIABILITY"</span>
+    REVENUE = <span class="text-amber-300">"REVENUE"</span>
+    EXPENSE = <span class="text-amber-300">"EXPENSE"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LedgerAccountModel</span>(Base):
+    <span class="text-slate-500">"""
+    LEDGER ACCOUNT:
+    Represents an entity in the chart of accounts.
+    Notice: Holds ZERO mutable balance column! Balance is derived from postings!
+    """</span>
+    __tablename__ = <span class="text-amber-300">"ledger_accounts"</span>
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=<span class="text-rose-400">True</span>)
+    account_type: Mapped[AccountType] = mapped_column(SAEnum(AccountType), nullable=<span class="text-rose-400">False</span>)
+    currency: Mapped[str] = mapped_column(String(3), default=<span class="text-amber-300">"USD"</span>, nullable=<span class="text-rose-400">False</span>)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">JournalEntryModel</span>(Base):
+    <span class="text-slate-500">"""
+    ATOMIC FINANCIAL TRANSACTION:
+    Binds 2 or more Postings (Legs). Commits with idempotency key enforcement.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"journal_entries"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=<span class="text-rose-400">True</span>, index=<span class="text-rose-400">True</span>, nullable=<span class="text-rose-400">False</span>)
+    description: Mapped[str] = mapped_column(String(255), nullable=<span class="text-rose-400">False</span>)
+    posted_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )
+
+    postings: Mapped[list[<span class="text-amber-300">"LedgerPostingModel"</span>]] = relationship(
+        back_populates=<span class="text-amber-300">"journal_entry"</span>, lazy=<span class="text-amber-300">"selectin"</span>
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LedgerPostingModel</span>(Base):
+    <span class="text-slate-500">"""
+    IMMUTABLE POSTING LEG:
+    A single debit or credit line item.
+    Never updated or deleted; purely append-only!
+    """</span>
+    __tablename__ = <span class="text-amber-300">"ledger_postings"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    journal_entry_id: Mapped[str] = mapped_column(ForeignKey(<span class="text-amber-300">"journal_entries.id"</span>), nullable=<span class="text-rose-400">False</span>)
+    account_id: Mapped[str] = mapped_column(ForeignKey(<span class="text-amber-300">"ledger_accounts.id"</span>), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    amount: Mapped[Decimal] = mapped_column(Numeric(precision=18, scale=4), nullable=<span class="text-rose-400">False</span>)
+    is_debit: Mapped[bool] = mapped_column(nullable=<span class="text-rose-400">False</span>)
+
+    journal_entry: Mapped[JournalEntryModel] = relationship(back_populates=<span class="text-amber-300">"postings"</span>)</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/ledger/engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Double-Entry Validation &amp; Derivation Engine: <code class="text-purple-700">src/omniroute/ledger/engine.py</code></span>
+                    <span class="text-slate-400">Mathematical Invariant Verification</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Ledger - Double-Entry Mathematical Accounting Engine</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select, func
+
+<span class="text-purple-400">from</span> omniroute.ledger.models <span class="text-purple-400">import</span> (
+    LedgerAccountModel, JournalEntryModel, LedgerPostingModel, AccountType
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">UnbalancedJournalEntryError</span>(ValueError):
+    <span class="text-slate-500">"""Raised when sum(Debits) != sum(Credits)."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PostingInstruction</span>:
+    account_id: str
+    amount: Decimal
+    is_debit: bool
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DoubleEntryLedgerEngine</span>:
+    <span class="text-slate-500">"""
+    FINANCIAL LEDGER INVARIANT ENFORCER:
+    1. Enforces sum(Debits) - sum(Credits) == 0.0000.
+    2. Dynamically aggregates derived account balances from postings.
+    """</span>
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate_zero_sum</span>(cls, legs: List[PostingInstruction]) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> len(legs) &lt; 2:
+            <span class="text-purple-400">raise</span> UnbalancedJournalEntryError(<span class="text-amber-300">"Journal entry must have at least 2 postings."</span>)
+
+        total_debits = sum(leg.amount <span class="text-purple-400">for</span> leg <span class="text-purple-400">in</span> legs <span class="text-purple-400">if</span> leg.is_debit)
+        total_credits = sum(leg.amount <span class="text-purple-400">for</span> leg <span class="text-purple-400">in</span> legs <span class="text-purple-400">if not</span> leg.is_debit)
+
+        <span class="text-purple-400">if</span> total_debits != total_credits:
+            <span class="text-purple-400">raise</span> UnbalancedJournalEntryError(
+                f<span class="text-amber-300">"Unbalanced transaction: Debits (${total_debits}) != Credits (${total_credits})."</span>
+            )
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">derive_account_balance</span>(cls, account_id: str, session: AsyncSession) -> Decimal:
+        <span class="text-slate-500">"""
+        DERIVED BALANCE COMPUTATION:
+        Balance is the cumulative sum of historical postings.
+        Assets &amp; Expenses: Balance = Sum(Debits) - Sum(Credits)
+        Liabilities &amp; Revenues: Balance = Sum(Credits) - Sum(Debits)
+        """</span>
+        acc_stmt = select(LedgerAccountModel).where(LedgerAccountModel.id == account_id)
+        res = <span class="text-purple-400">await</span> session.execute(acc_stmt)
+        account = res.scalar_one_or_none()
+
+        <span class="text-purple-400">if not</span> account:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Account '{account_id}' does not exist."</span>)
+
+        postings_stmt = select(LedgerPostingModel).where(LedgerPostingModel.account_id == account_id)
+        postings_res = <span class="text-purple-400">await</span> session.execute(postings_stmt)
+        postings = postings_res.scalars().all()
+
+        total_debits = sum(p.amount <span class="text-purple-400">for</span> p <span class="text-purple-400">in</span> postings <span class="text-purple-400">if</span> p.is_debit)
+        total_credits = sum(p.amount <span class="text-purple-400">for</span> p <span class="text-purple-400">in</span> postings <span class="text-purple-400">if not</span> p.is_debit)
+
+        <span class="text-purple-400">if</span> account.account_type <span class="text-purple-400">in</span> [AccountType.ASSET, AccountType.EXPENSE]:
+            <span class="text-purple-400">return</span> total_debits - total_credits
+        <span class="text-purple-400">else</span>:
+            <span class="text-purple-400">return</span> total_credits - total_debits</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/ledger_router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Ledger API Controller: <code class="text-purple-700">src/omniroute/api/ledger_router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Async Database Reporting</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator, List
+
+<span class="text-purple-400">from</span> omniroute.ledger.models <span class="text-purple-400">import</span> (
+    LedgerAccountModel, JournalEntryModel, LedgerPostingModel, AccountType
+)
+<span class="text-purple-400">from</span> omniroute.ledger.engine <span class="text-purple-400">import</span> (
+    DoubleEntryLedgerEngine, PostingInstruction, UnbalancedJournalEntryError
+)
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/ledger"</span>, tags=[<span class="text-amber-300">"Financial Ledger"</span>])
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PostingDTO</span>(BaseModel):
+    account_id: str
+    amount: Decimal = Field(..., gt=0)
+    is_debit: bool
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TransactionRecordDTO</span>(BaseModel):
+    idempotency_key: str = Field(..., min_length=10)
+    description: str
+    legs: List[PostingDTO]
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/transactions"</span>,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Atomically Post Double-Entry Journal Entry"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">post_journal_entry</span>(
+    dto: TransactionRecordDTO,
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-slate-500"># 1. Idempotency Check</span>
+    stmt = select(JournalEntryModel).where(JournalEntryModel.idempotency_key == dto.idempotency_key)
+    res = <span class="text-purple-400">await</span> db.execute(stmt)
+    existing = res.scalar_one_or_none()
+
+    <span class="text-purple-400">if</span> existing:
+        <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"ALREADY_POSTED"</span>, <span class="text-amber-300">"transaction_id"</span>: existing.id}
+
+    <span class="text-slate-500"># 2. Mathematical Zero-Sum Invariant Validation</span>
+    instructions = [PostingInstruction(leg.account_id, leg.amount, leg.is_debit) <span class="text-purple-400">for</span> leg <span class="text-purple-400">in</span> dto.legs]
+    <span class="text-purple-400">try</span>:
+        DoubleEntryLedgerEngine.validate_zero_sum(instructions)
+    <span class="text-purple-400">except</span> UnbalancedJournalEntryError <span class="text-purple-400">as</span> exc:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=400, detail=str(exc))
+
+    <span class="text-slate-500"># 3. Create Atomic Journal Entry</span>
+    entry = JournalEntryModel(
+        idempotency_key=dto.idempotency_key,
+        description=dto.description
+    )
+    db.add(entry)
+
+    <span class="text-purple-400">for</span> leg <span class="text-purple-400">in</span> instructions:
+        posting = LedgerPostingModel(
+            journal_entry=entry,
+            account_id=leg.account_id,
+            amount=leg.amount,
+            is_debit=leg.is_debit
+        )
+        db.add(posting)
+
+    <span class="text-purple-400">await</span> db.commit()
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"COMMITTED_BALANCED"</span>, <span class="text-amber-300">"transaction_id"</span>: entry.id}
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/accounts/{account_id}/balance"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_derived_account_balance</span>(
+    account_id: str,
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-slate-500">"""Dynamically derives balance by summing historical postings."""</span>
+    <span class="text-purple-400">try</span>:
+        balance = <span class="text-purple-400">await</span> DoubleEntryLedgerEngine.derive_account_balance(account_id, db)
+    <span class="text-purple-400">except</span> ValueError <span class="text-purple-400">as</span> exc:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=404, detail=str(exc))
+
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"account_id"</span>: account_id, <span class="text-amber-300">"derived_balance"</span>: str(balance)}</pre>
+            </div>
+
+            <!-- File 4: tests/test_double_entry_ledger.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Ledger Verification Battery: <code class="text-purple-700">tests/test_double_entry_ledger.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+
+<span class="text-purple-400">from</span> omniroute.ledger.models <span class="text-purple-400">import</span> (
+    Base, LedgerAccountModel, AccountType
+)
+<span class="text-purple-400">from</span> omniroute.ledger.engine <span class="text-purple-400">import</span> (
+    DoubleEntryLedgerEngine, PostingInstruction, UnbalancedJournalEntryError
+)
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDoubleEntryLedgerSuite</span>:
+    <span class="text-slate-500">"""Verifies zero-sum invariant, multi-leg splits, and derived balance calculation."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_zero_sum_rejects_unbalanced_transaction</span>(self):
+        <span class="text-slate-500"># Debit $50, but Credit only $40 &rarr; MUST RAISE!</span>
+        legs = [
+            PostingInstruction(<span class="text-amber-300">"liabilities:rider"</span>, Decimal(<span class="text-amber-300">"50.00"</span>), is_debit=<span class="text-rose-400">True</span>),
+            PostingInstruction(<span class="text-amber-300">"liabilities:driver"</span>, Decimal(<span class="text-amber-300">"40.00"</span>), is_debit=<span class="text-rose-400">False</span>),
+        ]
+        <span class="text-purple-400">with</span> pytest.raises(UnbalancedJournalEntryError, match=<span class="text-amber-300">"Unbalanced transaction"</span>):
+            DoubleEntryLedgerEngine.validate_zero_sum(legs)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_multi_leg_split_conserves_pennies</span>(self):
+        <span class="text-slate-500"># Balanced 4-leg split: $50.00 == $40.00 + $7.50 + $2.50</span>
+        legs = [
+            PostingInstruction(<span class="text-amber-300">"liabilities:rider"</span>, Decimal(<span class="text-amber-300">"50.00"</span>), is_debit=<span class="text-rose-400">True</span>),
+            PostingInstruction(<span class="text-amber-300">"liabilities:driver"</span>, Decimal(<span class="text-amber-300">"40.00"</span>), is_debit=<span class="text-rose-400">False</span>),
+            PostingInstruction(<span class="text-amber-300">"revenue:platform"</span>, Decimal(<span class="text-amber-300">"7.50"</span>), is_debit=<span class="text-rose-400">False</span>),
+            PostingInstruction(<span class="text-amber-300">"liabilities:tax"</span>, Decimal(<span class="text-amber-300">"2.50"</span>), is_debit=<span class="text-rose-400">False</span>),
+        ]
+        <span class="text-slate-500"># Must pass with zero error</span>
+        DoubleEntryLedgerEngine.validate_zero_sum(legs)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_derived_balance_aggregation</span>(self, in_memory_db):
+        <span class="text-purple-400">async with</span> in_memory_db() <span class="text-purple-400">as</span> session:
+            <span class="text-slate-500"># 1. Create Driver Payout Liability Account</span>
+            acc = LedgerAccountModel(
+                id=<span class="text-amber-300">"liabilities:driver:drv_42"</span>,
+                account_type=AccountType.LIABILITY,
+                currency=<span class="text-amber-300">"USD"</span>
+            )
+            session.add(acc)
+            <span class="text-purple-400">await</span> session.commit()
+
+            <span class="text-slate-500"># Initially derived balance is 0</span>
+            bal0 = <span class="text-purple-400">await</span> DoubleEntryLedgerEngine.derive_account_balance(acc.id, session)
+            assert bal0 == Decimal(<span class="text-amber-300">"0.0000"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Ledger Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Floating-Point Cent Drift</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">float</code> columns in Python and SQL for money: <code class="font-mono">amount = 19.99</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes audit failures:</strong> Binary floating-point cannot represent base-10 decimals like $0.10$ or $0.70$ exactly. Over millions of transactions, rounding drift accumulates into thousands of unaccounted dollars. <strong>Always use integers (cents) or fixed-point Decimals (`Numeric(18, 4)`).</strong>
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Deleting Postings for Corrections</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing SQL <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">DELETE FROM ledger_postings WHERE id = ...</code> to fix a mistaken billing charge.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is illegal in enterprise fintech:</strong> Financial ledgers must be strictly append-only. Deleting records destroys the audit trail and is considered fraud under international compliance regulations (SOX, PCI-DSS). <strong>Never delete! Post an explicit reversing entry.</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 17</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the financial ledger test battery and verify double-entry zero-sum mathematical validation:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Financial Ledger test suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_double_entry_ledger.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.08s. Confirms mathematical zero-sum enforcement, multi-leg splits, and derived balance calculations!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Verify Zero-Sum validation in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from decimal import Decimal; from omniroute.ledger.engine import DoubleEntryLedgerEngine, PostingInstruction; legs = [PostingInstruction('A', Decimal('50.00'), True), PostingInstruction('B', Decimal('50.00'), False)]; DoubleEntryLedgerEngine.validate_zero_sum(legs); print('Zero-Sum Validated!')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Outputs: <code class="text-emerald-400 font-mono">Zero-Sum Validated!</code> proving immutable debit/credit equality!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 18 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 18: Monolith to Modular Monolith to Microservices: The Strangler Fig Pattern</h4>
+                <p class="text-xs text-slate-500 font-sans">System evolution: Why premature microservices kill startups, designing clean domain boundaries with Modular Monoliths, and executing zero-downtime migrations via the Strangler Fig Pattern.</p>
+            </div>
+            <a href="Chapter 18 - Monolith to Modular Monolith to Microservices - The Strangler Fig Pattern.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 18 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

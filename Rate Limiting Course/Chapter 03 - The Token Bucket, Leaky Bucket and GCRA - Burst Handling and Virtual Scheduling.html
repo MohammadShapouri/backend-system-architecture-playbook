@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 03: The Token Bucket, Leaky Bucket &amp; GCRA: Burst Handling &amp; Virtual Scheduling</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 03 - Token Bucket, Leaky Bucket &amp; GCRA)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 03 &bull; Continuous-Time Shaping &amp; Virtual Scheduling
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                The Token Bucket, Leaky Bucket &amp; GCRA: Burst Handling &amp; Virtual Scheduling
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering continuous-time traffic control algorithms: Lazy token accumulation via elapsed monotonic time (<code class="font-mono text-emerald-400">&Delta;t</code>), traffic smoothing and queue pacing with the Leaky Bucket, eliminating float storage overhead with the single-timestamp <strong>Generic Cell Rate Algorithm (GCRA)</strong>, and engineering the core rate-shaping engines of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 03: Continuous-Time Shaping Engines</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 and 02, we verified the Fixed Window burst boundary flaw and built a declarative YAML rule engine. However, fixed and rolling window blocks operate on discrete time segments. In Milestone 03, we transition to <strong>continuous-time algorithmic modeling</strong>. We implement the classical <strong>Token Bucket</strong> for controlled burst handling, the <strong>Leaky Bucket</strong> for pacing asynchronous worker queues, and the cutting-edge <strong>Generic Cell Rate Algorithm (GCRA)</strong>—the single-variable virtual scheduling algorithm used by telecom networks, Envoy, and modern low-memory Redis modules.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 03 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Continuous Lazy Refill via Monotonic Time</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Token Bucket Burst Dynamics &amp; Capacity</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Leaky Bucket Queue Pacing vs. Metering</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> GCRA &amp; Theoretical Arrival Time (TAT)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Eliminating Micro-Token Integer Truncation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> High-Precision Python Algorithmic Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Continuous Flow: Token Bucket Mechanics -->
+        <section id="cs-token-bucket" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Continuous-Time Flow Control &amp; Token Bucket Dynamics</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In real-world web applications, network traffic is inherently bursty: a browser rendering a webpage issues 25 concurrent requests for CSS, scripts, and API data in 50 milliseconds, followed by 10 seconds of complete silence while the user reads.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If your rate limiter strictly enforces a flat rate of 2 requests per second with zero burst tolerance, the user's browser experiences an immediate barrage of <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">429 Too Many Requests</code> errors despite their long-term average bandwidth being tiny.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The <strong>Token Bucket algorithm</strong> is the global industry standard (used by AWS API Gateway, Stripe, and GitHub) for solving this dilemma. It separates <strong>burst capacity</strong> from <strong>sustained throughput</strong>:
+            </p>
+
+            <!-- Token Bucket Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Token Bucket Continuous Accumulation Lifecycle</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Lazy Refill via Elapsed Monotonic Time (&Delta;t)</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Inflow -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. Continuous Refill</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Refills at rate $r$ tokens/sec</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-200">
+                            tokens += &Delta;t &times; rate
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; caps at capacity &rarr;</div>
+
+                    <!-- Step 2: Bucket State -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">2. Bucket Storage</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Max Burst Capacity ($C$)</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            current = min(C, tokens)
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; request arrives &rarr;</div>
+
+                    <!-- Step 3: Outflow -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Instant Deduction</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Cost deducted immediately</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            tokens -= cost &bull; 200 OK
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">Mathematical Burst Duration:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        If a client fires requests continuously at maximum speed, how long can they sustain the burst before being throttled to the base refill rate? The maximum burst duration ($T_{\text{burst}}$) is mathematically bounded:
+                    </p>
+                    <div class="bg-slate-900 p-2.5 rounded font-mono text-xs text-sky-300 text-center border border-slate-800">
+                        T_burst = (Capacity - Request_Cost) / (Incoming_Rate - Refill_Rate)
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Once the bucket is empty, the client is strictly throttled to the exact refill rate: exactly 1 request every $1/r$ seconds.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Traffic Pacing & Shaping: The Leaky Bucket (Meter vs. Queue) -->
+        <section id="leaky-bucket" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Traffic Pacing &amp; Shaping: The Leaky Bucket (Meter vs. Queue)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                While the Token Bucket allows bursts to execute instantly, the <strong>Leaky Bucket algorithm</strong> takes the opposite approach: it forces incoming traffic into a smooth, constant, uniform output stream.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In production systems, the Leaky Bucket appears in two distinct architectural variations:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Leaky Bucket as a Meter -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-mono font-bold text-sky-700 text-sm">1. Leaky Bucket as a Meter</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Policing</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Water drops represent incoming requests. The bucket has a hole at the bottom that leaks water at a constant rate. If an incoming request causes the water level to exceed bucket capacity, it overflows: <strong>the request is rejected immediately with HTTP 429</strong>.
+                    </p>
+                    <div class="bg-slate-50 p-2.5 rounded text-[11px] text-slate-600 font-mono border border-slate-200">
+                        Zero queue latency &bull; Enforces strict average pacing &bull; Rejects sudden burst spikes
+                    </div>
+                </div>
+
+                <!-- Leaky Bucket as a Queue -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-mono font-bold text-purple-700 text-sm">2. Leaky Bucket as a Queue</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Shaping</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Requests are buffered into a FIFO queue. A worker thread or asynchronous task dequeues requests at a fixed, constant tick rate (e.g., exactly 1 request every 50ms) to downstream third-party bank APIs or payment rails.
+                    </p>
+                    <div class="bg-slate-50 p-2.5 rounded text-[11px] text-slate-600 font-mono border border-slate-200">
+                        Adds queue buffer latency &bull; Protects delicate downstream services from bursts
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outflow Shaping Comparison Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-amber-400 uppercase tracking-widest text-[11px]">
+                    Output Traffic Profile: Token Bucket vs. Leaky Bucket
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <!-- Token Bucket Profile -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Token Bucket Outflow (Bursty)</span>
+                        <div class="space-y-1 text-[11px] text-slate-400 font-sans">
+                            <p>Input: 10 concurrent requests arrive at $T=0$.</p>
+                            <div class="h-8 bg-slate-900 rounded flex items-center px-2 text-emerald-400 font-mono text-[10px]">
+                                Output: [Req 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] executed instantly!
+                            </div>
+                            <p class="text-[10px] text-slate-500">Subsequent requests throttled to refill rate.</p>
+                        </div>
+                    </div>
+
+                    <!-- Leaky Bucket Profile -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Leaky Bucket Outflow (Smooth Pacing)</span>
+                        <div class="space-y-1 text-[11px] text-slate-400 font-sans">
+                            <p>Input: 10 concurrent requests arrive at $T=0$.</p>
+                            <div class="h-8 bg-slate-900 rounded flex items-center px-2 text-sky-300 font-mono text-[10px]">
+                                Output: Req 1 (0ms) &rarr; Req 2 (100ms) &rarr; Req 3 (200ms)...
+                            </div>
+                            <p class="text-[10px] text-slate-500">Output stream is perfectly uniform and smooth.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Deep Dive: The Generic Cell Rate Algorithm (GCRA) -->
+        <section id="gcra-deep-dive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Deep Dive: The Generic Cell Rate Algorithm (GCRA) &amp; Virtual Scheduling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                While the Token Bucket is widely understood, high-scale infrastructure engineers at Envoy, Cloudflare, and Redis-Cell avoid it in favor of <strong>GCRA (Generic Cell Rate Algorithm)</strong>, also known as <strong>Virtual Scheduling</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Why? In a distributed system with 10 million active users, storing a Token Bucket in Redis requires a hash with at least two fields per user: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">tokens</code> (float) and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">last_updated</code> (timestamp). 
+                <strong>GCRA achieves the exact same mathematical burst and rate-limiting guarantees by storing only ONE single value: the Theoretical Arrival Time (TAT).</strong>
+            </p>
+
+            <!-- GCRA Mathematical Pipeline Visual (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The GCRA Virtual Scheduling State Machine
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-3 text-center">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-900 font-bold block text-sm">Emission Interval ($T$)</span>
+                        <div class="text-[11px] text-purple-700 font-bold">T = 1.0 / rate</div>
+                        <span class="text-[10px] text-slate-500 font-sans">Ideal time between individual requests</span>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-900 font-bold block text-sm">Burst Tolerance ($\tau$)</span>
+                        <div class="text-[11px] text-sky-700 font-bold">&tau; = burst_capacity &times; T</div>
+                        <span class="text-[10px] text-slate-500 font-sans">Maximum time credits allowed in the past</span>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-900 font-bold block text-sm">State Variable (TAT)</span>
+                        <div class="text-[11px] text-emerald-700 font-bold">Theoretical Arrival Time</div>
+                        <span class="text-[10px] text-slate-500 font-sans">Single timestamp stored per user!</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-5 rounded-2xl space-y-3 leading-relaxed border border-slate-800">
+                    <div class="text-emerald-400 font-bold">// The GCRA Mathematical Decision Invariant:</div>
+                    <pre class="overflow-x-auto text-slate-200">
+now = current_monotonic_time()
+<span class="text-slate-500"># TAT represents when the next request is theoretically expected to arrive</span>
+tat = stored_tat <span class="text-purple-400">or</span> now
+
+<span class="text-slate-500"># 1. EVALUATION CHECK: Has the client exceeded their burst allowance?</span>
+<span class="text-purple-400">if</span> tat - burst_tolerance &gt; now:
+    <span class="text-slate-500"># REJECTED: Request arrived too far ahead of schedule!</span>
+    retry_after = (tat - burst_tolerance) - now
+    <span class="text-purple-400">return</span> REJECT(retry_after)
+
+<span class="text-slate-500"># 2. STATE ADVANCEMENT: Schedule the next theoretical arrival time</span>
+new_tat = max(now, tat) + emission_interval
+stored_tat = new_tat
+<span class="text-purple-400">return</span> ALLOW()</pre>
+                </div>
+
+                <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 font-sans text-xs space-y-1">
+                    <strong>Why GCRA Saves 50% Memory in Redis:</strong>
+                    <p class="leading-relaxed text-[11px]">
+                        In Redis, storing a Token Bucket requires an HSET with multiple fields (`tokens`, `last_refill`). GCRA requires only a standard, single Redis key storing a 64-bit integer timestamp (`SET user:42:tat 1772635200 EX 60`). At 10 million active users, this saves gigabytes of RAM in production clusters!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: SentinelFlow Milestone 03 -->
+        <section id="sentinelflow-milestone-03" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 03: Continuous-Time Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 03 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/token_bucket.py</code>: lazy continuous-time token accumulation.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/leaky_bucket.py</code>: Leaky Bucket traffic smoothing queue.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/gcra.py</code>: the complete Generic Cell Rate Algorithm.</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_buckets.py</code>: asserting burst allowances, pacing smoothers, and GCRA virtual arrival scheduling.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 03)</div>
+                <div>sentinelflow/</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── config/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── models.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">token_bucket.py</span>         <span class="text-slate-500"># Milestone 03: Precision Token Bucket</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">leaky_bucket.py</span>         <span class="text-slate-500"># Milestone 03: Queue Pacing Leaky Bucket</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">gcra.py</span>                 <span class="text-slate-500"># Milestone 03: Single-Key GCRA Virtual Scheduling</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_algorithms.py</div>
+                <div>        ├── test_config.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_buckets.py</span>             <span class="text-slate-500"># Milestone 03: Continuous Flow &amp; Burst Verification</span></div>
+            </div>
+
+            <!-- File 1: src/sentinelflow/core/token_bucket.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Precision Token Bucket: <code class="text-purple-700">src/sentinelflow/core/token_bucket.py</code></span>
+                    <span class="text-slate-400">Continuous Lazy Refill</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Precision In-Memory Token Bucket Engine (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Tuple
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenBucket</span>:
+    <span class="text-slate-500">"""
+    TOKEN BUCKET ALGORITHM:
+    Allows controlled traffic bursts up to `capacity`.
+    Refills continuously over time at a steady rate of `refill_rate` tokens per second.
+    Uses lazy accumulation: zero background threads or timers required!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, capacity: int, refill_rate_per_sec: float):
+        self.capacity = float(capacity)
+        self.refill_rate = float(refill_rate_per_sec)
+        <span class="text-slate-500"># Key -&gt; (current_tokens: float, last_refill_timestamp: float)</span>
+        self._buckets: Dict[str, Tuple[float, float]] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">acquire</span>(self, key: str, cost: int = 1) -> RateLimitResult:
+        now_mono = time.monotonic()
+        now_wall = int(time.time())
+
+        tokens, last_refill = self._buckets.get(key, (self.capacity, now_mono))
+
+        <span class="text-slate-500"># 1. CONTINUOUS LAZY REFILL: Calculate tokens accumulated since last call</span>
+        delta_t = max(0.0, now_mono - last_refill)
+        tokens = min(self.capacity, tokens + (delta_t * self.refill_rate))
+        last_refill = now_mono
+
+        <span class="text-slate-500"># 2. EVALUATION CHECK</span>
+        <span class="text-purple-400">if</span> tokens &gt;= cost:
+            tokens -= cost
+            self._buckets[key] = (tokens, last_refill)
+            <span class="text-slate-500"># Calculate time until at least 1 token is refilled</span>
+            reset_after = (1.0 - tokens) / self.refill_rate <span class="text-purple-400">if</span> tokens &lt; 1.0 <span class="text-purple-400">else</span> 0.0
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=int(self.capacity),
+                remaining=int(tokens),
+                reset_after_seconds=max(0.0, reset_after),
+                reset_epoch_seconds=now_wall + int(reset_after)
+            )
+
+        <span class="text-slate-500"># REJECTED: Not enough tokens available in the bucket</span>
+        self._buckets[key] = (tokens, last_refill)
+        required_tokens = cost - tokens
+        reset_after = required_tokens / self.refill_rate
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=int(self.capacity),
+            remaining=int(tokens),
+            reset_after_seconds=reset_after,
+            reset_epoch_seconds=now_wall + int(reset_after)
+        )</pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/core/gcra.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Generic Cell Rate Algorithm (GCRA): <code class="text-purple-700">src/sentinelflow/core/gcra.py</code></span>
+                    <span class="text-slate-400">Virtual Scheduling (Single State Variable)</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Generic Cell Rate Algorithm (GCRA) Engine (Milestone 03)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">GCRAEngine</span>:
+    <span class="text-slate-500">"""
+    GENERIC CELL RATE ALGORITHM (GCRA):
+    Also known as Virtual Scheduling. Mathematically equivalent to Token Bucket,
+    but tracks only ONE single state value: Theoretical Arrival Time (TAT).
+    Saves 50% memory in Redis / state backends!
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, rate_per_sec: float, burst_capacity: int):
+        <span class="text-slate-500"># Emission Interval (T): Spacing between cells</span>
+        self.emission_interval = 1.0 / rate_per_sec
+        <span class="text-slate-500"># Burst Tolerance Limit (tau): Depth of virtual bucket</span>
+        self.burst_tolerance = burst_capacity * self.emission_interval
+        self.rate_per_sec = rate_per_sec
+        self.capacity = burst_capacity
+        <span class="text-slate-500"># Key -&gt; tat (Theoretical Arrival Time monotonic timestamp)</span>
+        self._tat_registry: Dict[str, float] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">acquire</span>(self, key: str, cost: int = 1) -> RateLimitResult:
+        now_mono = time.monotonic()
+        now_wall = int(time.time())
+
+        increment = self.emission_interval * cost
+        stored_tat = self._tat_registry.get(key, now_mono)
+
+        <span class="text-slate-500"># TAT cannot be further in the past than right now</span>
+        tat = max(now_mono, stored_tat)
+
+        <span class="text-slate-500"># 1. EVALUATION CHECK</span>
+        <span class="text-slate-500"># If request arrives earlier than (TAT - burst_tolerance), reject!</span>
+        <span class="text-purple-400">if</span> (tat + increment) - now_mono &gt; self.burst_tolerance:
+            excess = (tat + increment) - now_mono - self.burst_tolerance
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">False</span>,
+                limit=self.capacity,
+                remaining=0,
+                reset_after_seconds=excess,
+                reset_epoch_seconds=now_wall + int(excess)
+            )
+
+        <span class="text-slate-500"># 2. STATE ADVANCEMENT: Atomically push TAT into future</span>
+        new_tat = tat + increment
+        self._tat_registry[key] = new_tat
+
+        <span class="text-slate-500"># Compute remaining burst credits dynamically</span>
+        available_tolerance = self.burst_tolerance - (new_tat - now_mono)
+        remaining_credits = max(0, int(available_tolerance / self.emission_interval))
+
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">True</span>,
+            limit=self.capacity,
+            remaining=remaining_credits,
+            reset_after_seconds=max(0.0, new_tat - now_mono),
+            reset_epoch_seconds=now_wall + int(max(0.0, new_tat - now_mono))
+        )</pre>
+            </div>
+
+            <!-- File 3: tests/unit/test_buckets.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Continuous Flow Verification Suite: <code class="text-purple-700">tests/unit/test_buckets.py</code></span>
+                    <span class="text-slate-400">Burst &amp; Virtual Scheduling Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> sentinelflow.core.token_bucket <span class="text-purple-400">import</span> TokenBucket
+<span class="text-purple-400">from</span> sentinelflow.core.gcra <span class="text-purple-400">import</span> GCRAEngine
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestContinuousTimeEngines</span>:
+    <span class="text-slate-500">"""Validates continuous token refill, burst limits, and GCRA virtual arrival scheduling."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_token_bucket_permits_instant_burst_then_throttles</span>(self, mocker):
+        <span class="text-slate-500"># Capacity 5, Refill 1 token per second</span>
+        bucket = TokenBucket(capacity=5, refill_rate_per_sec=1.0)
+        
+        mock_mono = mocker.patch(<span class="text-amber-300">"time.monotonic"</span>)
+        mock_mono.return_value = 1000.0
+
+        <span class="text-slate-500"># 1. Initial burst: Exactly 5 requests pass immediately at t=1000.0</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(5):
+            res = bucket.acquire(<span class="text-amber-300">"user_burst"</span>)
+            assert res.allowed <span class="text-purple-400">is True</span>
+            assert res.remaining == 4 - i
+
+        <span class="text-slate-500"># 2. 6th request is rejected immediately</span>
+        assert bucket.acquire(<span class="text-amber-300">"user_burst"</span>).allowed <span class="text-purple-400">is False</span>
+
+        <span class="text-slate-500"># 3. Advance time by 2.0 seconds: Exactly 2 tokens should be refilled</span>
+        mock_mono.return_value = 1002.0
+
+        res1 = bucket.acquire(<span class="text-amber-300">"user_burst"</span>)
+        res2 = bucket.acquire(<span class="text-amber-300">"user_burst"</span>)
+        assert res1.allowed <span class="text-purple-400">is True</span>
+        assert res2.allowed <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># 3rd request is blocked again</span>
+        assert bucket.acquire(<span class="text-amber-300">"user_burst"</span>).allowed <span class="text-purple-400">is False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_gcra_virtual_scheduling_mathematical_equivalence</span>(self, mocker):
+        <span class="text-slate-500"># Rate: 2 req/sec (T = 0.5s), Burst: 4</span>
+        gcra = GCRAEngine(rate_per_sec=2.0, burst_capacity=4)
+
+        mock_mono = mocker.patch(<span class="text-amber-300">"time.monotonic"</span>)
+        mock_mono.return_value = 1000.0
+
+        <span class="text-slate-500"># 1. 4 requests pass within burst tolerance</span>
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(4):
+            assert gcra.acquire(<span class="text-amber-300">"gcra_client"</span>).allowed <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># 2. 5th request is blocked because TAT is scheduled too far into the future</span>
+        blocked = gcra.acquire(<span class="text-amber-300">"gcra_client"</span>)
+        assert blocked.allowed <span class="text-purple-400">is False</span>
+        assert blocked.reset_after_seconds &gt; 0
+
+        <span class="text-slate-500"># 3. Fast-forward time by 0.5s (1 emission interval T)</span>
+        mock_mono.return_value = 1000.5
+        assert gcra.acquire(<span class="text-amber-300">"gcra_client"</span>).allowed <span class="text-purple-400">is True</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Background Thread Refiller</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Creating a background thread or asyncio task that loops every second: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">while True: await sleep(1); tokens += refill</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys performance:</strong> If you have 500,000 active client buckets, your server must iterate over 500,000 dictionary keys every second, locking memory and causing CPU thrashing.
+                        <strong>Fix:</strong> Always calculate tokens <strong>lazily on demand</strong> during <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">acquire()</code> using the elapsed time <code class="font-mono">&Delta;t = now - last_refill</code>!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Integer Truncation on Fractional Refills</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">tokens += int(delta_t * rate)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes silent failures:</strong> If your API handles high-frequency traffic where requests arrive every 2 milliseconds (<code class="font-mono">&Delta;t = 0.002s</code>), evaluating <code class="font-mono">int(0.002 * 10)</code> yields <strong>0 tokens</strong>! Micro-tokens are truncated to zero on every call, and the bucket never refills. Always preserve fractional tokens as floating-point values or use GCRA.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 03</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify continuous token accumulation and prove GCRA virtual arrival scheduling:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Pytest Unit Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the continuous-time bucket verification suite:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_buckets.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 2 passed in ~0.03s. Proves burst allowance and verifies GCRA mathematical equivalence!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive Demonstration via Python REPL -->
+                <div>
+                    <span class="text-slate-500"># 2. Test GCRA virtual arrival scheduling in real-time:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "from sentinelflow.core.gcra import GCRAEngine; g = GCRAEngine(rate_per_sec=10.0, burst_capacity=2); print([g.acquire('test').allowed for _ in range(4)])"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output: <code class="text-emerald-400 font-mono">[True, True, True, False]</code>. Notice how the initial capacity (burst of 2 + interval credit) passes instantly, while the 4th call is throttled.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 04 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 04: The Sliding Window Counter &amp; Concurrency Semaphores: Memory Optimization</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering Cloudflare's hybrid sliding counter algorithm with sub-1% error rates, and building distributed concurrency semaphores to cap simultaneous in-flight database and AI queries.</p>
+            </div>
+            <a href="Chapter 04 - The Sliding Window Counter and Concurrency Semaphores - Memory Optimization.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 04 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

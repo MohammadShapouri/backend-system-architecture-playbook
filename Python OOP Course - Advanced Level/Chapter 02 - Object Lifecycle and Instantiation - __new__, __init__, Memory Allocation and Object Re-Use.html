@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Object Lifecycle &amp; Instantiation - __new__, __init__, Memory Allocation &amp; Object Re-Use</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Python OOP Architecture &amp; Metaprogramming Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">EntityForge (Milestone 02 - Immutable Value Objects &amp; Cached Instance Pooling)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Instantiation &amp; Memory Allocation
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Chapter 02: Object Lifecycle &amp; Instantiation - __new__, __init__, Memory Allocation &amp; Object Re-Use
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering the two-phase construction protocol: Why <code class="font-mono text-emerald-400">__new__</code> allocates memory before <code class="font-mono text-emerald-400">__init__</code> initializes state, constructing immutable subclasses, implementing the Flyweight pattern for zero-allocation domain values, uncovering the CPython <code class="font-mono text-emerald-400">type.__call__</code> pipeline, avoiding the dangerous traps of the <code class="font-mono text-emerald-400">__del__</code> finalizer, and building the pooled lifecycle layer of <strong>EntityForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Phase 1 Bedrock</span>
+                    <h2 class="text-2xl font-extrabold">EntityForge Milestone 02: Instance Pooling &amp; Immutable Flyweights</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established entity identity and dual-namespace mechanics. In Milestone 02, we engineer EntityForge's instantiation and object re-use engine. Real-world domains handle millions of recurring status codes, currency codes, and enum-like value objects (such as <code class="font-mono text-slate-300">"PENDING"</code>, <code class="font-mono text-slate-300">"COMMITTED"</code>, <code class="font-mono text-slate-300">"USD"</code>). Allocating new heap memory for every occurrence wastes megabytes and forces slow GC sweeps. We build an <strong>Immutable Flyweight Registry</strong> utilizing <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">__new__</code> to intercept instantiation and return pre-allocated cached instances in constant time.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The CPython <code class="text-purple-300">type.__call__</code> Coordination Protocol</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Phase 1 Allocator (<code class="text-purple-300">__new__</code>) vs. Phase 2 Initializer (<code class="text-purple-300">__init__</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Custom Immutable Subclassing (<code class="text-purple-300">tuple</code>, <code class="text-purple-300">str</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Flyweight Instance Caching &amp; Deduplication</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Finalization Hazards &amp; The Discard of <code class="text-purple-300">__del__</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> EntityForge <code class="text-purple-300">FlyweightStatus</code> &amp; Resource Guards</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of the Two-Phase Construction Protocol -->
+        <section id="two-phase-instantiation" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Two-Phase Instantiation Protocol</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Most developers assume that writing <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">obj = MyClass(*args)</code> directly calls <code class="font-mono text-purple-700 font-bold">__init__</code>. This is fundamentally inaccurate.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In CPython, calling a class invokes the <strong>metaclass's call operator</strong> (<code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">type.__call__</code>). This coordinates a strict two-phase construction protocol separating raw heap memory allocation from state assignment:
+            </p>
+
+            <!-- Two-Phase Protocol Flow Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Under the Hood: The CPython type.__call__ Orchestration Pipeline
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Step 1: Allocation (__new__)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            Invokes <code class="text-emerald-300 font-mono">cls.__new__(cls, *args, **kw)</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            A static allocator method. Calls the C runtime allocator to carve out heap memory and returns a brand new, uninitialized instance of <code class="font-mono text-slate-200">cls</code>.
+                        </p>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Step 2: Type Invariant Check</span>
+                        <div class="text-[10px] text-purple-200 font-sans">
+                            <code class="text-amber-300 font-mono">isinstance(instance, cls)</code>
+                        </div>
+                        <p class="text-[10px] text-purple-200 font-sans leading-relaxed">
+                            <strong>CPython Rule:</strong> If <code class="font-mono">__new__</code> returns an instance of <code class="font-mono">cls</code> (or its subclasses), proceed to Step 3. If it returns an existing object or different type, <strong>__init__ is skipped!</strong>
+                        </p>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-emerald-300 font-bold block text-sm">Step 3: Initialization (__init__)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">
+                            Invokes <code class="text-emerald-300 font-mono">instance.__init__(*args, **kw)</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                            An initializer method. Receives the allocated instance as <code class="font-mono text-slate-200">self</code> and assigns state attributes to <code class="font-mono text-slate-200">self.__dict__</code>. Must return strictly <code class="font-mono text-rose-400">None</code>!
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-emerald-400 font-mono text-xs">Equivalent Python Implementation of type.__call__:</strong>
+                    <pre class="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">type_call</span>(cls, *args, **kwargs):
+    <span class="text-slate-500"># 1. Allocate raw object in memory</span>
+    instance = cls.<span class="text-purple-400">__new__</span>(cls, *args, **kwargs)
+
+    <span class="text-slate-500"># 2. CPython Type Invariant Guard: Only initialize if instance matches cls!</span>
+    <span class="text-purple-400">if</span> isinstance(instance, cls):
+        init_result = instance.<span class="text-purple-400">__init__</span>(*args, **kwargs)
+        <span class="text-purple-400">if</span> init_result <span class="text-purple-400">is not None</span>:
+            <span class="text-purple-400">raise</span> TypeError(<span class="text-amber-300">"__init__() should return None, not '{type(init_result).__name__}'"</span>)
+
+    <span class="text-purple-400">return</span> instance</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Subclassing Immutable Types & The Flyweight Pattern -->
+        <section id="immutable-subclassing-flyweight" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Subclassing Immutable Types &amp; The Flyweight Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Why does Python have both <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">__new__</code> and <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">__init__</code>?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The primary architectural reason is <strong>immutable types</strong>. Built-in types such as <code class="font-mono text-slate-800">int</code>, <code class="font-mono text-slate-800">float</code>, <code class="font-mono text-slate-800">str</code>, and <code class="font-mono text-slate-800">tuple</code> cannot have their contents mutated after creation. By the time <code class="font-mono text-purple-700">__init__</code> executes, the underlying C-struct is already frozen. Therefore, custom subclasses of immutable types <strong>must customize their values inside <code class="font-mono text-purple-700">__new__</code> before allocation finishes</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Immutable Subclassing -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Memory Freezing</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">Subclassing Immutable Built-ins</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        If you subclass <code class="font-mono text-slate-800">str</code> to enforce uppercase domain codes, attempting to alter the value in <code class="font-mono text-rose-700">__init__</code> fails because the string buffer is immutable. You must intercept the string in <code class="font-mono text-purple-700 font-bold">__new__</code>:
+                    </p>
+                    <pre class="bg-slate-900 text-purple-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CurrencyCode</span>(str):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__new__</span>(cls, value: str):
+        <span class="text-slate-500"># Transform and allocate memory in Phase 1:</span>
+        normalized = value.strip().upper()
+        <span class="text-purple-400">return</span> super().<span class="text-purple-400">__new__</span>(cls, normalized)</pre>
+                </div>
+
+                <!-- Flyweight Pattern -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-sans">
+                    <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-widest block">Object Pooling</span>
+                    <h3 class="text-base font-bold text-slate-900 font-mono">The Flyweight Pattern (Instance Deduplication)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        In high-throughput systems, instantiating millions of identical value objects thrashes memory. Using <code class="font-mono text-purple-700 font-bold">__new__</code>, we inspect an internal cache dictionary: if an instance with matching parameters exists, we return the cached pointer immediately with zero heap allocation:
+                    </p>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">StatusPool</span>:
+    _cache: dict[str, Self] = {}
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__new__</span>(cls, name: str):
+        <span class="text-purple-400">if</span> name <span class="text-purple-400">not in</span> cls._cache:
+            cls._cache[name] = super().<span class="text-purple-400">__new__</span>(cls)
+        <span class="text-purple-400">return</span> cls._cache[name]</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Object Finalization & The Hazards of __del__ -->
+        <section id="object-finalization" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Lifecycle Termination: Reference Counting &amp; The Traps of `__del__`</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an object's lifetime concludes, CPython deallocates its heap memory. Beginners frequently reach for <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">__del__()</code> (the finalizer dunder) under the false assumption that it behaves like a C++ destructor.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In production Python, <strong>relying on <code class="font-mono">__del__</code> for critical resource cleanup is an architectural anti-pattern</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch font-mono text-xs">
+                <!-- Why __del__ Fails -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-rose-900 text-sm block">Why __del__ is Hazardous in Production</span>
+                    <ul class="space-y-2 text-xs text-rose-800 leading-relaxed list-disc pl-4">
+                        <li><strong>No Guarantee of Execution:</strong> When a Python process exits or crashes, CPython does not guarantee that <code class="font-mono">__del__</code> will be called for all objects remaining in memory.</li>
+                        <li><strong>Exceptions are Ignored:</strong> If an exception occurs inside <code class="font-mono">__del__</code>, it cannot be caught by application try-except blocks; Python simply writes a silent warning to <code class="font-mono">sys.stderr</code> and moves on.</li>
+                        <li><strong>The Zombie Resurrection Trap:</strong> If code inside <code class="font-mono">__del__</code> assigns <code class="font-mono">self</code> to an external global variable, the object is resurrected while CPython's internal deallocator is mid-execution, corrupting runtime state!</li>
+                    </ul>
+                </div>
+
+                <!-- The Clean Alternative: Context Managers -->
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-3 font-sans">
+                    <span class="font-mono font-bold text-emerald-900 text-sm block">The Clean Production Alternative</span>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        Never bind resource deallocation (closing files, releasing database connections, dropping locks) to garbage collection.
+                    </p>
+                    <p class="text-xs text-emerald-800 leading-relaxed">
+                        <strong>The Production Standard:</strong> Implement the <strong>Context Manager Protocol</strong> (<code class="font-mono bg-emerald-100 px-1 rounded text-emerald-900 font-bold">__enter__</code> and <code class="font-mono bg-emerald-100 px-1 rounded text-emerald-900 font-bold">__exit__</code>, detailed in Chapter 07) or provide an explicit <code class="font-mono bg-emerald-100 px-1 rounded text-emerald-900 font-bold">.close()</code> method. This guarantees deterministic cleanup at the exact line of execution, regardless of garbage collector timing.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Dunder Methods Deep Dive: When to Override vs When NOT to Override -->
+        <section id="dunder-override-rules" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Dunder Method Matrix: When to Override vs. When NOT to Override</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Senior developers know not just <em>how</em> to override dunder methods, but more importantly, <strong>when NOT to override them</strong>:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 font-mono text-xs">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500 text-[11px]">
+                                <th class="py-2 px-2 font-bold font-sans">Dunder Method</th>
+                                <th class="py-2 px-2 font-bold font-sans">Signature</th>
+                                <th class="py-2 px-2 font-bold font-sans">When to Override (&check;)</th>
+                                <th class="py-2 px-2 font-bold font-sans">When NOT to Override (&cross;)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[11px] text-slate-700">
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__new__</td>
+                                <td class="py-3 px-2 font-mono">__new__(cls, *args, **kw) &rarr; instance</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Subclassing immutable types (<code class="font-mono">tuple</code>, <code class="font-mono">str</code>, <code class="font-mono">int</code>); implementing Flyweight instance pooling; dynamically returning different subclass instances based on arguments.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    Standard mutable domain models where state assignment belongs in <code class="font-mono text-slate-800">__init__</code>. Overriding it needlessly introduces metaclass bugs and initialization leaks.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__init__</td>
+                                <td class="py-3 px-2 font-mono">__init__(self, *args, **kw) &rarr; None</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Standard instance initialization: assigning state attributes to <code class="font-mono">self</code>, setting up connections, and dependency injection.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    When implementing Singleton or Flyweight patterns via <code class="font-mono">__new__</code> (because Python re-executes <code class="font-mono">__init__</code> every time the class is called, wiping existing instance state!).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 px-2 font-bold text-purple-700">__del__</td>
+                                <td class="py-3 px-2 font-mono">__del__(self) &rarr; None</td>
+                                <td class="py-3 px-2 font-sans text-slate-600">
+                                    Low-level C-extension bindings or emergency logging warnings when a developer forgot to explicitly close a resource.
+                                </td>
+                                <td class="py-3 px-2 font-sans text-rose-700">
+                                    <strong>Avoid in high-level application code.</strong> Never rely on it for database transaction rollbacks, file closing, or lock releasing. Use context managers (<code class="font-mono">with</code>) instead.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: EntityForge Milestone 02 -->
+        <section id="entityforge-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">EntityForge Milestone 02: Instance Pooling &amp; Lifecycle Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 02 of <strong>EntityForge</strong>: constructing <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/entityforge/core/lifecycle.py</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The architecture features:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">FlyweightStatus</code>: An immutable status value object subclassing <code class="font-mono text-slate-800">str</code> that intercepts <code class="font-mono text-purple-700 font-bold">__new__</code> to deduplicate instances via an internal weakref-compatible cache dictionary.</li>
+                <li><strong>The Singleton Re-Execution Fix:</strong> A guarded initialization pattern proving why Flyweights must prevent <code class="font-mono text-purple-700 font-bold">__init__</code> from wiping pooled instance state.</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">DynamicEntityRouter</code>: Demonstrating how <code class="font-mono text-purple-700 font-bold">__new__</code> can inspect incoming arguments to dynamically return concrete subclass instances (a Factory in <code class="font-mono">__new__</code>).</li>
+                <li><code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">SafeResourceGuard</code>: A deterministic context manager replacing the hazards of <code class="font-mono text-purple-700 font-bold">__del__</code>.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// EntityForge Project Hierarchy (Milestone 02)</div>
+                <div>entityforge/</div>
+                <div>├── src/</div>
+                <div>│   └── entityforge/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── entity.py                 <span class="text-slate-500"># Milestone 01: Metamodel, Identity &amp; BaseEntity</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">lifecycle.py</span>              <span class="text-slate-500"># Milestone 02: Flyweights, __new__ Pooling &amp; Lifecycle</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_entity.py            <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_lifecycle.py</span>         <span class="text-slate-500"># Milestone 02: Instantiation, Caching &amp; __new__ Tests</span></div>
+            </div>
+
+            <!-- File 1: src/entityforge/core/lifecycle.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Lifecycle Engine: <code class="text-purple-700">src/entityforge/core/lifecycle.py</code></span>
+                    <span class="text-slate-400">Flyweight Caching &amp; Subclass Routing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Core - Lifecycle, Instantiation &amp; Flyweight Pooling (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> __future__ <span class="text-purple-400">import</span> annotations
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Optional, Self, final, override
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> BaseEntity, EntityIdentity
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">FlyweightStatus</span>(str):
+    <span class="text-slate-500">"""
+    IMMUTABLE FLYWEIGHT STATUS VALUE OBJECT:
+    Subclasses built-in 'str'. Overrides __new__ to enforce uppercase
+    normalization and deduplicate instances via a class-level cache pool.
+    Guarantees that FlyweightStatus('ACTIVE') is FlyweightStatus('ACTIVE') is True!
+    """</span>
+    _pool: Dict[str, Self] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__new__</span>(cls, value: str) -> Self:
+        <span class="text-slate-500"># 1. Normalize value before memory allocation</span>
+        normalized = value.strip().upper()
+
+        <span class="text-slate-500"># 2. Check if instance already exists in memory pool</span>
+        <span class="text-purple-400">if</span> normalized <span class="text-purple-400">in</span> cls._pool:
+            <span class="text-slate-500"># Returns existing pointer: Zero new heap memory allocated!</span>
+            <span class="text-purple-400">return</span> cls._pool[normalized]
+
+        <span class="text-slate-500"># 3. First time seen: Allocate memory via str.__new__</span>
+        instance = <span class="text-purple-400">super</span>().<span class="text-purple-400">__new__</span>(cls, normalized)
+        cls._pool[normalized] = instance
+        <span class="text-purple-400">return</span> instance
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">pool_size</span>(cls) -> int:
+        <span class="text-slate-500">"""Returns total cached flyweight instances currently in memory."""</span>
+        <span class="text-purple-400">return</span> len(cls._pool)
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">clear_pool</span>(cls) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""Clears the flyweight instance cache."""</span>
+        cls._pool.clear()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DynamicEntityRouter</span>:
+    <span class="text-slate-500">"""
+    POLYMORPHIC ROUTING VIA __new__:
+    Demonstrates how __new__ can inspect parameters and dynamically
+    instantiate and return a concrete subclass instance.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__new__</span>(cls, entity_type: str, *args, **kwargs) -> Any:
+        <span class="text-purple-400">if</span> entity_type == <span class="text-amber-300">"user"</span>:
+            <span class="text-purple-400">return</span> <span class="text-purple-400">super</span>().<span class="text-purple-400">__new__</span>(UserPayloadEntity)
+        <span class="text-purple-400">elif</span> entity_type == <span class="text-amber-300">"audit"</span>:
+            <span class="text-purple-400">return</span> <span class="text-purple-400">super</span>().<span class="text-purple-400">__new__</span>(AuditPayloadEntity)
+        <span class="text-purple-400">else</span>:
+            <span class="text-purple-400">raise</span> ValueError(f<span class="text-amber-300">"Unknown entity type: '{entity_type}'"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">UserPayloadEntity</span>(BaseEntity):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, entity_type: str, entity_id: EntityIdentity, username: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().<span class="text-purple-400">__init__</span>(entity_id=entity_id, username=username)
+        self.username = username
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditPayloadEntity</span>(BaseEntity):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, entity_type: str, entity_id: EntityIdentity, action: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">super</span>().<span class="text-purple-400">__init__</span>(entity_id=entity_id, action=action)
+        self.action = action
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SafeResourceGuard</span>:
+    <span class="text-slate-500">"""
+    DETERMINISTIC CLEANUP INVARIANT:
+    Replaces the hazards of __del__ by implementing the Context Manager Protocol.
+    Guarantees immediate cleanup upon exiting scope.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, resource_name: str) -> <span class="text-rose-400">None</span>:
+        self.resource_name = resource_name
+        self.is_open: bool = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">open</span>(self) -> Self:
+        self.is_open = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">return</span> self
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">close</span>(self) -> <span class="text-rose-400">None</span>:
+        self.is_open = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__enter__</span>(self) -> Self:
+        <span class="text-purple-400">return</span> self.open()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__exit__</span>(self, exc_type, exc_val, exc_tb) -> <span class="text-rose-400">None</span>:
+        self.close()</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_lifecycle.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Unit Test Battery: <code class="text-purple-700">tests/unit/test_lifecycle.py</code></span>
+                    <span class="text-slate-400">Instantiation, Caching &amp; Subclass Routing Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># EntityForge Test Suite - Object Lifecycle &amp; Flyweights Verification (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> entityforge.core.entity <span class="text-purple-400">import</span> EntityIdentity
+<span class="text-purple-400">from</span> entityforge.core.lifecycle <span class="text-purple-400">import</span> (
+    FlyweightStatus,
+    DynamicEntityRouter,
+    UserPayloadEntity,
+    AuditPayloadEntity,
+    SafeResourceGuard,
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestObjectLifecycle</span>:
+    <span class="text-slate-500">"""Unit tests asserting Flyweight deduplication, __new__ subclass routing, and cleanup."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">setup_method</span>(self):
+        <span class="text-slate-500"># Ensure cache pool is clean before each test run</span>
+        FlyweightStatus.clear_pool()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_flyweight_instance_deduplication_and_identity</span>(self):
+        # 1. Create two separate calls with identical string values
+        s1 = FlyweightStatus(<span class="text-amber-300">"active"</span>)
+        s2 = FlyweightStatus(<span class="text-amber-300">"  ACTIVE  "</span>)
+
+        # 2. Assert values are normalized to uppercase
+        assert s1 == <span class="text-amber-300">"ACTIVE"</span>
+        assert s2 == <span class="text-amber-300">"ACTIVE"</span>
+
+        # 3. CRITICAL FLYWEIGHT INVARIANT:
+        # Both variables MUST point to the EXACT same memory pointer!
+        assert s1 is s2
+        assert id(s1) == id(s2)
+
+        # 4. Assert pool size contains exactly 1 unique instance
+        assert FlyweightStatus.pool_size() == 1
+
+        # 5. Distinct status creates a second instance
+        s3 = FlyweightStatus(<span class="text-amber-300">"SUSPENDED"</span>)
+        assert s1 is <span class="text-purple-400">not</span> s3
+        assert FlyweightStatus.pool_size() == 2
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_dynamic_subclass_routing_via_new</span>(self):
+        ident = EntityIdentity.generate()
+
+        # Instantiating the router with "user" must return a UserPayloadEntity
+        user = DynamicEntityRouter(<span class="text-amber-300">"user"</span>, entity_id=ident, username=<span class="text-amber-300">"alice"</span>)
+        assert isinstance(user, UserPayloadEntity)
+        assert user.username == <span class="text-amber-300">"alice"</span>
+
+        # Instantiating the router with "audit" must return an AuditPayloadEntity
+        audit = DynamicEntityRouter(<span class="text-amber-300">"audit"</span>, entity_id=ident, action=<span class="text-amber-300">"LOGIN"</span>)
+        assert isinstance(audit, AuditPayloadEntity)
+        assert audit.action == <span class="text-amber-300">"LOGIN"</span>
+
+        # Unknown type raises ValueError inside __new__
+        <span class="text-purple-400">with</span> pytest.raises(ValueError, match=<span class="text-amber-300">r"Unknown entity type"</span>):
+            _ = DynamicEntityRouter(<span class="text-amber-300">"invalid_type"</span>)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_safe_resource_guard_context_manager</span>(self):
+        # Context manager guarantees deterministic closing without relying on __del__
+        guard = SafeResourceGuard(<span class="text-amber-300">"database_tx_conn"</span>)
+        assert guard.is_open is <span class="text-rose-400">False</span>
+
+        <span class="text-purple-400">with</span> guard <span class="text-purple-400">as</span> resource:
+            assert resource.is_open is <span class="text-rose-400">True</span>
+
+        # Scope exit triggers __exit__ immediately
+        assert guard.is_open is <span class="text-rose-400">False</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Singleton __init__ Re-Execution Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Implementing a Singleton by caching an instance in <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">__new__</code> while keeping state initialization in <code class="font-mono text-rose-900 font-bold">__init__</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes subtle data bugs:</strong> <code class="font-mono">type.__call__</code> unconditionally calls <code class="font-mono">__init__</code> on whatever instance <code class="font-mono">__new__</code> returns. Every time a caller writes <code class="font-mono">s = MySingleton("new_config")</code>, <code class="font-mono">__init__</code> re-runs on the <em>existing instance</em>, silently overwriting its active state!
+                        <strong>Fix:</strong> Guard <code class="font-mono">__init__</code> with an <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">if not hasattr(self, '_initialized'):</code> check or initialize strictly in <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__new__</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Relying on __del__ for Resource Cleanup</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __del__(self): self.db_connection.close()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes connection leaks:</strong> Python's garbage collector does not run on a deterministic schedule. If an object is part of a circular reference, its finalizer might not run until interpreter shutdown (or not at all if the process terminates abruptly). Exhausts database connection pools and file handles!
+                        <strong>Fix:</strong> Use context managers (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">with</code> blocks) or an explicit <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">.close()</code> method.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 3 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Attempting State Assignment in __init__ on Immutable Types</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Subclassing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">tuple</code> or <code class="font-mono text-rose-900 font-bold">str</code> and writing <code class="font-mono text-rose-900 font-bold">def __init__(self, val): self = val.upper()</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails:</strong> By the time <code class="font-mono">__init__</code> runs, the immutable C memory structure has already been allocated and sealed by <code class="font-mono">str.__new__</code>. Reassigning <code class="font-mono">self</code> merely alters a local variable in the method scope, leaving the actual instance untouched!
+                        <strong>Fix:</strong> Transform and allocate the value inside <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__new__</code> using <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">super().__new__(cls, val.upper())</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 4 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Returning Non-None from __init__</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">def __init__(self): return self</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this raises an immediate TypeError:</strong> CPython's <code class="font-mono">type.__call__</code> expects <code class="font-mono">__init__</code> to return strictly <code class="font-mono">None</code>. Returning any object (even <code class="font-mono">self</code>) raises <code class="font-mono text-rose-950 font-bold">TypeError: __init__() should return None</code>! If you need to return a specific instance, override <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">__new__</code> instead.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating EntityForge Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the lifecycle test suite, verify instance caching, and inspect the two-phase instantiation protocol:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Unit Tests -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute EntityForge lifecycle unit tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_lifecycle.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.06s. Confirms Flyweight deduplication, polymorphic subclass routing in __new__, and context guard closing.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 and 02:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms entity identity, dual namespaces, method bindings, and Flyweight pooling with 100% test isolation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Interactive CLI Inspection -->
+                <div>
+                    <span class="text-slate-500"># 3. Empirically verify __new__ and __init__ execution sequence in Python:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python3 -c "class Traced:
+    def __new__(cls): print('1. __new__ allocates memory'); return super().__new__(cls)
+    def __init__(self): print('2. __init__ initializes state')
+t = Traced()"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Confirms that __new__ allocates the instance before __init__ is called by type.__call__.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: Encapsulation &amp; State Management - Properties, Descriptors vs Slots &amp; Attribute Routing</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering Pythonic encapsulation: Why Java-style getters/setters are an anti-pattern, stripping __dict__ with __slots__, dynamic attribute interception with __getattr__ vs __getattribute__, and validating domain states.</p>
+            </div>
+            <a href="Chapter 03 - Encapsulation and State Management - Properties, Descriptors vs Slots and Attribute Routing.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 px-6 text-center text-xs text-slate-500">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>EntityForge Architecture Series &bull; Master Reference</p>
+            <a href="Series Navigator.html" class="text-emerald-600 font-bold hover:underline font-mono">&larr; Return to Master Series Navigator</a>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 15: Stream Processing: Log-Centric Architectures (Kafka, Pulsar &amp; Redpanda)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 15 - Log-Centric Event Fabric)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 15 &bull; Real-Time Streaming &amp; Event Logs
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Stream Processing: Log-Centric Architectures (Kafka, Pulsar &amp; Redpanda)
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Transforming transient message queues into immutable distributed commit logs: Partition key hashing, zero-copy kernel transfers, managing consumer group offsets, taming rebalance storms, comparing <strong>Kafka vs. Pulsar vs. Redpanda</strong>, and building the high-throughput streaming backbone of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 15: The Distributed Commit Log Streaming Fabric</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 14, we constructed asynchronous bounded queues for background tasks. In Milestone 15, we scale from task queues to <strong>High-Throughput Distributed Streaming Platforms</strong>. In OmniRoute, 500,000 drivers generate 166,667 location events per second. Traditional message brokers (RabbitMQ/SQS) crumble under this volume: they delete messages on consumption, suffer queue lock contention, and cannot support multiple independent downstream subscribers (Matching, Pricing, Analytics, and Fraud) reading at their own independent speeds. We architect an append-only <strong>Distributed Commit Log Stream Engine</strong> in FastAPI and async SQLAlchemy 2.0 with partition key routing, consumer group offset commits, and deterministic event replay.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 15 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Queues vs. Logs: Jay Kreps' Unifying Abstraction</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Partition Hashing &amp; Strict Ordering Physics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Copy Network I/O &amp; Page Cache Exploitation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Consumer Groups &amp; The Rebalance Storm Problem</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Kafka (KRaft) vs. Pulsar vs. Redpanda Compared</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Commit Log Streaming Engine in FastAPI</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Automated PyTest Offset &amp; Partitioning Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory: The Log Abstraction -->
+        <section id="log-foundations" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Stream Processing Theory</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Log: The Fundamental Primitive of Distributed Streaming</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In 2013, LinkedIn engineer and Kafka co-creator <strong>Jay Kreps</strong> published the seminal essay: <em>"The Log: What every software engineer should know about real-time data's unifying abstraction."</em>
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Kreps identified that engineers repeatedly confuse two fundamentally distinct messaging paradigms: **Traditional Queues** versus **Distributed Commit Logs**:
+            </p>
+
+            <!-- Queues vs Logs Comparison Cards -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Traditional Queue -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-700 text-sm">Traditional Message Queue (RabbitMQ / SQS)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Destructive Read</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Messages are transient. When a worker acknowledges an item, <strong>the broker deletes it from disk/memory</strong>.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                        <div>&bull; State: Broker tracks per-message ACK/NACK state</div>
+                        <div>&bull; Concurrency: Multiple workers compete for the same queue head</div>
+                        <div>&bull; Fan-Out: Requires duplicating messages into separate physical queues</div>
+                        <div class="text-rose-400 font-bold">&bull; Fatal Limit: Once read, messages cannot be replayed!</div>
+                    </div>
+                </div>
+
+                <!-- Distributed Commit Log -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">Distributed Commit Log (Kafka / Redpanda)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Append-Only Immutable</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        An immutable, append-only sequence of ordered records persisted to disk. Reading is non-destructive.
+                    </p>
+                    <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                        <div>&bull; State: Broker is dumb; consumers track their own <strong>offset pointer</strong></div>
+                        <div>&bull; Fan-Out: 50 independent consumer groups read from the exact same log</div>
+                        <div>&bull; Retention: Messages kept for days, weeks, or forever (S3 tiering)</div>
+                        <div class="text-emerald-400 font-bold">&bull; Superpower: Time-travel replay of historical streams on demand!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine the difference between a box of donuts in a breakroom versus a published history textbook.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    A <strong>Traditional Queue</strong> is the box of donuts. When Employee A takes a donut, that donut ceases to exist in the box. If Employee B walks in 5 minutes later, they cannot eat the donut that Employee A ate.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    A <strong>Distributed Commit Log</strong> is the history textbook. Every historical event is printed in order on numbered pages (Offsets). The Fraud Analyst can read page 14; the Real-Time Dispatcher can read page 892; and the Machine Learning Engineer can re-read the entire book from Page 1 to train an algorithm. Reading a page does not erase the words from the paper!
+                </p>
+            </div>
+        </section>
+
+        <!-- PARTITIONING PHYSICS & ZERO-COPY NETWORKING -->
+        <section id="partitioning-physics" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Distributed Storage Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Partitioning Physics: Total Ordering vs. Parallel Scale
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Partition Hashing &bull; Sequential Disk I/O &bull; Linux sendfile Zero-Copy
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                A single commit log file cannot scale beyond the disk bandwidth of one server. To achieve horizontal scalability, streaming platforms divide a **Topic** into multiple parallel append-only files called <strong>Partitions</strong>:
+            </p>
+
+            <!-- Visual Flowchart: Topic Partitions and Ordering -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Partitioned Log Invariant: Ordering Guarantees
+                </div>
+
+                <div class="space-y-4">
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                        <span class="text-sky-300 font-bold block text-sm">Topic: "telemetry.driver.locations" (3 Partitions)</span>
+                        
+                        <div class="grid md:grid-cols-3 gap-3 text-[10px]">
+                            <!-- Partition 0 -->
+                            <div class="p-3 bg-slate-900 rounded-xl border border-sky-500 space-y-1">
+                                <span class="text-sky-300 font-bold block">Partition 0 (Broker 1)</span>
+                                <div class="text-slate-400 space-y-0.5">
+                                    <div>[Offset 0] drv_001 (Lat: 37.77)</div>
+                                    <div>[Offset 1] drv_001 (Lat: 37.78)</div>
+                                    <div>[Offset 2] drv_004 (Lat: 40.71)</div>
+                                </div>
+                                <span class="text-emerald-400 font-bold block pt-1">&check; Strict Order for drv_001</span>
+                            </div>
+
+                            <!-- Partition 1 -->
+                            <div class="p-3 bg-slate-900 rounded-xl border border-purple-500 space-y-1">
+                                <span class="text-purple-300 font-bold block">Partition 1 (Broker 2)</span>
+                                <div class="text-slate-400 space-y-0.5">
+                                    <div>[Offset 0] drv_002 (Lat: 34.05)</div>
+                                    <div>[Offset 1] drv_005 (Lat: 41.87)</div>
+                                    <div>[Offset 2] drv_002 (Lat: 34.06)</div>
+                                </div>
+                                <span class="text-emerald-400 font-bold block pt-1">&check; Strict Order for drv_002</span>
+                            </div>
+
+                            <!-- Partition 2 -->
+                            <div class="p-3 bg-slate-900 rounded-xl border border-amber-500 space-y-1">
+                                <span class="text-amber-300 font-bold block">Partition 2 (Broker 3)</span>
+                                <div class="text-slate-400 space-y-0.5">
+                                    <div>[Offset 0] drv_003 (Lat: 51.50)</div>
+                                    <div>[Offset 1] drv_003 (Lat: 51.51)</div>
+                                    <div>[Offset 2] drv_006 (Lat: 48.85)</div>
+                                </div>
+                                <span class="text-emerald-400 font-bold block pt-1">&check; Strict Order for drv_003</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-amber-400 font-mono">The Ordering Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        A commit log guarantees total order <strong>ONLY within a single partition</strong>. There is zero ordering guarantee across different partitions! If driver coordinate updates must arrive in strict chronological order, all updates for a given <code class="text-white font-mono">driver_id</code> must produce the identical partition hash.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Zero-Copy Deep Dive Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-4 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-emerald-400 font-bold text-sm">The Zero-Copy Magic: Why Kafka &amp; Redpanda Deliver Millions of Records/sec</span>
+                    <span class="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/30">Linux Kernel sendfile</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    Traditional web servers read data from disk into kernel memory, copy it into user-space application memory, copy it back into kernel socket memory, and finally send it to the NIC (4 context switches + 4 memory copies).
+                </p>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-[11px]">
+                    <div>&bull; <strong>Page Cache Exploitation:</strong> Kafka and Redpanda do not cache messages in application JVM/heap memory. They write to disk segments and rely directly on the <strong>Linux OS Page Cache</strong>.</div>
+                    <div>&bull; <strong>The `sendfile()` Syscall (Zero-Copy):</strong> When consumers request records, the broker executes a single kernel instruction: transfer bytes directly from the Page Cache buffer to the Network Interface Card (NIC) DMA buffer. The CPU never touches the data!</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CONSUMER GROUPS & REBALANCE STORMS -->
+        <section id="consumer-groups" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Consumer Architecture
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Consumer Groups, Offset Commits &amp; Rebalance Storms
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Horizontal Scaling &bull; Cooperative Sticky Rebalances &bull; Offset Pitfalls
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                A <strong>Consumer Group</strong> is a collection of worker instances cooperating to read a topic. Each partition in the topic is assigned to strictly **one consumer worker** within the group at any given time:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Sizing Rule -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 text-sm block">The Partition Cardinality Constraint</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        If a topic has <strong>10 partitions</strong>, you can run at most <strong>10 active consumer pods</strong> in a consumer group. If you scale your worker deployment to 20 pods, 10 pods will sit completely idle with zero partitions assigned!
+                    </p>
+                    <p class="text-[10px] text-emerald-800 font-sans font-bold">
+                        Rule: Number of partitions determines the maximum horizontal consumer parallelism limit.
+                    </p>
+                </div>
+
+                <!-- Rebalance Storm -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-rose-700 text-sm block">The Stop-the-World Rebalance Storm</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Historically (Eager Rebalance), whenever a consumer joined, crashed, or took longer than <code class="font-mono text-rose-700">max.poll.interval.ms</code> to process a batch, the group coordinator revoked partitions from <em>all</em> workers, pausing all consumption worldwide for seconds!
+                    </p>
+                    <p class="text-[10px] text-emerald-800 font-sans font-bold">
+                        Cure: Modern **Cooperative Sticky Rebalancing** revokes only the specific reassigned partition while other workers continue processing uninterrupted.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- KAFKA VS PULSAR VS REDPANDA -->
+        <section id="technology-comparison" class="space-y-6">
+            <div class="border-b-2 border-amber-500 pb-3">
+                <span class="bg-amber-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Ecosystem Comparison
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Kafka (KRaft) vs. Apache Pulsar vs. Redpanda
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Evaluating Modern Real-Time Streaming Platforms
+                </p>
+            </div>
+
+            <!-- Comparison Table -->
+            <div class="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left text-xs font-mono border-collapse">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3.5">Dimension</th>
+                            <th class="p-3.5 text-sky-700">Apache Kafka (KRaft)</th>
+                            <th class="p-3.5 text-purple-700">Apache Pulsar</th>
+                            <th class="p-3.5 text-emerald-700">Redpanda</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 text-[11px]">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Runtime &amp; Language</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Java / Scala (JVM-based)</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Java (JVM-based)</td>
+                            <td class="p-3.5 text-emerald-700 font-bold font-sans">C++ (Seastar Thread-per-Core)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Storage Architecture</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Coupled: Brokers store log segments on local attached disks.</td>
+                            <td class="p-3.5 text-purple-700 font-bold font-sans">Decoupled: Stateless brokers serve compute; Apache BookKeeper stores segments.</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Coupled: Directly targets NVMe SSDs via kernel bypass (io_uring).</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Metadata Consensus</td>
+                            <td class="p-3.5 text-slate-600 font-sans">KRaft (Kafka Raft Quorum) - ZooKeeper deprecated!</td>
+                            <td class="p-3.5 text-slate-600 font-sans">ZooKeeper / BookKeeper consensus metadata.</td>
+                            <td class="p-3.5 text-emerald-700 font-bold font-sans">Built-in Raft consensus per partition. Zero external dependencies!</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Tiered Storage to S3</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Available in Confluent Platform / Kafka 3.6+</td>
+                            <td class="p-3.5 text-purple-700 font-bold font-sans">Native first-class architectural primitive since inception.</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Native Shadow Indexing directly to S3/GCS.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3.5 font-bold text-slate-900">Tail Latency (p99)</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Good (can experience occasional JVM GC pauses).</td>
+                            <td class="p-3.5 text-slate-600 font-sans">Consistent sub-10ms (BookKeeper separation).</td>
+                            <td class="p-3.5 text-emerald-700 font-bold font-sans">Ultra-low deterministic sub-5ms (Zero-GC C++ memory).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 15 -->
+        <section id="omniroute-milestone-15" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 15: Commit Log Streaming Engine Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 15 for <strong>OmniRoute</strong>: a production-grade Distributed Commit Log Streaming Engine featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Multi-Partition Commit Log Engine:</strong> Append-only immutable log partitions assigning monotonic 64-bit offsets.</li>
+                <li><strong>Murmur2-Style Partition Key Router:</strong> Ensuring all events for a given <code class="font-mono text-xs">driver_id</code> land on the identical partition to guarantee strict ordering.</li>
+                <li><strong>Consumer Group Coordinator:</strong> Managing independent offsets across competing consumer groups (Dispatch, Analytics, Pricing).</li>
+                <li><strong>SQLAlchemy 2.0 Async Offset Persistence:</strong> Committing consumer progress reliably to database storage.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 15)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── streaming/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 15: Consumer Group Offset Entity (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">log_engine.py</span>    <span class="text-slate-500"># Milestone 15: Append-Only Partition Log &amp; Key Hashing</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 15: Produce, Consume &amp; Offset Commit API</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_stream_processing.py</span> <span class="text-slate-500"># Milestone 15 Partition Ordering &amp; Offset Replay Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/streaming/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Consumer Group Offset Entity: <code class="text-purple-700">src/omniroute/streaming/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Streaming - Consumer Group Offset State Model</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Integer, BigInteger, DateTime, UniqueConstraint
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ConsumerGroupOffsetModel</span>(Base):
+    <span class="text-slate-500">"""
+    CONSUMER GROUP COMMITTED OFFSET:
+    Tracks the high-water mark offset for a given consumer group, topic, and partition.
+    Ensures safe restart and replayability.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"consumer_group_offsets"</span>
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=<span class="text-rose-400">True</span>, autoincrement=<span class="text-rose-400">True</span>)
+    group_id: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    topic_name: Mapped[str] = mapped_column(String(100), nullable=<span class="text-rose-400">False</span>)
+    partition_id: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    committed_offset: Mapped[int] = mapped_column(BigInteger, default=0, nullable=<span class="text-rose-400">False</span>)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )
+
+    __table_args__ = (
+        UniqueConstraint(<span class="text-amber-300">"group_id"</span>, <span class="text-amber-300">"topic_name"</span>, <span class="text-amber-300">"partition_id"</span>, name=<span class="text-amber-300">"uq_group_topic_partition"</span>),
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/streaming/log_engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Append-Only Commit Log Engine: <code class="text-purple-700">src/omniroute/streaming/log_engine.py</code></span>
+                    <span class="text-slate-400">Partitioned Log &amp; Murmur2 Hashing</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Streaming - Multi-Partition Commit Log Engine</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, List, Optional
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LogRecord</span>:
+    offset: int
+    partition_id: int
+    key: str
+    payload: dict
+    timestamp: float
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PartitionLog</span>:
+    <span class="text-slate-500">"""A single immutable append-only commit log partition."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, partition_id: int):
+        self.partition_id = partition_id
+        self._records: List[LogRecord] = []
+        self._next_offset = 0
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">append</span>(self, key: str, payload: dict) -> LogRecord:
+        <span class="text-purple-400">async with</span> self._lock:
+            record = LogRecord(
+                offset=self._next_offset,
+                partition_id=self.partition_id,
+                key=key,
+                payload=payload,
+                timestamp=time.time()
+            )
+            self._records.append(record)
+            self._next_offset += 1
+            <span class="text-purple-400">return</span> record
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">read_from_offset</span>(self, start_offset: int, limit: int = 100) -> List[LogRecord]:
+        <span class="text-slate-500">"""Zero-copy slice equivalent: reads immutable records starting at offset."""</span>
+        <span class="text-purple-400">if</span> start_offset &gt;= len(self._records):
+            <span class="text-purple-400">return</span> []
+        <span class="text-purple-400">return</span> self._records[start_offset : start_offset + limit]
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DistributedTopic</span>:
+    <span class="text-slate-500">"""
+    DISTRIBUTED TOPIC ENGINE:
+    Partitions data across N independent append-only commit logs.
+    Uses hash(key) % num_partitions to guarantee per-key total ordering.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, name: str, num_partitions: int = 4):
+        self.name = name
+        self.num_partitions = num_partitions
+        self._partitions = [PartitionLog(i) <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(num_partitions)]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_partition_id</span>(self, key: str) -> int:
+        <span class="text-slate-500">"""Murmur2-style hash distribution: same key ALWAYS lands on same partition."""</span>
+        digest = hashlib.md5(key.encode(<span class="text-amber-300">"utf-8"</span>)).hexdigest()
+        <span class="text-purple-400">return</span> int(digest, 16) % self.num_partitions
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">publish</span>(self, key: str, payload: dict) -> LogRecord:
+        pid = self.get_partition_id(key)
+        <span class="text-purple-400">return await</span> self._partitions[pid].append(key, payload)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">consume</span>(self, partition_id: int, offset: int, limit: int = 100) -> List[LogRecord]:
+        <span class="text-purple-400">if</span> partition_id &lt; 0 <span class="text-purple-400">or</span> partition_id &gt;= self.num_partitions:
+            <span class="text-purple-400">raise</span> IndexError(<span class="text-amber-300">"Invalid partition ID"</span>)
+        <span class="text-purple-400">return</span> self._partitions[partition_id].read_from_offset(offset, limit)</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/stream_router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Streaming Ingress &amp; Consumer Controller: <code class="text-purple-700">src/omniroute/streaming/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Async Database Reporting</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.streaming.log_engine <span class="text-purple-400">import</span> DistributedTopic
+<span class="text-purple-400">from</span> omniroute.streaming.models <span class="text-purple-400">import</span> ConsumerGroupOffsetModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/stream"</span>, tags=[<span class="text-amber-300">"Streaming Commit Logs"</span>])
+telemetry_topic = DistributedTopic(name=<span class="text-amber-300">"driver.telemetry.v1"</span>, num_partitions=4)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ProduceTelemetryEventDTO</span>(BaseModel):
+    driver_id: str = Field(..., description=<span class="text-amber-300">"Partition Key guaranteeing chronological ordering"</span>)
+    lat: float
+    lng: float
+    speed: float
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CommitOffsetRequestDTO</span>(BaseModel):
+    group_id: str
+    partition_id: int
+    offset: int
+
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/produce"</span>,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Publish Telemetry Event to Partitioned Commit Log"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">produce_stream_event</span>(dto: ProduceTelemetryEventDTO):
+    record = <span class="text-purple-400">await</span> telemetry_topic.publish(
+        key=dto.driver_id,
+        payload=dto.model_dump()
+    )
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"COMMITTED_TO_LOG"</span>,
+        <span class="text-amber-300">"topic"</span>: telemetry_topic.name,
+        <span class="text-amber-300">"partition"</span>: record.partition_id,
+        <span class="text-amber-300">"offset"</span>: record.offset
+    }
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">"/consume/{group_id}/{partition_id}"</span>,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"Poll Records for Consumer Group by Partition"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">consume_stream_events</span>(
+    group_id: str,
+    partition_id: int,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_session)
+):
+    <span class="text-slate-500"># 1. Look up consumer group's committed offset</span>
+    stmt = select(ConsumerGroupOffsetModel).where(
+        ConsumerGroupOffsetModel.group_id == group_id,
+        ConsumerGroupOffsetModel.topic_name == telemetry_topic.name,
+        ConsumerGroupOffsetModel.partition_id == partition_id
+    )
+    res = <span class="text-purple-400">await</span> db.execute(stmt)
+    offset_record = res.scalar_one_or_none()
+    current_offset = offset_record.committed_offset <span class="text-purple-400">if</span> offset_record <span class="text-purple-400">else</span> 0
+
+    <span class="text-slate-500"># 2. Read non-destructively from commit log</span>
+    records = telemetry_topic.consume(partition_id=partition_id, offset=current_offset, limit=limit)
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"group_id"</span>: group_id,
+        <span class="text-amber-300">"partition_id"</span>: partition_id,
+        <span class="text-amber-300">"read_offset"</span>: current_offset,
+        <span class="text-amber-300">"records_returned"</span>: len(records),
+        <span class="text-amber-300">"records"</span>: [
+            {<span class="text-amber-300">"offset"</span>: r.offset, <span class="text-amber-300">"key"</span>: r.key, <span class="text-amber-300">"payload"</span>: r.payload} <span class="text-purple-400">for</span> r <span class="text-purple-400">in</span> records
+        ]
+    }
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/commit-offset"</span>,
+    status_code=status.HTTP_200_OK,
+    summary=<span class="text-amber-300">"Manually Commit Consumer Group Offset (At-Least-Once)"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">commit_group_offset</span>(
+    dto: CommitOffsetRequestDTO,
+    db: AsyncSession = Depends(get_session)
+):
+    stmt = select(ConsumerGroupOffsetModel).where(
+        ConsumerGroupOffsetModel.group_id == dto.group_id,
+        ConsumerGroupOffsetModel.topic_name == telemetry_topic.name,
+        ConsumerGroupOffsetModel.partition_id == dto.partition_id
+    )
+    res = <span class="text-purple-400">await</span> db.execute(stmt)
+    record = res.scalar_one_or_none()
+
+    <span class="text-purple-400">if not</span> record:
+        record = ConsumerGroupOffsetModel(
+            group_id=dto.group_id,
+            topic_name=telemetry_topic.name,
+            partition_id=dto.partition_id,
+            committed_offset=dto.offset
+        )
+        db.add(record)
+    <span class="text-purple-400">else</span>:
+        record.committed_offset = dto.offset
+
+    <span class="text-purple-400">await</span> db.commit()
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"OFFSET_COMMITTED"</span>, <span class="text-amber-300">"group"</span>: dto.group_id, <span class="text-amber-300">"offset"</span>: dto.offset}</pre>
+            </div>
+
+            <!-- File 4: tests/test_stream_processing.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Streaming Verification Battery: <code class="text-purple-700">tests/test_stream_processing.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> create_async_engine, async_sessionmaker, AsyncSession
+
+<span class="text-purple-400">from</span> omniroute.streaming.models <span class="text-purple-400">import</span> Base, ConsumerGroupOffsetModel
+<span class="text-purple-400">from</span> omniroute.streaming.log_engine <span class="text-purple-400">import</span> DistributedTopic
+
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">in_memory_db</span>():
+    engine = create_async_engine(<span class="text-amber-300">"sqlite+aiosqlite:///:memory:"</span>, echo=<span class="text-rose-400">False</span>)
+    <span class="text-purple-400">async with</span> engine.begin() <span class="text-purple-400">as</span> conn:
+        <span class="text-purple-400">await</span> conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=<span class="text-rose-400">False</span>, class_=AsyncSession)
+    <span class="text-purple-400">yield</span> session_factory
+    <span class="text-purple-400">await</span> engine.dispose()
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestStreamProcessingSuite</span>:
+    <span class="text-slate-500">"""Verifies partition hashing determinism, monotonic offsets, and consumer group offset independence."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_partition_key_guarantees_chronological_ordering</span>(self):
+        topic = DistributedTopic(name=<span class="text-amber-300">"test.telemetry"</span>, num_partitions=4)
+
+        <span class="text-slate-500"># Invariant: All updates for 'driver_449' MUST land on the exact same partition</span>
+        r1 = <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"driver_449"</span>, {<span class="text-amber-300">"seq"</span>: 1})
+        r2 = <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"driver_449"</span>, {<span class="text-amber-300">"seq"</span>: 2})
+        r3 = <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"driver_449"</span>, {<span class="text-amber-300">"seq"</span>: 3})
+
+        assert r1.partition_id == r2.partition_id == r3.partition_id
+        assert r1.offset == 0
+        assert r2.offset == 1
+        assert r3.offset == 2
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_independent_consumer_group_offsets</span>(self, in_memory_db):
+        topic = DistributedTopic(name=<span class="text-amber-300">"test.events"</span>, num_partitions=1)
+
+        <span class="text-slate-500"># Publish 3 events</span>
+        <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"k"</span>, {<span class="text-amber-300">"msg"</span>: 1})
+        <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"k"</span>, {<span class="text-amber-300">"msg"</span>: 2})
+        <span class="text-purple-400">await</span> topic.publish(<span class="text-amber-300">"k"</span>, {<span class="text-amber-300">"msg"</span>: 3})
+
+        <span class="text-slate-500"># Consumer Group 1: Fast Dispatcher reads all 3</span>
+        records_grp1 = topic.consume(partition_id=0, offset=0, limit=10)
+        assert len(records_grp1) == 3
+
+        <span class="text-slate-500"># Consumer Group 2: Slow Analytics reads only from offset 2</span>
+        records_grp2 = topic.consume(partition_id=0, offset=2, limit=10)
+        assert len(records_grp2) == 1
+        assert records_grp2[0].offset == 2
+        assert records_grp2[0].payload[<span class="text-amber-300">"msg"</span>] == 3
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_offset_persistence_and_resume</span>(self, in_memory_db):
+        <span class="text-purple

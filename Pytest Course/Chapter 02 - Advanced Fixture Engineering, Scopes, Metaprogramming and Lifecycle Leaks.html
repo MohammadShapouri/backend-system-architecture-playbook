@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Advanced Fixture Engineering, Scopes, Metaprogramming &amp; Lifecycle Leaks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 02 - Fixture DAG &amp; Double-Entry Ledger)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Dependency Injection &amp; Lifecycle Metaprogramming
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Advanced Fixture Engineering, Scopes, Metaprogramming &amp; Lifecycle Leaks
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing PyTest's dependency injection engine: The <code class="font-mono text-emerald-400">FixtureManager</code> Directed Acyclic Graph (DAG), topological evaluation order, cache eviction across the 5 lifecycle scopes, eliminating the "Mystery Guest" anti-pattern via dynamic Factory Fixtures, introspecting execution context through <code class="font-mono text-emerald-400">pytest.FixtureRequest</code>, and engineering the stateful double-entry accounting engine of <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">VaultFlow Milestone 02: Double-Entry Ledger &amp; Fixture Graphs</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established our pure, zero-I/O mathematical foundation with the immutable <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">Money</code> value object. In Milestone 02, we transition from pure stateless value objects to complex stateful domain logic: VaultFlow's <strong>Double-Entry Ledger Engine</strong>. A ledger requires accounts, directional balance tracking, postings, and atomic journal entries where sum of debits strictly equals sum of credits. We design an industrial test harness featuring layered fixture scopes, dynamic factory generators, and strict teardown invariants.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fixture DAG Resolution &amp; Topological Sort</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 5 Scopes: Cache slots &amp; Memory boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">yield</code> teardowns &amp; <code class="text-purple-300">request.addfinalizer</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Dynamic Factory Fixture Pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Context Metaprogramming with <code class="text-purple-300">FixtureRequest</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Double-Entry Balanced Ledger Domain Model</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of PyTest Fixtures: The Fixture DAG -->
+        <section id="cs-fixture-dag" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Fixture Resolution DAG &amp; Injection Mechanics</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In classical xUnit frameworks (such as Python's legacy <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">unittest</code> or JUnit 4), test setup is fundamentally bound to class inheritance via monolithic <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">setUp()</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">tearDown()</code> methods. This forces an all-or-nothing inheritance tax: subclasses inherit fixtures they do not need, and composing independent dependencies requires complex multiple inheritance hierarchies.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                PyTest implements a pure <strong>Dependency Injection (DI) Container</strong> based on a <strong>Directed Acyclic Graph (DAG)</strong>. When a test function declares arguments, PyTest's <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">FixtureManager</code> inspects function signatures via reflection (<code class="font-mono text-xs">inspect.signature</code>), maps parameter names to registered <code class="font-mono text-xs text-purple-700">FixtureDef</code> nodes, resolves dependencies recursively, and calculates an execution schedule using a <strong>topological sort</strong>:
+            </p>
+
+            <!-- Visual Flowchart: Fixture DAG & Resolution Tree (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Fixture Dependency Injection Directed Acyclic Graph (DAG)</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Topological Resolution Schedule for an Accounting Journal Test</p>
+                </div>
+
+                <div class="flex flex-col items-center gap-3 max-w-xl mx-auto">
+                    <!-- Layer 1: Session Scope Base -->
+                    <div class="w-full p-3 bg-purple-950/80 border border-purple-500 rounded-xl text-center shadow-lg space-y-0.5">
+                        <span class="text-purple-300 font-bold block text-sm">currency_registry [Scope: session]</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Instantiated ONCE &bull; Immutable master chart of ISO currencies &bull; Shared across workers</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; injects into &darr;</div>
+
+                    <!-- Layer 2: Intermediate Dependencies -->
+                    <div class="grid grid-cols-2 gap-4 w-full">
+                        <div class="p-3 bg-sky-950/80 border border-sky-500 rounded-xl text-center space-y-0.5">
+                            <span class="text-sky-300 font-bold block">source_account</span>
+                            <span class="text-[9px] text-sky-200 font-sans">[Scope: function] Asset account initialized with $10,000 USD</span>
+                        </div>
+                        <div class="p-3 bg-sky-950/80 border border-sky-500 rounded-xl text-center space-y-0.5">
+                            <span class="text-sky-300 font-bold block">destination_account</span>
+                            <span class="text-[9px] text-sky-200 font-sans">[Scope: function] Liability account initialized with $0 USD</span>
+                        </div>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; composed into &darr;</div>
+
+                    <!-- Layer 3: High-Level Orchestrator -->
+                    <div class="w-full p-3 bg-indigo-950/80 border border-indigo-500 rounded-xl text-center shadow-lg space-y-0.5">
+                        <span class="text-indigo-300 font-bold block text-sm">empty_ledger [Scope: function]</span>
+                        <span class="text-[10px] text-indigo-200 font-sans">Injects currency_registry &bull; Initializes fresh in-memory journal book</span>
+                    </div>
+
+                    <div class="text-slate-500 font-bold">&darr; delivered to test signature &darr;</div>
+
+                    <!-- Layer 4: Execution Node -->
+                    <div class="w-full p-4 bg-emerald-950/80 border border-emerald-500 rounded-2xl text-center shadow-lg space-y-1">
+                        <span class="text-emerald-300 font-bold block text-sm">test_atomic_transfer_balances_ledger(empty_ledger, source_account, destination_account)</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">
+                            PyTest resolves DAG &rarr; Instantiates nodes in strict topological order &rarr; Executes test body &rarr; Runs post-yield teardowns in reverse order!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono">&#9888; The Topological Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If Fixture A depends on Fixture B, B is guaranteed to initialize <em>before</em> A enters its body. During teardown, PyTest unwinds the call stack in strict <strong>LIFO (Last-In, First-Out)</strong> order: Fixture A cleans up <em>before</em> Fixture B executes its post-yield teardown.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The 5 Scopes & The Lifecycle Memory Tax -->
+        <section id="fixture-scopes" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The 5 Scopes: Lifecycle Cache Slots &amp; Memory Retention</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Every fixture is annotated with a scope controlling its <strong>instantiation boundary and cache lifetime</strong>. Selecting an improper scope is the single most common cause of test suite memory bloat, non-deterministic cross-test contamination, and slow execution times.
+            </p>
+
+            <!-- 5 Scopes Visual Comparison Grid -->
+            <div class="grid md:grid-cols-5 gap-3 font-mono text-xs">
+                <!-- Scope 1: Function -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-emerald-700 text-xs">function</span>
+                            <span class="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">Default</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Created anew for <em>every single test function</em>. Destroyed and garbage collected immediately after the test completes.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Max Isolation &bull; Safe for mutable state
+                    </div>
+                </div>
+
+                <!-- Scope 2: Class -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-sky-700 text-xs">class</span>
+                            <span class="text-[9px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-bold">Class-Bound</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Created once before the first test method of a <code class="font-mono">TestClass</code> runs. Teardown occurs after the final method finishes.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Shared across methods in a single class
+                    </div>
+                </div>
+
+                <!-- Scope 3: Module -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-indigo-700 text-xs">module</span>
+                            <span class="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold">File-Bound</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Created once per <code class="font-mono">test_*.py</code> file. Shared across all test functions and classes within that module.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Excellent for read-only mock servers
+                    </div>
+                </div>
+
+                <!-- Scope 4: Package -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-amber-700 text-xs">package</span>
+                            <span class="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Pkg-Bound</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Created once per directory package containing an <code class="font-mono">__init__.py</code>. Survives across multiple test modules.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        Rarely used &bull; Subsystem integration
+                    </div>
+                </div>
+
+                <!-- Scope 5: Session -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span class="font-bold text-purple-700 text-xs">session</span>
+                            <span class="text-[9px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-bold">Global Run</span>
+                        </div>
+                        <p class="text-[10px] text-slate-600 font-sans mt-2 leading-relaxed">
+                            Created once when PyTest boots. Remains resident in RAM across the entire test run until the final test concludes.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-1.5 rounded text-[9px] text-slate-500 font-sans border border-slate-200">
+                        MUST BE IMMUTABLE &bull; Zero state mutation
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deep Dive: The Scope Hierarchy Rule -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-white font-mono text-xs space-y-3 border border-slate-800 shadow-xl">
+                <div class="text-rose-400 font-bold">// The Golden Scope Hierarchy Constraint</div>
+                <p class="text-slate-300 font-sans text-xs leading-relaxed">
+                    In PyTest, <strong>a broader-scoped fixture can NEVER depend on a narrower-scoped fixture</strong>. A <code class="text-amber-300 font-mono">session</code> fixture cannot request a <code class="text-emerald-300 font-mono">function</code> fixture. If this were permitted, the session fixture would either hold stale references to destroyed objects or force the function fixture to survive beyond its intended lifecycle, causing catastrophic memory leaks:
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[11px] leading-relaxed">
+                    ScopeMismatch: You tried to access the function scoped fixture 'db_connection' with a session scoped request object...
+                </div>
+                <p class="text-emerald-400 font-sans text-xs">
+                    &check; Legal: <code class="text-white">function &rarr; class &rarr; module &rarr; package &rarr; session</code> (Narrow depends on Broad).
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Two-Phase Lifecycles: yield vs. request.addfinalizer -->
+        <section id="lifecycles-teardown" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Two-Phase Lifecycles: <code>yield</code> vs. <code>request.addfinalizer</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                PyTest fixtures manage setup and teardown within a single cohesive generator function via Python's <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">yield</code> keyword. However, in enterprise environments where fixtures allocate external OS resources (file descriptors, TCP sockets, temporary schemas), relying solely on standard <code class="font-mono text-xs">yield</code> can lead to <strong>leaked resources if an error occurs during the setup phase</strong>.
+            </p>
+
+            <!-- Yield vs Finalizer Comparison -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Standard Yield -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-sky-600 uppercase tracking-widest block">Standard Pattern</span>
+                    <h3 class="text-base font-bold text-slate-900">1. Generator Yield</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Code before <code class="font-mono text-purple-700 font-bold">yield</code> is the setup phase; code after <code class="font-mono text-purple-700 font-bold">yield</code> is teardown:
+                    </p>
+                    <pre class="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">managed_resource</span>():
+    res = allocate_resource()  <span class="text-slate-500"># Setup</span>
+    <span class="text-purple-400">yield</span> res                  <span class="text-slate-500"># Injected into test</span>
+    res.cleanup()              <span class="text-slate-500"># Teardown</span></pre>
+                    <p class="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg font-sans border border-amber-200">
+                        <strong>Vulnerability:</strong> If an exception occurs inside <code class="font-mono">allocate_resource()</code> <em>before</em> reaching the yield statement, the post-yield cleanup code <strong>never executes</strong>! Any partially allocated socket is orphaned.
+                    </p>
+                </div>
+
+                <!-- Finalizer Pattern -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-emerald-600 uppercase tracking-widest block">Defensive Staff Pattern</span>
+                    <h3 class="text-base font-bold text-slate-900">2. request.addfinalizer Callback</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Registers cleanup callbacks immediately upon acquiring individual handles:
+                    </p>
+                    <pre class="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">bulletproof_resource</span>(request):
+    res = allocate_first()
+    <span class="text-slate-500"># Registered immediately! Executes even if step 2 crashes</span>
+    request.addfinalizer(res.cleanup)
+    
+    res.allocate_second()
+    <span class="text-purple-400">return</span> res</pre>
+                    <p class="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg font-sans border border-emerald-200">
+                        <strong>Guarantee:</strong> Registered finalizers are guaranteed to execute even if subsequent lines within the fixture itself crash with an unhandled exception.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. The Dynamic Factory Fixture Pattern -->
+        <section id="factory-fixtures" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Dynamic Factory Fixture Pattern (Defeating the Mystery Guest)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In complex financial applications, tests frequently require domain entities with slightly varied parameters: an account with $50.00 USD, an account with negative balance, a frozen Japanese Yen account.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                A junior engineer's instinct is to create dozens of distinct static fixtures: <code class="font-mono text-xs text-slate-800">funded_usd_account</code>, <code class="font-mono text-xs text-slate-800">empty_eur_account</code>, <code class="font-mono text-xs text-slate-800">frozen_jpy_account</code>. This creates fixture bloat and triggers the <strong>Mystery Guest Anti-Pattern</strong>—where the reader must jump across multiple files to understand what balance or state an entity holds.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The enterprise solution is the <strong>Factory Fixture Pattern</strong>: a fixture that returns an internal generator callable configured with production-grade defaults:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// The Canonical Factory Fixture Pattern:</div>
+                <pre>
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">account_factory</span>():
+    <span class="text-slate-500">"""
+    FACTORY FIXTURE: Returns a dynamic generator function.
+    Encapsulates defaults while permitting surgical test-specific overrides.
+    """</span>
+    spawned_accounts = []
+
+    <span class="text-purple-400">def</span> <span class="text-emerald-400 font-bold">_create_account</span>(
+        account_number: Optional[str] = <span class="text-rose-400">None</span>,
+        account_type: AccountType = AccountType.ASSET,
+        initial_balance: Optional[Decimal] = <span class="text-rose-400">None</span>,
+        currency: str = <span class="text-amber-300">"USD"</span>,
+        is_active: bool = <span class="text-rose-400">True</span>
+    ) -> Account:
+        acc = Account(
+            account_number=account_number <span class="text-purple-400">or</span> f<span class="text-amber-300">"ACC-&#123;uuid.uuid4().hex[:8].upper()&#125;"</span>,
+            account_type=account_type,
+            balance=Money(initial_balance <span class="text-purple-400">if</span> initial_balance <span class="text-purple-400">is not None else</span> Decimal(<span class="text-amber-300">"0.0000"</span>), currency),
+            is_active=is_active
+        )
+        spawned_accounts.append(acc)
+        <span class="text-purple-400">return</span> acc
+
+    <span class="text-purple-400">yield</span> _create_account
+
+    <span class="text-slate-500"># Centralized teardown: Verify no accounts remain in un-reconciled states</span>
+    spawned_accounts.clear()</pre>
+            </div>
+        </section>
+
+        <!-- 5. Metaprogramming with FixtureRequest -->
+        <section id="fixture-request-metaprogramming" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Context Metaprogramming via <code>pytest.FixtureRequest</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                PyTest exposes a built-in fixture named <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">request</code> (an instance of <code class="font-mono text-xs text-slate-800">pytest.FixtureRequest</code>). The request object provides dynamic reflection into the test currently invoking the fixture:
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6 font-mono text-xs">
+                <!-- Marker Inspection -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-emerald-700 font-bold block text-sm">1. Marker Inspection</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Read metadata attached to the test function via custom decorators:
+                    </p>
+                    <div class="bg-slate-900 text-emerald-300 p-2.5 rounded-lg text-[10px] overflow-x-auto">
+                        marker = request.node.get_closest_marker("initial_funds")<br>
+                        funds = marker.args[0] if marker else 0
+                    </div>
+                </div>
+
+                <!-- Parameter Inspection -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-sky-700 font-bold block text-sm">2. Indirect Parametrization</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Access raw parameter objects when fixtures are parameterized indirectly:
+                    </p>
+                    <div class="bg-slate-900 text-sky-300 p-2.5 rounded-lg text-[10px] overflow-x-auto">
+                        # Accesses parameter passed via @pytest.mark.parametrize<br>
+                        currency = request.param
+                    </div>
+                </div>
+
+                <!-- Node Diagnostics -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-purple-700 font-bold block text-sm">3. Dynamic Introspection</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Access test function names, module filepaths, and class definitions:
+                    </p>
+                    <div class="bg-slate-900 text-purple-300 p-2.5 rounded-lg text-[10px] overflow-x-auto">
+                        test_name = request.node.name<br>
+                        calling_module = request.module.__name__
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Project Implementation: VaultFlow Milestone 02 -->
+        <section id="vaultflow-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 02: Double-Entry Ledger Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct the stateful core of <strong>VaultFlow</strong>: the double-entry accounting engine in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">src/vaultflow/core/ledger.py</code>, coupled with an enterprise test harness in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">tests/conftest.py</code> and comprehensive unit suites in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">tests/unit/test_ledger.py</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 02)</div>
+                <div>vaultflow/</div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── money.py               <span class="text-slate-500"># Milestone 01 Value Object</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">ledger.py</span>              <span class="text-slate-500"># Milestone 02: Account, Posting, JournalEntry, Ledger</span></div>
+                <div>└── tests/</div>
+                <div>    ├── <span class="text-emerald-300 font-bold">conftest.py</span>                 <span class="text-slate-500"># Hierarchical Fixtures, Session Registry, account_factory</span></div>
+                <div>    └── unit/</div>
+                <div>        ├── test_money.py          <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_ledger.py</span>         <span class="text-slate-500"># Milestone 02: Double-entry balancing &amp; factory tests</span></div>
+            </div>
+
+            <!-- File 1: src/vaultflow/core/ledger.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Double-Entry Accounting Core: <code class="text-purple-700">src/vaultflow/core/ledger.py</code></span>
+                    <span class="text-slate-400">Stateful Domain Logic</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Core Domain - Double-Entry Ledger Engine (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass, field
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List, Dict, Optional
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money, FinancialDomainError, CurrencyMismatchError
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AccountType</span>(str, Enum):
+    ASSET = <span class="text-amber-300">"ASSET"</span>          <span class="text-slate-500"># Normal Debit balance (e.g., Vault Cash, Bank Reserves)</span>
+    LIABILITY = <span class="text-amber-300">"LIABILITY"</span>  <span class="text-slate-500"># Normal Credit balance (e.g., Customer Deposits)</span>
+    EQUITY = <span class="text-amber-300">"EQUITY"</span>        <span class="text-slate-500"># Normal Credit balance (e.g., Retained Earnings)</span>
+    REVENUE = <span class="text-amber-300">"REVENUE"</span>      <span class="text-slate-500"># Normal Credit balance (e.g., Clearing Fees)</span>
+    EXPENSE = <span class="text-amber-300">"EXPENSE"</span>      <span class="text-slate-500"># Normal Debit balance (e.g., Network Fees)</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">UnbalancedJournalError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when journal debits do not equal journal credits."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, total_debits: Money, total_credits: Money):
+        self.total_debits = total_debits
+        self.total_credits = total_credits
+        super().__init__(
+            f<span class="text-amber-300">"Journal Entry unbalanced! Debits: &#123;total_debits.amount&#125; &#123;total_debits.currency&#125; != "</span>
+            f<span class="text-amber-300">"Credits: &#123;total_credits.amount&#125; &#123;total_credits.currency&#125;"</span>
+        )
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">InactiveAccountError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when operations are attempted against frozen/closed accounts."""</span>
+    pass
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Account</span>:
+    account_number: str
+    account_type: AccountType
+    balance: Money
+    is_active: bool = <span class="text-rose-400">True</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">apply_posting</span>(self, posting_amount: Money, is_debit: bool) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if not</span> self.is_active:
+            <span class="text-purple-400">raise</span> InactiveAccountError(f<span class="text-amber-300">"Account &#123;self.account_number&#125; is inactive/frozen."</span>)
+        
+        <span class="text-slate-500"># Directional balance accounting rules:</span>
+        <span class="text-slate-500"># ASSET / EXPENSE: Debits increase (+), Credits decrease (-)</span>
+        <span class="text-slate-500"># LIABILITY / EQUITY / REVENUE: Credits increase (+), Debits decrease (-)</span>
+        <span class="text-purple-400">if</span> self.account_type <span class="text-purple-400">in</span> (AccountType.ASSET, AccountType.EXPENSE):
+            <span class="text-purple-400">if</span> is_debit:
+                self.balance = self.balance + posting_amount
+            <span class="text-purple-400">else</span>:
+                self.balance = self.balance - posting_amount
+        <span class="text-purple-400">else</span>:
+            <span class="text-purple-400">if</span> is_debit:
+                self.balance = self.balance - posting_amount
+            <span class="text-purple-400">else</span>:
+                self.balance = self.balance + posting_amount
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Posting</span>:
+    account: Account
+    amount: Money
+    is_debit: bool
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">JournalEntry</span>:
+    reference_id: str
+    postings: List[Posting] = field(default_factory=list)
+    is_posted: bool = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validate_balance</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if not</span> self.postings:
+            <span class="text-purple-400">raise</span> FinancialDomainError(<span class="text-amber-300">"Cannot balance an empty journal entry."</span>)
+
+        first_currency = self.postings[0].amount.currency
+        total_debits = Money(Decimal(<span class="text-amber-300">"0.0000"</span>), first_currency)
+        total_credits = Money(Decimal(<span class="text-amber-300">"0.0000"</span>), first_currency)
+
+        <span class="text-purple-400">for</span> p <span class="text-purple-400">in</span> self.postings:
+            <span class="text-purple-400">if</span> p.amount.currency != first_currency:
+                <span class="text-purple-400">raise</span> CurrencyMismatchError(first_currency, p.amount.currency)
+            <span class="text-purple-400">if</span> p.is_debit:
+                total_debits = total_debits + p.amount
+            <span class="text-purple-400">else</span>:
+                total_credits = total_credits + p.amount
+
+        <span class="text-purple-400">if</span> total_debits != total_credits:
+            <span class="text-purple-400">raise</span> UnbalancedJournalError(total_debits, total_credits)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Ledger</span>:
+    <span class="text-slate-500">"""Coordinates account management and atomic double-entry journal postings."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, supported_currencies: set[str]):
+        self.supported_currencies = supported_currencies
+        self.accounts: Dict[str, Account] = {}
+        self.journal_entries: List[JournalEntry] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_account</span>(self, account: Account) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> account.balance.currency <span class="text-purple-400">not in</span> self.supported_currencies:
+            <span class="text-purple-400">raise</span> FinancialDomainError(f<span class="text-amber-300">"Currency &#123;account.balance.currency&#125; not supported by ledger."</span>)
+        <span class="text-purple-400">if</span> account.account_number <span class="text-purple-400">in</span> self.accounts:
+            <span class="text-purple-400">raise</span> FinancialDomainError(f<span class="text-amber-300">"Account &#123;account.account_number&#125; already registered."</span>)
+        self.accounts[account.account_number] = account
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">commit_entry</span>(self, entry: JournalEntry) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># 1. Enforce mathematical balance invariant</span>
+        entry.validate_balance()
+
+        <span class="text-slate-500"># 2. Mutate balances atomically</span>
+        <span class="text-purple-400">for</span> posting <span class="text-purple-400">in</span> entry.postings:
+            posting.account.apply_posting(posting.amount, posting.is_debit)
+
+        entry.is_posted = <span class="text-rose-400">True</span>
+        self.journal_entries.append(entry)</pre>
+            </div>
+
+            <!-- File 2: tests/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Hierarchical Fixtures &amp; Dynamic Factories: <code class="text-purple-700">tests/conftest.py</code></span>
+                    <span class="text-slate-400">Dependency Injection Graph</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Harness - Root Fixtures &amp; Factory Providers (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, Callable, Generator, Set
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money
+<span class="text-purple-400">from</span> vaultflow.core.ledger <span class="text-purple-400">import</span> Account, AccountType, Ledger
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># SESSION SCOPE: Instantiated ONCE across the entire test session. Must be IMMUTABLE.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">currency_registry</span>() -> Set[str]:
+    <span class="text-slate-500">"""Immutable master registry of currencies sanctioned for clearing."""</span>
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"USD"</span>, <span class="text-amber-300">"EUR"</span>, <span class="text-amber-300">"GBP"</span>, <span class="text-amber-300">"JPY"</span>, <span class="text-amber-300">"CHF"</span>}
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># FUNCTION SCOPE: Fresh, isolated ledger state per test.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"function"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">empty_ledger</span>(currency_registry: Set[str]) -> Generator[Ledger, <span class="text-rose-400">None</span>, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""Yields a blank ledger and asserts zero memory leaks upon teardown."""</span>
+    ledger = Ledger(supported_currencies=currency_registry)
+    <span class="text-purple-400">yield</span> ledger
+    <span class="text-slate-500"># Teardown assertion: verify all ledger books finalize cleanly</span>
+    ledger.accounts.clear()
+    ledger.journal_entries.clear()
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># FACTORY FIXTURE PATTERN: Dynamic generator eliminating static fixture bloat.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"function"</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">account_factory</span>(request: pytest.FixtureRequest) -> Callable[..., Account]:
+    <span class="text-slate-500">"""
+    Generates customized Account entities on demand with sensible production defaults.
+    Uses request.addfinalizer for bulletproof cleanup.
+    """</span>
+    created_accounts: list[Account] = []
+
+    <span class="text-purple-400">def</span> <span class="text-emerald-400 font-bold">_builder</span>(
+        account_number: Optional[str] = <span class="text-rose-400">None</span>,
+        account_type: AccountType = AccountType.ASSET,
+        balance: Optional[Decimal] = <span class="text-rose-400">None</span>,
+        currency: str = <span class="text-amber-300">"USD"</span>,
+        is_active: bool = <span class="text-rose-400">True</span>
+    ) -> Account:
+        acc = Account(
+            account_number=account_number <span class="text-purple-400">or</span> f<span class="text-amber-300">"ACC-&#123;uuid.uuid4().hex[:8].upper()&#125;"</span>,
+            account_type=account_type,
+            balance=Money(balance <span class="text-purple-400">if</span> balance <span class="text-purple-400">is not None else</span> Decimal(<span class="text-amber-300">"0.0000"</span>), currency),
+            is_active=is_active
+        )
+        created_accounts.append(acc)
+        <span class="text-purple-400">return</span> acc
+
+    <span class="text-purple-400">def</span> <span class="text-rose-400 font-bold">_cleanup</span>():
+        created_accounts.clear()
+
+    <span class="text-slate-500"># Defensive finalizer registered on the request context</span>
+    request.addfinalizer(_cleanup)
+    <span class="text-purple-400">return</span> _builder</pre>
+            </div>
+
+            <!-- File 3: tests/unit/test_ledger.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Ledger Test Battery: <code class="text-purple-700">tests/unit/test_ledger.py</code></span>
+                    <span class="text-slate-400">Testing State, Balance Conservation &amp; Errors</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - Double-Entry Ledger Verification (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money, CurrencyMismatchError
+<span class="text-purple-400">from</span> vaultflow.core.ledger import (
+    AccountType, 
+    Posting, 
+    JournalEntry, 
+    UnbalancedJournalError, 
+    InactiveAccountError
+)
+
+<span class="text-purple-400">@pytest.mark.unit</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestDoubleEntryLedger</span>:
+    <span class="text-slate-500">"""Verifies atomic journal postings and double-entry mathematical invariants."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_balanced_transfer_updates_account_balances_atomically</span>(
+        self, 
+        empty_ledger, 
+        account_factory
+    ):
+        <span class="text-slate-500"># 1. Arrange: Use factory fixtures to construct test state with zero mystery guests</span>
+        vault_cash = account_factory(
+            account_number=<span class="text-amber-300">"ACC-VAULT-01"</span>,
+            account_type=AccountType.ASSET,
+            balance=Decimal(<span class="text-amber-300">"10000.0000"</span>),
+            currency=<span class="text-amber-300">"USD"</span>
+        )
+        customer_deposit = account_factory(
+            account_number=<span class="text-amber-300">"ACC-CUST-99"</span>,
+            account_type=AccountType.LIABILITY,
+            balance=Decimal(<span class="text-amber-300">"0.0000"</span>),
+            currency=<span class="text-amber-300">"USD"</span>
+        )
+        empty_ledger.register_account(vault_cash)
+        empty_ledger.register_account(customer_deposit)
+
+        transfer_amount = Money(Decimal(<span class="text-amber-300">"2500.0000"</span>), <span class="text-amber-300">"USD"</span>)
+
+        <span class="text-slate-500"># 2. Act: Construct balanced multi-leg journal entry</span>
+        entry = JournalEntry(
+            reference_id=<span class="text-amber-300">"TX-SETTLE-001"</span>,
+            postings=[
+                Posting(account=vault_cash, amount=transfer_amount, is_debit=<span class="text-rose-400">True</span>),
+                Posting(account=customer_deposit, amount=transfer_amount, is_debit=<span class="text-rose-400">False</span>),
+            ]
+        )
+        empty_ledger.commit_entry(entry)
+
+        <span class="text-slate-500"># 3. Assert: Verify directional account mutations</span>
+        assert vault_cash.balance == Money(Decimal(<span class="text-amber-300">"12500.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        assert customer_deposit.balance == Money(Decimal(<span class="text-amber-300">"2500.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        assert entry.is_posted <span class="text-purple-400">is True</span>
+        assert len(empty_ledger.journal_entries) == 1
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_unbalanced_journal_entry_raises_deterministic_exception</span>(
+        self, 
+        empty_ledger, 
+        account_factory
+    ):
+        acc_a = account_factory(balance=Decimal(<span class="text-amber-300">"100.0000"</span>))
+        acc_b = account_factory(balance=Decimal(<span class="text-amber-300">"100.0000"</span>))
+
+        <span class="text-slate-500"># Unbalanced: $50 Debit vs $40 Credit</span>
+        entry = JournalEntry(
+            reference_id=<span class="text-amber-300">"TX-UNBALANCED-01"</span>,
+            postings=[
+                Posting(account=acc_a, amount=Money(Decimal(<span class="text-amber-300">"50.0000"</span>), <span class="text-amber-300">"USD"</span>), is_debit=<span class="text-rose-400">True</span>),
+                Posting(account=acc_b, amount=Money(Decimal(<span class="text-amber-300">"40.0000"</span>), <span class="text-amber-300">"USD"</span>), is_debit=<span class="text-rose-400">False</span>),
+            ]
+        )
+
+        <span class="text-purple-400">with</span> pytest.raises(UnbalancedJournalError) <span class="text-purple-400">as</span> exc_info:
+            empty_ledger.commit_entry(entry)
+
+        assert exc_info.value.total_debits == Money(Decimal(<span class="text-amber-300">"50.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        assert exc_info.value.total_credits == Money(Decimal(<span class="text-amber-300">"40.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        assert len(empty_ledger.journal_entries) == 0
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_posting_against_inactive_account_fails_atomically</span>(
+        self, 
+        empty_ledger, 
+        account_factory
+    ):
+        active_acc = account_factory(balance=Decimal(<span class="text-amber-300">"500.0000"</span>))
+        frozen_acc = account_factory(balance=Decimal(<span class="text-amber-300">"500.0000"</span>), is_active=<span class="text-rose-400">False</span>)
+
+        entry = JournalEntry(
+            reference_id=<span class="text-amber-300">"TX-FROZEN-FAIL"</span>,
+            postings=[
+                Posting(account=active_acc, amount=Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>), is_debit=<span class="text-rose-400">True</span>),
+                Posting(account=frozen_acc, amount=Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>), is_debit=<span class="text-rose-400">False</span>),
+            ]
+        )
+
+        <span class="text-purple-400">with</span> pytest.raises(InactiveAccountError, match=<span class="text-amber-300">r"is inactive/frozen"</span>):
+            empty_ledger.commit_entry(entry)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_cross_currency_postings_in_single_entry_rejected</span>(
+        self, 
+        account_factory
+    ):
+        usd_acc = account_factory(currency=<span class="text-amber-300">"USD"</span>)
+        eur_acc = account_factory(currency=<span class="text-amber-300">"EUR"</span>)
+
+        entry = JournalEntry(
+            reference_id=<span class="text-amber-300">"TX-CROSS-REJECT"</span>,
+            postings=[
+                Posting(account=usd_acc, amount=Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>), is_debit=<span class="text-rose-400">True</span>),
+                Posting(account=eur_acc, amount=Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"EUR"</span>), is_debit=<span class="text-rose-400">False</span>),
+            ]
+        )
+
+        <span class="text-purple-400">with</span> pytest.raises(CurrencyMismatchError):
+            entry.validate_balance()</pre>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Mutable Session Fixture Poisoning" Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Annotating a mutable ledger with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">@pytest.fixture(scope="session")</code> and calling <code class="font-mono text-rose-900">ledger.register_account()</code> inside test functions.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes catastrophic test flakiness:</strong> When Test 1 commits a transaction, the session-scoped ledger retains that mutation in memory. When Test 4 runs, the account already holds altered balances! Tests pass when run in isolation, but fail intermittently when run in randomized batches or parallel workers (`pytest-xdist`).
+                        <strong>Rule:</strong> Session fixtures must be 100% read-only and immutable!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Mystery Guest" Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing fixtures that invisibly instantiate 15 database records in the background without the calling test referencing them explicitly.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys maintainability:</strong> When an assertion fails with <code class="font-mono">assert user.balance == 50</code>, the engineer reviewing the test has no idea where the initial balance came from because it was set inside a hidden fixture 4 directories away. Use <strong>Factory Fixtures</strong> to make parameters visible inside the test function itself.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to introspect the fixture dependency graph, inspect execution durations, and verify that all double-entry ledger invariants pass cleanly:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Introspect Setup Plan -->
+                <div>
+                    <span class="text-slate-500"># 1. Print PyTest's topological fixture execution plan without running tests:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_ledger.py --setup-plan
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe output: PyTest shows exact setup/teardown order for session fixtures vs function fixtures.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run with Fixture Execution Show -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute suite with live fixture setup/teardown tracing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_ledger.py --setup-show -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice <code class="text-slate-400">SETUP S currency_registry</code> runs once, while <code class="text-slate-400">SETUP F empty_ledger</code> runs per test!
+                    </span>
+                </div>
+
+                <!-- Step 3: Profile Execution Durations -->
+                <div>
+                    <span class="text-slate-500"># 3. Profile fixture overhead to verify sub-millisecond execution:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest -m unit --durations=5
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Ensures zero I/O leakage: all tests execute in under 0.05 seconds total.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: High-Dimensional Combinatorial Parameterization &amp; Dynamic Test Generation</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering multi-tiered matrix tests: Stacking <code class="font-mono">@pytest.mark.parametrize</code>, dynamic Cartesian product generation, indirect fixture parametrization, and stress-testing VaultFlow's foreign exchange spread engine.</p>
+            </div>
+            <a href="Chapter 03 - High-Dimensional Combinatorial Parameterization and Dynamic Test Generation.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

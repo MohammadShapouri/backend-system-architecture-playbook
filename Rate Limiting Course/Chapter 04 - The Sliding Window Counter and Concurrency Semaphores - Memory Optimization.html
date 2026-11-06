@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: The Sliding Window Counter &amp; Concurrency Semaphores: Memory Optimization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Distributed Rate Limiting &amp; Traffic Shaping Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">SentinelFlow (Milestone 04 - Sliding Counter &amp; Concurrency Semaphores)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Memory Optimization &amp; In-Flight Limiting
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                The Sliding Window Counter &amp; Concurrency Semaphores: Memory Optimization
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Overcoming unbounded RAM consumption: Deconstructing Cloudflare's weighted sub-window approximation algorithm, contrasting time-based rate limiters with in-flight concurrency semaphores, defending against connection pool starvation during slow database queries and AI model inference, and implementing the dual-control throttling engines of <strong>SentinelFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">SentinelFlow Milestone 04: Hybrid Counters &amp; In-Flight Semaphores</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 03, we proved that the Sliding Window Log guarantees perfect mathematical accuracy but imposes an <code class="font-mono text-rose-300 bg-slate-950 px-1.5 py-0.5 rounded">O(N)</code> memory penalty that exhausts server RAM at scale. Furthermore, rate limiting by requests-per-minute alone leaves a critical vulnerability: if an enterprise user fires 100 permitted requests concurrently that each invoke a 10-second report export, your backend worker threads and database connection pools crash from thread exhaustion. In Milestone 04, we implement the <strong>Sliding Window Counter algorithm</strong> ($O(1)$ memory, sub-0.05% error) and engineer an <strong>Async Concurrency Semaphore</strong> that caps simultaneous in-flight requests using automatic TTL lease management.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Linear Interpolation Sliding Approximation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fixed Window vs. Sliding Log vs. Sliding Counter</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Concurrency Limiting vs. Velocity Rate Limiting</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> In-Flight Async Semaphore with Deadlock Leases</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Dual-Control Guard: Velocity + Concurrency</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PyTest Accuracy Benchmarks &amp; Concurrency Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Sliding Window Counter -->
+        <section id="cs-sliding-counter" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Sub-Window Weighting &amp; Constant Memory Scaling</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When designing rate-limiting infrastructure for millions of tenants, engineers face a classic computer science dilemma: <strong>Precision vs. Resource Footprint</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                As demonstrated in Chapter 01, the Sliding Window Log stores an individual timestamp for every single request. If 500,000 active clients each execute 1,000 requests per hour, your storage engine must index <strong>500,000,000 timestamp elements in memory</strong>. Under high load, this causes out-of-memory (OOM) crashes.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To solve this, Cloudflare and major content delivery networks pioneered the <strong>Sliding Window Counter algorithm</strong>. It uses <strong>linear interpolation</strong> across rolling fixed-time blocks, estimating request volume with mathematical precision while requiring exactly <strong>two numbers per client</strong> ($O(1)$ memory):
+            </p>
+
+            <!-- Mathematical Interpolation Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Sliding Window Counter Linear Interpolation Formula</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Weighting Previous Window Overlap Against Current Window Volume</p>
+                </div>
+
+                <!-- Equation Container -->
+                <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center space-y-2">
+                    <span class="text-slate-400 text-[11px] block">Standard Formula:</span>
+                    <div class="text-sm md:text-base text-emerald-300 font-bold tracking-wider">
+                        Count = Current_Window_Requests + (Previous_Window_Requests &times; Overlap_Percentage)
+                    </div>
+                    <div class="text-[10px] text-sky-300">
+                        Overlap_Percentage = (Window_Size - Elapsed_Time_In_Current_Window) / Window_Size
+                    </div>
+                </div>
+
+                <!-- Visual Timeline Scenario -->
+                <div class="p-5 bg-slate-950 border border-slate-800 rounded-2xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-sky-300 font-bold text-sm">Concrete Interpolation Scenario</span>
+                        <span class="text-[10px] bg-sky-950 text-sky-400 px-2 py-0.5 rounded font-bold">Window Size: 60s &bull; Limit: 100 req</span>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4 text-[11px]">
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                            <span class="text-purple-300 font-bold block">Previous Minute [00:00 - 01:00]:</span>
+                            <div class="text-slate-300">&bull; Total Requests Recorded = <strong class="text-white">80 requests</strong></div>
+                            <div class="text-slate-500 text-[10px]">Stays stored in cache as static integer</div>
+                        </div>
+
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                            <span class="text-emerald-300 font-bold block">Current Minute [01:00 - 02:00]:</span>
+                            <div class="text-slate-300">&bull; Current Timestamp = <strong>01:18 (18 seconds elapsed)</strong></div>
+                            <div class="text-slate-300">&bull; Requests in Current Window = <strong class="text-white">30 requests</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Step by step math -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-1 text-[10px] text-slate-300">
+                        <div class="text-amber-300 font-bold">// Step-by-Step Mathematical Calculation at 01:18:</div>
+                        <div>1. Elapsed time in current window = 18 seconds (30% through the window)</div>
+                        <div>2. Remaining overlap from previous window = (60 - 18) / 60 = <strong>42 / 60 = 0.70 (70% overlap)</strong></div>
+                        <div>3. Weighted previous requests = 80 &times; 0.70 = <strong>56 requests</strong></div>
+                        <div>4. Estimated rolling requests = 30 (current) + 56 (weighted previous) = <strong class="text-emerald-400 text-xs">86 requests</strong></div>
+                        <div class="text-emerald-300 font-bold">&rarr; 86 &le; 100: REQUEST ALLOWED! Exactly 14 units of quota remaining.</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Error Bound Metrology:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Cloudflare’s production benchmark analysis proves that under real-world non-uniform traffic distributions, the estimation error of the Sliding Window Counter is mathematically bounded under <strong>0.05%</strong>. By assuming the previous window's traffic was evenly distributed, we eliminate the $2\times$ boundary burst bug of Fixed Window while reducing Redis storage requirements by <strong>over 99.8% compared to Sliding Window Log</strong>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Rate Limiting vs. Concurrency Limiting: The Systems Distinction -->
+        <section id="concurrency-vs-rate" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Velocity vs. In-Flight Traffic: Rate Limiting vs. Concurrency Semaphores</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many backend teams suffer catastrophic server outages despite having active rate limiters because they treat <strong>Rate Limiting</strong> and <strong>Concurrency Limiting</strong> as synonymous. They govern two completely different physical constraints of a web server:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Velocity Rate Limiter -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-mono font-bold text-sky-700 text-sm">1. Velocity Rate Limiter</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Requests Over Time</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Measures the <strong>frequency or velocity</strong> of incoming requests across a calendar or rolling window (e.g., maximum 100 requests per 1 minute).
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Protects:</strong> API credit allocations, payment billing quotas, and overall network bandwidth.</li>
+                        <li><strong>Measurement Units:</strong> Requests per Second (RPS) or Requests per Minute (RPM).</li>
+                        <li><strong>Blind Spot:</strong> Completely unaware of request execution duration! Does not care if a request finishes in 2ms or 15 seconds.</li>
+                    </ul>
+                </div>
+
+                <!-- Concurrency Limiter -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-mono font-bold text-purple-700 text-sm">2. Concurrency Semaphore</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Simultaneous In-Flight Requests</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Measures the <strong>number of requests actively executing at this exact microsecond</strong> on the server (e.g., maximum 5 simultaneous requests per tenant).
+                    </p>
+                    <ul class="text-[11px] text-slate-600 space-y-1.5 font-sans list-disc pl-4">
+                        <li><strong>Protects:</strong> Operating system worker threads, CPU registers, database connection pool sockets, and external AI GPU resources.</li>
+                        <li><strong>Measurement Units:</strong> Active in-flight connections (Lease tokens).</li>
+                        <li><strong>Action:</strong> Decrements available slots upon request entry, releases slots upon response completion.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Catastrophic Failure Mode Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white font-mono text-xs shadow-xl space-y-6">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Concurrency Starvation Trap: Why Rate Limiters Alone Cannot Prevent Outages
+                </div>
+
+                <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 font-sans text-xs text-slate-300 leading-relaxed">
+                    <p>
+                        Consider a heavy reporting endpoint: <code class="text-emerald-400 font-mono">POST /api/v1/analytics/export</code>. 
+                        Each execution consumes 1 database connection socket and runs for <strong>8 full seconds</strong>.
+                        The tenant is assigned a generous rate limit of <strong>60 requests per minute</strong>.
+                    </p>
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 font-mono text-rose-300 text-[11px] space-y-1">
+                        <div>T=0s: A malicious user or automated bot fires 50 requests simultaneously.</div>
+                        <div>Velocity Rate Limiter Check: 50 &le; 60 requests per minute &rarr; <span class="text-emerald-400 font-bold">ALLOWED!</span></div>
+                        <div>FastAPI / SQLAlchemy Engine: 50 worker tasks execute simultaneously...</div>
+                        <div class="text-rose-400 font-bold">&rarr; SQLAlchemy QueuePool Capacity (20 connections) IS COMPLETELY SATURATED!</div>
+                        <div class="text-rose-400 font-bold">&rarr; All other users across the entire company receive 500 Internal Server Errors!</div>
+                    </div>
+                    <p class="text-emerald-300 font-bold">
+                        &check; The Dual-Control Architecture: Pair a Velocity Rate Limiter (60 req/min) with a Concurrency Semaphore (max 3 in-flight requests per user). Request #4 is rejected immediately with HTTP 429, preserving database sockets!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. In-Flight Semaphore Lifecycle: Lease Tracking & Deadlock Protection -->
+        <section id="semaphore-leases" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Concurrency Mechanics: Asynchronous Leases &amp; Deadlock Prevention</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Implementing a concurrency limiter in an asynchronous web framework requires managing an in-flight **lease lifecycle**. When a request arrives, the server checks out a lease; when the request finishes, the server releases the lease:
+            </p>
+
+            <!-- Lease Lifecycle Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Concurrency Semaphore Lease State Machine
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Request Ingest -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">1. Acquire Lease</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Check in-flight count &lt; max_concurrency</span>
+                    </div>
+
+                    <div class="text-purple-600 font-bold">&rarr; issue lease &rarr;</div>
+
+                    <!-- Step 2: Processing with Lease -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-900 font-bold block">2. In-Flight Execution</span>
+                        <span class="text-[10px] text-purple-700 font-sans">Execute heavy route with lease active &bull; Lease carries a safety TTL!</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; release lease &rarr;</div>
+
+                    <!-- Step 3: Guaranteed Release -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-900 font-bold block">3. Release in Finally</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">Decrement in-flight counter even if route crashes</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 text-slate-100 p-4 rounded-xl leading-relaxed border border-slate-800 space-y-1">
+                    <span class="text-amber-400 font-bold">// The Crash Deadlock Threat: Why Leases Must Have Timeouts</span>
+                    <p class="text-slate-300 font-sans text-xs">
+                        What happens if an asynchronous worker container receives a <code class="text-rose-400 font-mono">SIGKILL</code>, experiences an unhandled segmentation fault, or has its network severed mid-execution? 
+                    </p>
+                    <p class="text-slate-300 font-sans text-xs">
+                        If your semaphore increments a counter in Redis without an expiration, the in-flight counter <strong>never decrements</strong>. Over time, leaked leases accumulate until the client is permanently locked out of their API quota! All concurrency leases must carry an automated <strong>Lease Expiration Timeout (TTL)</strong> so orphaned tokens expire naturally if the holder dies.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: SentinelFlow Milestone 04 -->
+        <section id="sentinelflow-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">SentinelFlow Milestone 04: Sliding Counter &amp; Concurrency Limiter Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 04 for <strong>SentinelFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/sliding_counter.py</code>: Cloudflare's weighted interpolation algorithm with $O(1)$ memory.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/concurrency_limiter.py</code>: an asynchronous in-flight semaphore with automatic lease timeout reclamation.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/sentinelflow/core/dual_guard.py</code>: a composite manager enforcing velocity rate limits and in-flight concurrency caps simultaneously.</li>
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_sliding_counter.py</code>: verifying mathematical estimation accuracy and concurrency lease releases.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 04)</div>
+                <div>sentinelflow/</div>
+                <div>├── src/</div>
+                <div>│   └── sentinelflow/</div>
+                <div>│       ├── config/</div>
+                <div>│       └── core/</div>
+                <div>│           ├── models.py</div>
+                <div>│           ├── token_bucket.py</div>
+                <div>│           ├── gcra.py</div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">sliding_counter.py</span>     <span class="text-slate-500"># Milestone 04: Linear Interpolation Sliding Counter</span></div>
+                <div>│           ├── <span class="text-emerald-300 font-bold">concurrency_limiter.py</span> <span class="text-slate-500"># Milestone 04: In-Flight Semaphore with Lease TTL</span></div>
+                <div>│           └── <span class="text-emerald-300 font-bold">dual_guard.py</span>          <span class="text-slate-500"># Milestone 04: Composite Dual Throttling Engine</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_algorithms.py</div>
+                <div>        ├── test_config.py</div>
+                <div>        ├── test_buckets.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_sliding_counter.py</span>    <span class="text-slate-500"># Milestone 04: Memory &amp; Concurrency Battery</span></div>
+            </div>
+
+            <!-- File 1: src/sentinelflow/core/sliding_counter.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Sliding Window Counter: <code class="text-purple-700">src/sentinelflow/core/sliding_counter.py</code></span>
+                    <span class="text-slate-400">Constant Memory O(1)</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Sliding Window Counter (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Tuple
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SlidingWindowCounter</span>:
+    <span class="text-slate-500">"""
+    SLIDING WINDOW COUNTER ALGORITHM:
+    Cloudflare's hybrid approximation. Uses weighted linear interpolation across
+    the current and previous discrete window blocks.
+    Guarantees O(1) memory complexity (stores exactly 2 numbers per client).
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, limit: int, window_seconds: float):
+        self.limit = limit
+        self.window_seconds = float(window_seconds)
+        <span class="text-slate-500"># Map: key -&gt; (current_window_idx, current_count, prev_window_count)</span>
+        self._states: Dict[str, Tuple[int, int, int]] = {}
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">acquire</span>(self, key: str, cost: int = 1) -> RateLimitResult:
+        now_wall = time.time()
+        current_window_idx = int(now_wall // self.window_seconds)
+        window_start_time = current_window_idx * self.window_seconds
+        time_into_current = now_wall - window_start_time
+
+        stored_idx, current_count, prev_count = self._states.get(
+            key, (current_window_idx, 0, 0)
+        )
+
+        <span class="text-slate-500"># 1. State Rolling: Advance window blocks based on elapsed intervals</span>
+        <span class="text-purple-400">if</span> current_window_idx &gt; stored_idx:
+            <span class="text-purple-400">if</span> current_window_idx == stored_idx + 1:
+                <span class="text-slate-500"># Next contiguous window: current shifts to previous</span>
+                prev_count = current_count
+            <span class="text-purple-400">else</span>:
+                <span class="text-slate-500"># Jumped ahead by 2 or more windows: previous expires completely</span>
+                prev_count = 0
+            current_count = 0
+            stored_idx = current_window_idx
+
+        <span class="text-slate-500"># 2. LINEAR INTERPOLATION FORMULA</span>
+        <span class="text-slate-500"># Overlap percentage decreases as time progresses into the current window</span>
+        overlap_weight = max(0.0, (self.window_seconds - time_into_current) / self.window_seconds)
+        estimated_count = current_count + (prev_count * overlap_weight)
+
+        reset_after = max(0.0, self.window_seconds - time_into_current)
+        reset_epoch = int(window_start_time + self.window_seconds)
+
+        <span class="text-slate-500"># 3. EVALUATION CHECK</span>
+        <span class="text-purple-400">if</span> estimated_count + cost &lt;= self.limit:
+            current_count += cost
+            self._states[key] = (stored_idx, current_count, prev_count)
+            remaining = max(0, int(self.limit - (estimated_count + cost)))
+            <span class="text-purple-400">return</span> RateLimitResult(
+                allowed=<span class="text-rose-400">True</span>,
+                limit=self.limit,
+                remaining=remaining,
+                reset_after_seconds=reset_after,
+                reset_epoch_seconds=reset_epoch
+            )
+
+        <span class="text-slate-500"># Throttled</span>
+        self._states[key] = (stored_idx, current_count, prev_count)
+        <span class="text-purple-400">return</span> RateLimitResult(
+            allowed=<span class="text-rose-400">False</span>,
+            limit=self.limit,
+            remaining=0,
+            reset_after_seconds=reset_after,
+            reset_epoch_seconds=reset_epoch
+        )</pre>
+            </div>
+
+            <!-- File 2: src/sentinelflow/core/concurrency_limiter.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Asynchronous In-Flight Semaphore: <code class="text-purple-700">src/sentinelflow/core/concurrency_limiter.py</code></span>
+                    <span class="text-slate-400">In-Flight Connection Protection</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Async Concurrency Semaphore with Lease TTL (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Optional
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">ConcurrencyLimitExceeded</span>(Exception):
+    <span class="text-slate-500">"""Raised when maximum simultaneous in-flight connections are saturated."""</span>
+    pass
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ConcurrencyLease</span>:
+    lease_id: str
+    key: str
+    acquired_at: float
+    expires_at: float
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AsyncConcurrencyLimiter</span>:
+    <span class="text-slate-500">"""
+    CONCURRENCY SEMAPHORE:
+    Limits simultaneous in-flight executions per tenant/route.
+    Includes automated TTL lease reclamation to defend against container crashes.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, max_concurrency: int, lease_timeout_seconds: float = 30.0):
+        self.max_concurrency = max_concurrency
+        self.lease_timeout_seconds = lease_timeout_seconds
+        <span class="text-slate-500"># Key -&gt; Dict[lease_id, expires_at]</span>
+        self._active_leases: Dict[str, Dict[str, float]] = {}
+        self._lock = asyncio.Lock()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">acquire_lease</span>(self, key: str) -> ConcurrencyLease:
+        now_mono = time.monotonic()
+        <span class="text-purple-400">async with</span> self._lock:
+            leases = self._active_leases.setdefault(key, {})
+
+            <span class="text-slate-500"># 1. DEADLOCK DEFENSE: Purge expired leases from crashed holders</span>
+            expired = [lid <span class="text-purple-400">for</span> lid, exp <span class="text-purple-400">in</span> leases.items() <span class="text-purple-400">if</span> exp &lt;= now_mono]
+            <span class="text-purple-400">for</span> lid <span class="text-purple-400">in</span> expired:
+                del leases[lid]
+
+            <span class="text-slate-500"># 2. EVALUATION CHECK</span>
+            <span class="text-purple-400">if len</span>(leases) &gt;= self.max_concurrency:
+                <span class="text-purple-400">raise</span> ConcurrencyLimitExceeded(
+                    f<span class="text-amber-300">"Maximum in-flight concurrency of &#123;self.max_concurrency&#125; reached for key '&#123;key&#125;'."</span>
+                )
+
+            <span class="text-slate-500"># 3. ISSUE LEASE</span>
+            lease_id = str(uuid.uuid4())
+            expires_at = now_mono + self.lease_timeout_seconds
+            leases[lease_id] = expires_at
+
+            <span class="text-purple-400">return</span> ConcurrencyLease(
+                lease_id=lease_id,
+                key=key,
+                acquired_at=now_mono,
+                expires_at=expires_at
+            )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">release_lease</span>(self, lease: ConcurrencyLease) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Releases in-flight lease token gracefully upon completion</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            leases = self._active_leases.get(lease.key)
+            <span class="text-purple-400">if</span> leases <span class="text-purple-400">and</span> lease.lease_id <span class="text-purple-400">in</span> leases:
+                del leases[lease.lease_id]</pre>
+            </div>
+
+            <!-- File 3: src/sentinelflow/core/dual_guard.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Composite Dual-Throttling Guard: <code class="text-purple-700">src/sentinelflow/core/dual_guard.py</code></span>
+                    <span class="text-slate-400">Velocity + In-Flight Coordination</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># SentinelFlow - Dual-Control Engine: Velocity + Concurrency (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> contextlib <span class="text-purple-400">import</span> asynccontextmanager
+<span class="text-purple-400">from</span> sentinelflow.core.sliding_counter <span class="text-purple-400">import</span> SlidingWindowCounter
+<span class="text-purple-400">from</span> sentinelflow.core.concurrency_limiter <span class="text-purple-400">import</span> (
+    AsyncConcurrencyLimiter, ConcurrencyLimitExceeded
+)
+<span class="text-purple-400">from</span> sentinelflow.core.models <span class="text-purple-400">import</span> RateLimitResult
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DualControlGuard</span>:
+    <span class="text-slate-500">"""
+    ORCHESTRATES DUAL-CONTROL THROTTLING:
+    Enforces rolling velocity limits (requests/time) AND simultaneous in-flight limits.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        velocity_limit: int,
+        window_seconds: float,
+        max_concurrency: int,
+        lease_timeout: float = 30.0
+    ):
+        self.rate_limiter = SlidingWindowCounter(velocity_limit, window_seconds)
+        self.concurrency_limiter = AsyncConcurrencyLimiter(max_concurrency, lease_timeout)
+
+    <span class="text-purple-400">@asynccontextmanager</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">throttle</span>(self, key: str, cost: int = 1):
+        <span class="text-slate-500"># 1. Gate 1: Check Velocity Rate Limit (Sliding Window Counter)</span>
+        rate_res: RateLimitResult = self.rate_limiter.acquire(key, cost)
+        <span class="text-purple-400">if not</span> rate_res.allowed:
+            <span class="text-purple-400">raise</span> ConcurrencyLimitExceeded(f<span class="text-amber-300">"Velocity limit exceeded. Reset in &#123;rate_res.reset_after_seconds:.1f&#125;s"</span>)
+
+        <span class="text-slate-500"># 2. Gate 2: Acquire In-Flight Concurrency Lease</span>
+        lease = <span class="text-purple-400">await</span> self.concurrency_limiter.acquire_lease(key)
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">yield</span> rate_res  <span class="text-slate-500"># Hand control to route execution</span>
+        <span class="text-purple-400">finally</span>:
+            <span class="text-slate-500"># 3. Always release lease in teardown phase!</span>
+            <span class="text-purple-400">await</span> self.concurrency_limiter.release_lease(lease)</pre>
+            </div>
+
+            <!-- File 4: tests/unit/test_sliding_counter.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Verification Battery: <code class="text-purple-700">tests/unit/test_sliding_counter.py</code></span>
+                    <span class="text-slate-400">Accuracy &amp; Concurrency Tests</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> sentinelflow.core.sliding_counter <span class="text-purple-400">import</span> SlidingWindowCounter
+<span class="text-purple-400">from</span> sentinelflow.core.concurrency_limiter <span class="text-purple-400">import</span> (
+    AsyncConcurrencyLimiter, ConcurrencyLimitExceeded
+)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestSlidingCounterAndSemaphores</span>:
+    <span class="text-slate-500">"""Validates sliding window counter interpolation and async concurrency caps."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_sliding_counter_interpolates_sub_window_overlap</span>(self, mocker):
+        <span class="text-slate-500"># Limit: 100 requests per 60 seconds</span>
+        limiter = SlidingWindowCounter(limit=100, window_seconds=60.0)
+
+        mock_time = mocker.patch(<span class="text-amber-300">"time.time"</span>)
+        
+        <span class="text-slate-500"># Step 1: Send 80 requests in Window 0 (at second 30.0)</span>
+        mock_time.return_value = 30.0
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(80):
+            assert limiter.acquire(<span class="text-amber-300">"tenant_alpha"</span>).allowed <span class="text-purple-400">is True</span>
+
+        <span class="text-slate-500"># Step 2: Jump into Window 1 at second 78.0 (18 seconds into new window)</span>
+        mock_time.return_value = 78.0
+        
+        <span class="text-slate-500"># Math: Overlap is (60 - 18) / 60 = 70%. Previous weighted = 80 * 0.70 = 56.</span>
+        <span class="text-slate-500"># Current capacity available = 100 - 56 = 44 requests.</span>
+        allowed_count = 0
+        <span class="text-purple-400">for</span> _ <span class="text-purple-400">in range</span>(50):
+            <span class="text-purple-400">if</span> limiter.acquire(<span class="text-amber-300">"tenant_alpha"</span>).allowed:
+                allowed_count += 1
+
+        <span class="text-slate-500"># Verifies mathematical interpolation throttles at exactly 44 requests!</span>
+        assert allowed_count == 44
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_concurrency_limiter_caps_simultaneous_in_flight_tasks</span>(self):
+        <span class="text-slate-500"># Max 2 concurrent in-flight requests</span>
+        sem = AsyncConcurrencyLimiter(max_concurrency=2, lease_timeout_seconds=5.0)
+
+        lease1 = <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"user_42"</span>)
+        lease2 = <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"user_42"</span>)
+
+        <span class="text-slate-500"># 3rd concurrent attempt must be rejected immediately!</span>
+        <span class="text-purple-400">with</span> pytest.raises(ConcurrencyLimitExceeded):
+            <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"user_42"</span>)
+
+        <span class="text-slate-500"># Release lease 1</span>
+        <span class="text-purple-400">await</span> sem.release_lease(lease1)
+
+        <span class="text-slate-500"># Slot becomes available immediately</span>
+        lease3 = <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"user_42"</span>)
+        assert lease3.lease_id != lease1.lease_id
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_concurrency_limiter_auto_purges_dead_leases</span>(self, mocker):
+        sem = AsyncConcurrencyLimiter(max_concurrency=1, lease_timeout_seconds=2.0)
+        
+        mock_mono = mocker.patch(<span class="text-amber-300">"time.monotonic"</span>)
+        mock_mono.return_value = 1000.0
+
+        <span class="text-slate-500"># Acquire lease, then simulate container crash (never calling release_lease)</span>
+        _ = <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"crashed_worker"</span>)
+
+        <span class="text-slate-500"># Advance time past lease TTL (2.1s later)</span>
+        mock_mono.return_value = 1002.1
+
+        <span class="text-slate-500"># Deadlock Defense: Auto-purges expired lease and allows new acquisition!</span>
+        lease = <span class="text-purple-400">await</span> sem.acquire_lease(<span class="text-amber-300">"crashed_worker"</span>)
+        assert lease <span class="text-purple-400">is not None</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Leaseless In-Flight Counting</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">in_flight += 1; await process(); in_flight -= 1</code> without timeouts or UUID tokens.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes permanent outages:</strong> If the worker process terminates abruptly, throws an unhandled exception outside the try-block, or disconnects, the in-flight counter is never decremented. The user is permanently locked out of their API limit! Always use unique lease IDs paired with automated expiration timeouts.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Relying on Rate Limits for Slow Endpoints</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring a rate limit of <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">60/min</code> on a heavy 15-second database export without setting a concurrency cap.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this takes down production:</strong> A client can send 30 requests concurrently. All 30 requests pass the rate limiter, immediately exhausting your database connection pool (capping out at 20 sockets). All other routes across your company fail with 500 errors!
+                        <strong>Fix:</strong> Pair velocity limiters with an in-flight concurrency semaphore!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating SentinelFlow Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify the mathematical accuracy of the Sliding Window Counter and test the in-flight concurrency semaphore:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the sliding counter and concurrency test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_sliding_counter.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.04s. Verifies weighted sub-window calculation, concurrency limits, and lease auto-purge recovery.
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Benchmark memory footprint in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import sys; from sentinelflow.core.sliding_counter import SlidingWindowCounter; s = SlidingWindowCounter(100, 60); [s.acquire('user_1') for _ in range(50)]; print('State Size:', sys.getsizeof(s._states['user_1']), 'bytes')"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        State size is only 64 bytes for storing 50 requests! (Constant O(1) memory).
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Distributed Systems &amp; Redis: Atomicity, Lua Scripts &amp; Race Conditions</h4>
+                <p class="text-xs text-slate-500 font-sans">Scaling across multiple Kubernetes instances: The Read-Modify-Write concurrency trap, executing single-threaded atomic operations with Redis Lua scripts, and eliminating race-condition traffic leaks.</p>
+            </div>
+            <a href="Chapter 05 - Distributed Systems and Redis - Atomicity, Lua Scripts and Race Conditions.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

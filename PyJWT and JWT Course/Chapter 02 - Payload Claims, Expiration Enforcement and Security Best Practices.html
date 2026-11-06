@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Payload Claims, Expiration Enforcement &amp; Security Best Practices</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyJWT Architecture &amp; Token Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">TokenForge (Milestone 02 - Claims Engine &amp; Expiration Guard)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; RFC 7519 Standards &amp; Defensive Decoders
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Payload Claims, Expiration Enforcement &amp; Security Best Practices
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating the RFC 7519 semantic specification: Why cryptographic signature verification is only half the battle, enforcing mandatory claims (<code class="font-mono text-emerald-400">exp</code>, <code class="font-mono text-emerald-400">sub</code>, <code class="font-mono text-emerald-400">aud</code>, <code class="font-mono text-emerald-400">iss</code>), managing microservice clock drift using <code class="font-mono text-emerald-400">leeway</code>, defending against audience confusion exploits, and building the resilient validation layer of <strong>TokenForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">TokenForge Milestone 02: Defensive Claims &amp; Verification Layer</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we built TokenForge's cryptographic engine (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">TokenEngine</code>), proving that signatures mathematically guarantee payload integrity. However, an unexpired, authentic signature is dangerous if issued for the wrong consumer or lacking a strict time-to-live. In Milestone 02, we architect the <strong>Claim Validation Pipeline</strong>: validating all seven RFC 7519 registered claims, configuring defensive PyJWT decoding options (<code class="font-mono text-purple-300 bg-slate-950 px-1 py-0.5 rounded">options={"require": [...]}</code>), mitigating distributed clock skew, and preventing audience confusion attacks between microservices.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 7 RFC 7519 Registered Claims Taxonomy</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Mandatory Claim Enforcement (<code class="text-purple-300">require</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Clock Skew Drift Protection with <code class="text-purple-300">leeway</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Microservice Audience Substitution Defense</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> TokenForge <code class="text-purple-300">TokenValidator</code> Implementation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Comprehensive PyTest Boundary Test Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Claims: RFC 7519 Taxonomy -->
+        <section id="rfc-7519-claims" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The RFC 7519 Registered Claims Specification</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In JSON Web Token terminology, a <strong>Claim</strong> is a piece of information asserted about a subject. RFC 7519 categorizes claims into three tiers: <em>Public</em> (custom schemas registered in IANA), <em>Private</em> (bespoke application-level agreements like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">roles</code> or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">tenant_id</code>), and <strong>Registered Claims</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Registered claims are reserved three-letter abbreviations defined by the Internet Engineering Task Force (IETF). While RFC 7519 makes them technically optional, <strong>production systems must treat them as strictly mandatory</strong> to prevent token replay, privilege escalation, and domain contamination:
+            </p>
+
+            <!-- 7 Registered Claims Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- exp -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-600 text-sm">exp (Expiration Time)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Mandatory</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        NumericDate (seconds since Unix epoch) identifying when the token ceases to be valid. PyJWT rejects tokens automatically if current UTC time exceeds this value.
+                    </p>
+                </div>
+
+                <!-- nbf -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-amber-600 text-sm">nbf (Not Before)</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Temporal Guard</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        NumericDate stating the earliest exact moment this token can be accepted. Rejects premature token usage during staged multi-step activations.
+                    </p>
+                </div>
+
+                <!-- iat -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">iat (Issued At)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Auditability</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        NumericDate indicating when the authentication authority minted the token. Critical for measuring token age and revoking tokens issued before password changes.
+                    </p>
+                </div>
+
+                <!-- iss -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">iss (Issuer)</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Identity Authority</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Case-sensitive string/URI identifying the security entity that issued the claims (e.g., <code class="text-purple-700 font-mono">"https://iam.tokenforge.internal"</code>). Prevents rogue authority spoofing.
+                    </p>
+                </div>
+
+                <!-- aud -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-indigo-600 text-sm">aud (Audience)</span>
+                        <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">Target Boundary</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        String or array identifying the intended recipients of this token (e.g., <code class="text-indigo-700 font-mono">"order-service"</code>). If the current service is not listed, the token is rejected.
+                    </p>
+                </div>
+
+                <!-- sub & jti -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">sub &amp; jti</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Subject &amp; Nonce</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        <code class="text-emerald-700 font-bold">sub</code>: The subject identifier (User ID / Principal).<br>
+                        <code class="text-emerald-700 font-bold">jti</code>: Unique UUID nonce preventing replay attacks and tracking revocations.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Mechanics of PyJWT Verification: options & require -->
+        <section id="pyjwt-options-engine" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: PyJWT Decoding Options &amp; Strict Enforcement</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                By default, when you call <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">jwt.decode(token, key, algorithms=["RS256"])</code>, PyJWT verifies the signature and validates <code class="font-mono text-xs">exp</code> and <code class="font-mono text-xs">nbf</code> <strong>only if those keys are physically present in the incoming payload</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If an attacker manages to obtain a token emitted without an <code class="font-mono text-xs text-rose-700 font-bold">exp</code> claim, or if a legacy IAM system omits the expiration entirely, <strong>PyJWT will treat the token as valid forever!</strong>
+            </p>
+
+            <!-- Defensive Decoding Pipeline Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The PyJWT Defensive Decoding Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Cryptographic Check</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Verifies signature with Public Key / Secret</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; validates shape &rarr;</div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Mandatory Requirements</span>
+                        <span class="text-[10px] text-purple-200 font-sans">options={"require": ["exp", "sub", "iat", "iss", "aud"]}</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; checks time/bounds &rarr;</div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Claims Verification</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Checks exp &gt; now &bull; matches iss/aud boundaries</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs">The "require" Option Mandate:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        To eliminate immortal tokens and anonymous claims, enterprise decoders must explicitly configure the <code class="text-emerald-300 font-mono">options={"require": [...]}</code> dictionary. If any specified claim is missing from the payload, PyJWT halts decoding and raises <code class="text-rose-400 font-mono">jwt.exceptions.MissingRequiredClaimError</code> immediately!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Exception Hierarchy Box -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono text-xs">
+                <span class="font-bold text-slate-900 block text-sm">PyJWT Built-in Exception Hierarchy</span>
+                <p class="text-slate-600 font-sans text-xs leading-relaxed">
+                    Senior engineers write exception handlers against PyJWT's exact inheritance hierarchy, never catching a generic <code class="font-mono text-rose-700">Exception</code>:
+                </p>
+                <div class="bg-slate-950 text-slate-200 p-3.5 rounded-xl space-y-1 text-[11px]">
+                    <div>jwt.PyJWTError (Base class for all token faults)</div>
+                    <div>&nbsp;├── jwt.InvalidTokenError (Signature or structure invalid)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.DecodeError (Malformed Base64URL segment)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.InvalidSignatureError (Cryptographic tamper detected)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.ExpiredSignatureError (Token time has lapsed: exp &lt; now)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.ImmatureSignatureError (Token not yet active: nbf &gt; now)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.InvalidIssuerError (Issuer does not match expectation)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;├── jwt.InvalidAudienceError (Audience mismatch detected)</div>
+                    <div>&nbsp;│&nbsp;&nbsp;&nbsp;└── jwt.MissingRequiredClaimError (Mandatory claim omitted)</div>
+                    <div>&nbsp;└── jwt.InvalidAlgorithmError (Algorithm switching exploit attempt)</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Microservice Security: Audience Confusion & Clock Skew (Leeway) -->
+        <section id="microservice-security" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Microservice Security: Audience Confusion &amp; Clock Skew (Leeway)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In multi-tenant distributed cloud infrastructure, two subtle failure modes cause either severe security vulnerabilities or intermittent false-positive 401 Unauthorized errors:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Clock Skew & Leeway -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">1. Clock Skew Drift (NTP Desynchronization)</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">leeway Parameter</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Operating system hardware clocks across Kubernetes nodes inevitably drift by several milliseconds or seconds due to Network Time Protocol (NTP) adjustments.
+                    </p>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>IAM Node Clock: 12:00:00 (Issues token with exp=12:15:00)</div>
+                        <div>Billing Node Clock: 12:15:02 (2 seconds ahead!)</div>
+                        <div class="text-rose-400 font-bold">&rarr; Request fails with ExpiredSignatureError before its time!</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>The Solution:</strong> Pass <code class="font-mono text-slate-800 font-bold">leeway=timedelta(seconds=10)</code> into <code class="font-mono text-purple-700">jwt.decode()</code>. PyJWT allows a tight, controlled margin for temporal boundary checks, neutralizing drift without compromising security.
+                    </p>
+                </div>
+
+                <!-- Audience Confusion Attack -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-rose-700 text-sm">2. Audience Confusion &amp; Cross-Service Replay</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">aud Claim</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        In a microservice ecosystem, an IAM authority issues tokens for various consumers. An <strong>Audience Confusion Exploit</strong> occurs when a token intended for an unprivileged service is replayed against a sensitive internal service.
+                    </p>
+                    <div class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>User logs into Public Forum &rarr; Receives validly signed JWT</div>
+                        <div>User takes that forum token &rarr; Dispatches to Bank Settlement API</div>
+                        <div class="text-rose-400 font-bold">&rarr; If Settlement API only verifies signature, the request SUCCEEDS!</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>The Solution:</strong> Every microservice must configure <code class="font-mono text-slate-800 font-bold">audience="payment-settlement-service"</code>. If the token's <code class="font-mono text-slate-800">aud</code> array does not explicitly match, PyJWT raises <code class="font-mono text-rose-700 font-bold">InvalidAudienceError</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: TokenForge Milestone 02 -->
+        <section id="tokenforge-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">TokenForge Milestone 02: Strict Validation Pipeline Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 02 for <strong>TokenForge</strong>. We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/tokenforge/services/validator.py</code>: an enterprise token validation service that encapsulates claim validation, leeway thresholds, issuer verification, and audience matching into a clean, typed domain boundary.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 02)</div>
+                <div>tokenforge/</div>
+                <div>├── src/</div>
+                <div>│   └── tokenforge/</div>
+                <div>│       ├── core/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   └── crypto.py                  <span class="text-slate-500"># Milestone 01 Cryptographic Engine</span></div>
+                <div>│       └── services/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">validator.py</span>               <span class="text-slate-500"># Milestone 02: Strict RFC 7519 Claims Validator</span></div>
+                <div>└── tests/</div>
+                <div>    ├── conftest.py                     <span class="text-slate-500"># Added: Helper fixtures for expired/tampered tokens</span></div>
+                <div>    └── unit/</div>
+                <div>        ├── test_crypto.py              <span class="text-slate-500"># Milestone 01 Tests</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_validator.py</span>           <span class="text-slate-500"># Milestone 02: Boundary &amp; Claims Test Battery</span></div>
+            </div>
+
+            <!-- File 1: src/tokenforge/services/validator.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Defensive Token Validator: <code class="text-purple-700">src/tokenforge/services/validator.py</code></span>
+                    <span class="text-slate-400">Claims Engine Core</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Services - Defensive Claims Validator (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> jwt
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> timedelta
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Optional
+<span class="text-purple-400">from</span> tokenforge.core.crypto <span class="text-purple-400">import</span> TokenSecurityError, AlgorithmMismatchError
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">TokenExpiredError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when token expiration timestamp has elapsed."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">TokenImmatureError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when token is received prior to its 'nbf' (Not Before) timestamp."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">AudienceMismatchError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when token 'aud' does not match the target service audience."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">IssuerMismatchError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when token 'iss' does not match the sanctioned authority."""</span>
+    pass
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">MissingClaimError</span>(TokenSecurityError):
+    <span class="text-slate-500">"""Raised when a mandatory RFC 7519 claim is omitted from payload."""</span>
+    pass
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ValidatedToken</span>:
+    <span class="text-slate-500">"""Type-safe container holding verified claims extracted from decoded JWT."""</span>
+    subject: str
+    issuer: str
+    audience: List[str]
+    issued_at: int
+    expires_at: int
+    claims: Dict[str, Any]
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenValidator</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION TOKEN VALIDATOR:
+    Enforces mandatory registered claims, mitigates clock drift via leeway,
+    and defends against audience confusion attacks across microservices.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        verification_key: str,
+        expected_issuer: str,
+        expected_audience: str,
+        allowed_algorithms: Optional[List[str]] = <span class="text-rose-400">None</span>,
+        leeway_seconds: int = 10,
+        required_claims: Optional[List[str]] = <span class="text-rose-400">None</span>
+    ):
+        self.verification_key = verification_key
+        self.expected_issuer = expected_issuer
+        self.expected_audience = expected_audience
+        self.allowed_algorithms = allowed_algorithms <span class="text-purple-400">or</span> [<span class="text-amber-300">"RS256"</span>]
+        self.leeway = timedelta(seconds=leeway_seconds)
+        <span class="text-slate-500"># Defensive mandate: Require all critical claims by default</span>
+        self.required_claims = required_claims <span class="text-purple-400">or</span> [<span class="text-amber-300">"exp"</span>, <span class="text-amber-300">"sub"</span>, <span class="text-amber-300">"iss"</span>, <span class="text-amber-300">"aud"</span>, <span class="text-amber-300">"iat"</span>]
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">decode_and_validate</span>(self, token: str) -> ValidatedToken:
+        <span class="text-slate-500">"""
+        Decodes and validates a token against strict RFC 7519 security criteria.
+        Returns: ValidatedToken value object on success.
+        Raises: Specific TokenSecurityError subclass on any failure.
+        """</span>
+        <span class="text-purple-400">try</span>:
+            claims = jwt.decode(
+                jwt=token,
+                key=self.verification_key,
+                algorithms=self.allowed_algorithms,
+                issuer=self.expected_issuer,
+                audience=self.expected_audience,
+                leeway=self.leeway,
+                options={
+                    <span class="text-amber-300">"verify_signature"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-amber-300">"verify_exp"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-amber-300">"verify_nbf"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-amber-300">"verify_iat"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-amber-300">"verify_aud"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-amber-300">"verify_iss"</span>: <span class="text-rose-400">True</span>,
+                    <span class="text-slate-500"># CRITICAL DEFENSE: Enforce presence of all mandated claims</span>
+                    <span class="text-amber-300">"require"</span>: self.required_claims
+                }
+            )
+        <span class="text-purple-400">except</span> jwt.exceptions.ExpiredSignatureError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> TokenExpiredError(<span class="text-amber-300">"Token signature has expired."</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.exceptions.ImmatureSignatureError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> TokenImmatureError(<span class="text-amber-300">"Token is not yet active (nbf in future)."</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.exceptions.InvalidAudienceError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> AudienceMismatchError(f<span class="text-amber-300">"Audience mismatch: expected '&#123;self.expected_audience&#125;'"</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.exceptions.InvalidIssuerError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> IssuerMismatchError(f<span class="text-amber-300">"Issuer mismatch: expected '&#123;self.expected_issuer&#125;'"</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.exceptions.MissingRequiredClaimError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> MissingClaimError(f<span class="text-amber-300">"Mandatory RFC 7519 claim omitted: &#123;str(err)&#125;"</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.exceptions.InvalidAlgorithmError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> AlgorithmMismatchError(<span class="text-amber-300">"Token algorithm is not in the allowed whitelist."</span>) <span class="text-purple-400">from</span> err
+        <span class="text-purple-400">except</span> jwt.PyJWTError <span class="text-purple-400">as</span> err:
+            <span class="text-purple-400">raise</span> TokenSecurityError(f<span class="text-amber-300">"Token verification rejected: &#123;str(err)&#125;"</span>) <span class="text-purple-400">from</span> err
+
+        <span class="text-slate-500"># Normalize audience to list</span>
+        raw_aud = claims[<span class="text-amber-300">"aud"</span>]
+        aud_list = raw_aud <span class="text-purple-400">if isinstance</span>(raw_aud, list) <span class="text-purple-400">else</span> [raw_aud]
+
+        <span class="text-purple-400">return</span> ValidatedToken(
+            subject=claims[<span class="text-amber-300">"sub"</span>],
+            issuer=claims[<span class="text-amber-300">"iss"</span>],
+            audience=aud_list,
+            issued_at=claims[<span class="text-amber-300">"iat"</span>],
+            expires_at=claims[<span class="text-amber-300">"exp"</span>],
+            claims=claims
+        )</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_validator.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Claims Test Battery: <code class="text-purple-700">tests/unit/test_validator.py</code></span>
+                    <span class="text-slate-400">Testing Temporal &amp; Audience Bounds</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># TokenForge Test Suite - Claims Validation Battery (Milestone 02)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> tokenforge.core.crypto <span class="text-purple-400">import</span> TokenEngine
+<span class="text-purple-400">from</span> tokenforge.services.validator <span class="text-purple-400">import</span> (
+    TokenValidator,
+    TokenExpiredError,
+    TokenImmatureError,
+    AudienceMismatchError,
+    IssuerMismatchError,
+    MissingClaimError
+)
+
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">valid_claims</span>():
+    now = int(time.time())
+    <span class="text-purple-400">return</span> {
+        <span class="text-amber-300">"iss"</span>: <span class="text-amber-300">"https://iam.tokenforge.internal"</span>,
+        <span class="text-amber-300">"sub"</span>: <span class="text-amber-300">"usr_99182"</span>,
+        <span class="text-amber-300">"aud"</span>: <span class="text-amber-300">"settlement-service"</span>,
+        <span class="text-amber-300">"iat"</span>: now,
+        <span class="text-amber-300">"exp"</span>: now + 300,  <span class="text-slate-500"># 5 minutes in future</span>
+        <span class="text-amber-300">"scope"</span>: <span class="text-amber-300">"settlement:execute"</span>
+    }
+
+<span class="text-purple-400">@pytest.fixture</span>
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">validator</span>(rsa_keypair):
+    <span class="text-purple-400">return</span> TokenValidator(
+        verification_key=rsa_keypair[<span class="text-amber-300">"public"</span>],
+        expected_issuer=<span class="text-amber-300">"https://iam.tokenforge.internal"</span>,
+        expected_audience=<span class="text-amber-300">"settlement-service"</span>,
+        allowed_algorithms=[<span class="text-amber-300">"RS256"</span>],
+        leeway_seconds=5
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestClaimsValidation</span>:
+    <span class="text-slate-500">"""Unit tests asserting strict RFC 7519 claim verification and boundary defense."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_valid_token_decodes_successfully</span>(self, rsa_keypair, validator, valid_claims):
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        result = validator.decode_and_validate(token)
+
+        assert result.subject == <span class="text-amber-300">"usr_99182"</span>
+        assert result.issuer == <span class="text-amber-300">"https://iam.tokenforge.internal"</span>
+        assert <span class="text-amber-300">"settlement-service"</span> <span class="text-purple-400">in</span> result.audience
+        assert result.claims[<span class="text-amber-300">"scope"</span>] == <span class="text-amber-300">"settlement:execute"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_expired_token_is_rejected</span>(self, rsa_keypair, validator, valid_claims):
+        <span class="text-slate-500"># Set expiration to 60 seconds in the past</span>
+        valid_claims[<span class="text-amber-300">"exp"</span>] = int(time.time()) - 60
+        valid_claims[<span class="text-amber-300">"iat"</span>] = int(time.time()) - 300
+
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        <span class="text-purple-400">with</span> pytest.raises(TokenExpiredError, match=<span class="text-amber-300">r"signature has expired"</span>):
+            validator.decode_and_validate(token)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_clock_skew_within_leeway_passes</span>(self, rsa_keypair, validator, valid_claims):
+        <span class="text-slate-500"># Token expired 3 seconds ago, but validator leeway is 5 seconds!</span>
+        valid_claims[<span class="text-amber-300">"exp"</span>] = int(time.time()) - 3
+        valid_claims[<span class="text-amber-300">"iat"</span>] = int(time.time()) - 300
+
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        <span class="text-slate-500"># Must pass cleanly due to clock drift leeway</span>
+        result = validator.decode_and_validate(token)
+        assert result.subject == <span class="text-amber-300">"usr_99182"</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_audience_confusion_is_blocked</span>(self, rsa_keypair, validator, valid_claims):
+        <span class="text-slate-500"># Token was legitimately issued for the 'reporting-service', NOT 'settlement-service'</span>
+        valid_claims[<span class="text-amber-300">"aud"</span>] = <span class="text-amber-300">"reporting-service"</span>
+
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        <span class="text-purple-400">with</span> pytest.raises(AudienceMismatchError, match=<span class="text-amber-300">r"Audience mismatch"</span>):
+            validator.decode_and_validate(token)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_issuer_mismatch_is_blocked</span>(self, rsa_keypair, validator, valid_claims):
+        valid_claims[<span class="text-amber-300">"iss"</span>] = <span class="text-amber-300">"https://rogue-authority.attacker.io"</span>
+
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        <span class="text-purple-400">with</span> pytest.raises(IssuerMismatchError, match=<span class="text-amber-300">r"Issuer mismatch"</span>):
+            validator.decode_and_validate(token)
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_missing_mandatory_claim_rejected</span>(self, rsa_keypair, validator, valid_claims):
+        <span class="text-slate-500"># Omit the 'exp' claim entirely</span>
+        del valid_claims[<span class="text-amber-300">"exp"</span>]
+
+        issuer_engine = TokenEngine(algorithm=<span class="text-amber-300">"RS256"</span>, signing_key=rsa_keypair[<span class="text-amber-300">"private"</span>])
+        token = issuer_engine.issue_token(valid_claims)
+
+        <span class="text-purple-400">with</span> pytest.raises(MissingClaimError, match=<span class="text-amber-300">r"Mandatory RFC 7519 claim omitted"</span>):
+            validator.decode_and_validate(token)</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>verify_signature=False in Application Logic</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">jwt.decode(token, options={"verify_signature": False})</code> to extract the user ID in a middleware or controller.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is catastrophic:</strong> Disabling signature verification allows anyone on the internet to send arbitrary JSON payloads. An attacker can create a token with <code class="font-mono">{"sub": "root", "role": "admin"}</code> and your backend will accept it as valid! Only use <code class="font-mono">verify_signature=False</code> in offline diagnostic inspection tools.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Putting Relational State in JWT Payloads</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Embedding user billing addresses, shopping cart items, or dynamic permissions inside the token payload.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes data bugs:</strong> JWTs are immutable. If a user's permissions change in the database, their active token retains their old permissions until <code class="font-mono">exp</code> lapses. Furthermore, large payloads bloat HTTP request headers, causing reverse proxies (Nginx/Cloudflare) to reject requests with <code class="font-mono text-rose-950 font-bold">HTTP 431 Request Header Fields Too Large</code>. Keep tokens under 1KB!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating TokenForge Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the claims validation test suite and verify boundary defenses against audience confusion, missing claims, and clock skew:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Claims Test Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the RFC 7519 claim validation battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_validator.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 6 passed in ~0.09s. Validates expiration enforcement, leeway tolerance, audience matching, and issuer verification.
+                    </span>
+                </div>
+
+                <!-- Step 2: Run Full Unit Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Run all unit tests across Milestones 01 and 02:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest tests/unit/ -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Full cryptographic engine and validation pipeline pass with 100% test isolation.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: CLI Engineering &bull; Building a Token Forge Terminal Tool</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving to the command line: Building an administrative operator utility with Typer to generate RSA keypairs, sign tokens, inspect unverified payloads, and verify signatures with clean exit codes.</p>
+            </div>
+            <a href="Chapter 03 - CLI Engineering - Building a Token Forge Terminal Tool.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

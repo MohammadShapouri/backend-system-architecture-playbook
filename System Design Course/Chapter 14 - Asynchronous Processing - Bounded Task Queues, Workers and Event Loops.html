@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 14: Asynchronous Processing: Bounded Task Queues, Workers &amp; Event Loops</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>System Design &amp; Distributed Systems Engineering Series &bull; Architecture Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">OmniRoute (Milestone 14 - Asynchronous Worker Tier &amp; Backpressure)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 14 &bull; Asynchronous Systems &amp; Background Workloads
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Asynchronous Processing: Bounded Task Queues, Workers &amp; Event Loops
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Decoupling ingestion from execution: Mastering non-blocking event loops, preventing memory exhaustion with <strong>Bounded Buffer Backpressure</strong>, delivery semantics, isolating crash-looping poison pills in <strong>Dead Letter Queues (DLQ)</strong>, and engineering the asynchronous worker tier of <strong>OmniRoute</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">OmniRoute Milestone 14: Asynchronous Processing &amp; DLQ Worker Mesh</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 13, we implemented distributed mutual exclusion and fencing tokens. In Milestone 14, we construct <strong>OmniRoute's Background Worker &amp; Queueing Tier</strong>. When a trip completes, several heavy background operations must execute: calculating complex city taxes, generating PDF receipts, computing driver bonuses, and notifying accounting. If executed synchronously inside the HTTP request handler, API latency explodes from 20ms to 4,000ms, stalling web worker threads. We architect an asynchronous <strong>Bounded Queue Worker Engine</strong> in FastAPI, asyncio, and async SQLAlchemy 2.0 with proactive backpressure rejection, at-least-once delivery semantics, and automated Dead Letter Queue quarantine.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 14 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Concurrency Models: Event Loops vs. Threads vs. Processes</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Bounded Buffer Principle &amp; Proactive Backpressure</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Delivery Semantics: At-Most-Once vs. At-Least-Once</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Poison Pill Mitigation &amp; Dead Letter Queues (DLQ)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Worker Prefetch Limits &amp; Fair Dispatch Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Technology Landscape: Celery vs. ARQ vs. Temporal</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Asynchronous Worker Suite &amp; PyTest Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Foundational Computer Science Theory: Concurrency Models -->
+        <section id="concurrency-models" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Systems Architecture</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Concurrency Physics: Event Loops vs. Thread Pools vs. Multiprocessing</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To scale background workloads, an architect must understand the physical constraints of the host operating system's execution models:
+            </p>
+
+            <!-- 3 Concurrency Models Grid -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- Event Loops -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">1. Asyncio Event Loop</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Single-Threaded I/O</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Cooperative multitasking on a single OS thread. Sockets register with the kernel via epoll/kqueue.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-sky-300 space-y-1">
+                        <div>&bull; Concurrency: 50,000+ sockets/node</div>
+                        <div>&bull; Overhead: ~2KB per task</div>
+                        <div class="text-rose-400 font-bold">&bull; Fatal Trap: Any blocking CPU math freezes ALL tasks!</div>
+                    </div>
+                </div>
+
+                <!-- Thread Pools -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">2. OS Thread Pools</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Preemptive Threads</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Kernel-managed OS threads. Ideal for offloading blocking legacy C drivers, file disk I/O, and DNS lookups.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-purple-300 space-y-1">
+                        <div>&bull; Concurrency: Hundreds per node</div>
+                        <div>&bull; Overhead: ~1MB to 8MB stack per thread</div>
+                        <div class="text-amber-400 font-bold">&bull; Bound: Bound by CPU context switching</div>
+                    </div>
+                </div>
+
+                <!-- Process Pools -->
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">3. Multiprocessing</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Multi-Core CPU Bound</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Forked independent OS processes. Bypasses the Python Global Interpreter Lock (GIL) completely across CPU cores.
+                    </p>
+                    <div class="bg-slate-950 p-2.5 rounded text-[10px] text-emerald-300 space-y-1">
+                        <div>&bull; Use Case: Image resize, PDF rendering, ML inference</div>
+                        <div>&bull; Overhead: Separate memory space per process</div>
+                        <div class="text-sky-300 font-bold">&bull; Inter-process Communication: IPC / Shared memory</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Metaphor -->
+            <div class="bg-sky-50 border border-sky-200 p-6 rounded-2xl space-y-2">
+                <h3 class="text-sky-950 font-bold text-sm flex items-center gap-2">
+                    <span>&#128161;</span> The Real-World Metaphor (Plain English)
+                </h3>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    Imagine a dry cleaner shop on a busy Monday morning.
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans">
+                    When you drop off 10 suits to be washed, pressed, and tailored, the counter clerk does not tell you: <em>"Please stand at this counter for the next 4 hours while I wash your clothes."</em> (Synchronous Blocking Execution). If they did that, the line of customers would stretch 3 miles down the street!
+                </p>
+                <p class="text-xs text-sky-900 leading-relaxed font-sans font-bold">
+                    Instead, the clerk hands you a ticket number and says: <em>"Accepted. Pick up your suits tomorrow at 5:00 PM."</em> (HTTP 202 Accepted). The clerk drops your clothes into the processing bin (The Bounded Queue). In the back room, washing machines and tailors (The Workers) work through the bin at a steady, sustainable pace. You go on with your day uninterrupted.
+                </p>
+            </div>
+        </section>
+
+        <!-- THE BOUNDED BUFFER PRINCIPLE & BACKPRESSURE -->
+        <section id="bounded-buffer" class="space-y-6">
+            <div class="border-b-2 border-emerald-500 pb-3">
+                <span class="bg-emerald-500 text-slate-950 font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Queue Physics
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    The Bounded Buffer Principle &amp; Proactive Backpressure
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    Why Unbounded In-Memory Queues Guarantee OOM Crashes
+                </p>
+            </div>
+
+            <p class="text-slate-700 text-sm leading-relaxed">
+                In beginner tutorials, task queues are often declared with no size limit: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">asyncio.Queue()</code> or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">queue.Queue()</code> (defaults to <code class="font-mono text-xs">maxsize=0</code>, meaning infinite capacity).
+            </p>
+            <p class="text-slate-700 text-sm leading-relaxed font-bold">
+                In enterprise systems architecture, unbounded queues are an active production hazard.
+            </p>
+
+            <!-- Visual Flowchart: Backpressure vs OOM Crash -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Unbounded Queue OOM Failure vs. Bounded Queue Backpressure Defense
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Unbounded Failure -->
+                    <div class="p-5 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-3">
+                        <span class="text-rose-400 font-bold block text-sm">1. Unbounded Queue (OOM Killer Crash)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg text-rose-300 text-[10px] space-y-1">
+                            <div>&bull; Producers enqueue tasks at: <strong>10,000 tasks/sec</strong></div>
+                            <div>&bull; Workers consume at: <strong>1,000 tasks/sec</strong></div>
+                            <div>&bull; Deficit: +9,000 tasks/sec buffer growth in RAM!</div>
+                            <div>&bull; Result: 5M tasks pile up &rarr; 16GB RAM exhausted</div>
+                            <div class="text-rose-400 font-bold">&cross; Linux kernel triggers OOM-killer (SIGKILL)! Total loss!</div>
+                        </div>
+                    </div>
+
+                    <!-- Bounded Buffer -->
+                    <div class="p-5 bg-emerald-950/40 border border-emerald-800 rounded-2xl space-y-3">
+                        <span class="text-emerald-400 font-bold block text-sm">2. Bounded Queue with Backpressure (Survival)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg text-emerald-300 text-[10px] space-y-1">
+                            <div>&bull; Queue max capacity strictly capped: <strong>maxsize = 5,000</strong></div>
+                            <div>&bull; Buffer fills to 5,000 &rarr; <strong>BACKPRESSURE ACTIVATES</strong></div>
+                            <div>&bull; Producer options: Block, throttle, or return HTTP 429</div>
+                            <div>&bull; Memory stays permanently locked at a safe 50MB ceiling</div>
+                            <div class="text-emerald-400 font-bold">&check; System degrades gracefully; zero process crashes!</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans text-center">
+                    <strong class="text-emerald-400 font-mono">The Law of Flow Control:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        A queue does not create processing capacity; it only absorbs temporary bursts. If the average arrival rate $\lambda_{\text{in}}$ permanently exceeds processing throughput $\mu_{\text{out}}$, no queue on earth can prevent eventual failure. <strong>Backpressure must push back on the client to reduce arrival velocity!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- DELIVERY SEMANTICS, POISON PILLS & DEAD LETTER QUEUES -->
+        <section id="poison-pills-dlq" class="space-y-6">
+            <div class="border-b-2 border-purple-500 pb-3">
+                <span class="bg-purple-500 text-white font-mono text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                    Worker Reliability
+                </span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-2">
+                    Delivery Semantics, Poison Pills &amp; Dead Letter Queues (DLQ)
+                </h2>
+                <p class="text-sm font-mono text-slate-500 mt-1">
+                    At-Least-Once Delivery &bull; Crash Loops &bull; Quarantine Isolation
+                </p>
+            </div>
+
+            <!-- Delivery Semantics Cards -->
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-sky-700 text-sm block">1. At-Most-Once Delivery (Fire &amp; Forget)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The message broker marks the task deleted the microsecond it is dequeued, <em>before</em> the worker finishes execution.
+                    </p>
+                    <p class="text-[10px] text-rose-700 font-sans font-bold">
+                        Vulnerability: If the worker pod crashes midway, the task is lost forever. Unacceptable for financial settlement.
+                    </p>
+                </div>
+
+                <div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <span class="font-bold text-emerald-700 text-sm block">2. At-Least-Once Delivery (Industry Standard)</span>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The worker processes the task and sends an explicit acknowledgment (<code class="font-mono text-slate-800">ACK</code>). If the worker crashes, the broker redelivers the task to another worker.
+                    </p>
+                    <p class="text-[10px] text-emerald-700 font-sans font-bold">
+                        Requirement: Because tasks can be executed twice upon network blips, <strong>all worker handlers must be strictly idempotent</strong>!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Poison Pill Deep-Dive Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs space-y-4 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-rose-400 font-bold text-sm">The Poison Pill Crash Loop &amp; Dead Letter Quarantine</span>
+                    <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded font-bold border border-rose-500/30">Failure Mode</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    A <strong>Poison Pill</strong> is a corrupted or unparseable task payload (e.g. invalid JSON, division-by-zero math, or an unexpected null pointer) that crashes the worker every time it is read.
+                </p>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-[11px]">
+                    <div>1. Worker reads task #99 &rarr; Crashes with unhandled exception!</div>
+                    <div>2. Under naive At-Least-Once delivery, broker redelivers task #99 immediately to the front of the queue.</div>
+                    <div>3. Worker reads task #99 again &rarr; Crashes again! The cycle repeats endlessly in a 100% CPU crash loop.</div>
+                    <div>4. <strong>Result:</strong> Thousands of valid tasks behind task #99 are starved forever (Head-of-Line Blocking).</div>
+                </div>
+                <p class="text-[11px] text-emerald-400 font-sans font-bold">
+                    The Solution (Dead Letter Queue): Maintain an incremental retry counter. If a task fails 3 consecutive times, acknowledge it from the main queue and divert it into a quarantined <strong>Dead Letter Queue (DLQ)</strong> with forensic stack traces attached for SRE investigation. The primary pipeline never stalls!
+                </p>
+            </div>
+        </section>
+
+        <!-- PRODUCTION CODEBASE: OMNIROUTE MILESTONE 14 -->
+        <section id="omniroute-milestone-14" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Production Codebase</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">OmniRoute Milestone 14: Asynchronous Processing &amp; DLQ Worker Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed font-sans text-sm">
+                We now assemble Milestone 14 for <strong>OmniRoute</strong>: a production-grade Asynchronous Processing &amp; Worker Engine featuring:
+            </p>
+            <ul class="list-disc pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Bounded Queue Producer-Consumer:</strong> Enforcing strict buffer limits with proactive backpressure rejection (HTTP 429).</li>
+                <li><strong>Asynchronous Worker Daemon:</strong> Dequeuing tasks and executing settlement simulations with explicit execution timeouts.</li>
+                <li><strong>Automated Dead Letter Queue (DLQ) Quarantine:</strong> Diverting tasks that exceed 3 retry attempts to a dedicated storage table.</li>
+                <li><strong>SQLAlchemy 2.0 Async Persistence:</strong> Logging background task lifecycles and quarantined DLQ payloads.</li>
+            </ul>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// OmniRoute Architecture Layout (Milestone 14)</div>
+                <div>omniroute/</div>
+                <div>├── src/</div>
+                <div>│   └── omniroute/</div>
+                <div>│       ├── workers/</div>
+                <div>│       │   ├── __init__.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">models.py</span>        <span class="text-slate-500"># Milestone 14: Background &amp; DLQ Task Schemas (SQLAlchemy 2.0)</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">queue_engine.py</span>  <span class="text-slate-500"># Milestone 14: Bounded Queue, Worker Daemon &amp; DLQ Logic</span></div>
+                <div>│       │   └── <span class="text-emerald-300 font-bold">router.py</span>        <span class="text-slate-500"># Milestone 14: FastAPI Task Intake &amp; SRE DLQ Inspection API</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-purple-300 font-bold">test_async_workers.py</span>  <span class="text-slate-500"># Milestone 14 Backpressure &amp; Poison Pill Battery</span></div>
+            </div>
+
+            <!-- File 1: src/omniroute/workers/models.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Background &amp; DLQ Task Schemas: <code class="text-purple-700">src/omniroute/workers/models.py</code></span>
+                    <span class="text-slate-400">SQLAlchemy 2.0 Async</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Workers - Task Lifecycle &amp; Dead Letter Queue Storage Models</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> datetime
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> DeclarativeBase, Mapped, mapped_column
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> String, Integer, DateTime
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">Base</span>(DeclarativeBase):
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">CompletedTaskAuditModel</span>(Base):
+    <span class="text-slate-500">"""Records successfully executed asynchronous background tasks."""</span>
+    __tablename__ = <span class="text-amber-300">"completed_task_audits"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    task_type: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>)
+    payload_json: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    completed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>
+    )
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DeadLetterTaskModel</span>(Base):
+    <span class="text-slate-500">"""
+    DEAD LETTER QUEUE (DLQ) QUARANTINE TABLE:
+    Stores poisoned pill tasks that failed all retry attempts with error diagnostics.
+    """</span>
+    __tablename__ = <span class="text-amber-300">"dead_letter_tasks"</span>
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=<span class="text-rose-400">True</span>, default=<span class="text-purple-400">lambda</span>: str(uuid.uuid4()))
+    task_type: Mapped[str] = mapped_column(String(50), nullable=<span class="text-rose-400">False</span>)
+    payload_json: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    failure_reason: Mapped[str] = mapped_column(String, nullable=<span class="text-rose-400">False</span>)
+    attempts_made: Mapped[int] = mapped_column(Integer, nullable=<span class="text-rose-400">False</span>)
+    quarantined_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=<span class="text-rose-400">False</span>, index=<span class="text-rose-400">True</span>
+    )</pre>
+            </div>
+
+            <!-- File 2: src/omniroute/workers/queue_engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Bounded Queue &amp; Worker Engine: <code class="text-purple-700">src/omniroute/workers/queue_engine.py</code></span>
+                    <span class="text-slate-400">Backpressure &amp; DLQ Coordinator</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># OmniRoute Workers - Bounded Task Queue with Backpressure &amp; DLQ Engine</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass, field
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Callable, Any, Awaitable, List
+
+logger = logging.getLogger(<span class="text-amber-300">"OmniRoute.Workers"</span>)
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">BackpressureExceededError</span>(Exception):
+    <span class="text-slate-500">"""Raised when the bounded queue cannot accept tasks within the grace timeout."""</span>
+    <span class="text-purple-400">pass</span>
+
+
+<span class="text-purple-400">@dataclass</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TaskEnvelope</span>:
+    task_id: str
+    task_type: str
+    payload: dict
+    retries_made: int = 0
+    max_retries: int = 3
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">BoundedWorkerEngine</span>:
+    <span class="text-slate-500">"""
+    BOUNDED ASYNCHRONOUS WORKER ENGINE:
+    1. Strictly bounded buffer capacity (maxsize) preventing OOM crashes.
+    2. Proactive backpressure: Enqueue operations timeout if capacity is full.
+    3. At-Least-Once delivery with automated retry counters.
+    4. Poison pill quarantine into Dead Letter Queue (DLQ).
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(
+        self,
+        max_queue_size: int = 100,
+        worker_concurrency: int = 4,
+        dlq_sink_fn: Optional[Callable[[TaskEnvelope, str], Awaitable[<span class="text-rose-400">None</span>]]] = <span class="text-rose-400">None</span>
+    ):
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=max_queue_size)
+        self.worker_concurrency = worker_concurrency
+        self.dlq_sink_fn = dlq_sink_fn
+        self._handlers: dict[str, Callable[[dict], Awaitable[Any]]] = {}
+        self._worker_tasks: List[asyncio.Task] = []
+        self._running = <span class="text-rose-400">False</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">register_handler</span>(self, task_type: str, handler: Callable[[dict], Awaitable[Any]]) -> <span class="text-rose-400">None</span>:
+        self._handlers[task_type] = handler
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">enqueue</span>(self, task: TaskEnvelope, timeout_sec: float = 0.05) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500">"""
+        PROACTIVE BACKPRESSURE ENQUEUE:
+        If queue is saturated, waits up to timeout_sec. If still full, rejects request!
+        """</span>
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">await</span> asyncio.wait_for(self._queue.put(task), timeout=timeout_sec)
+        <span class="text-purple-400">except</span> asyncio.TimeoutError:
+            <span class="text-purple-400">raise</span> BackpressureExceededError(
+                f<span class="text-amber-300">"Worker queue capacity ({self._queue.maxsize}) exceeded. Backpressure activated."</span>
+            )
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">start_workers</span>(self) -> <span class="text-rose-400">None</span>:
+        self._running = <span class="text-rose-400">True</span>
+        <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(self.worker_concurrency):
+            t = asyncio.create_task(self._worker_loop(f<span class="text-amber-300">"worker-{i}"</span>))
+            self._worker_tasks.append(t)
+        logger.info(f<span class="text-amber-300">"Started {self.worker_concurrency} async workers."</span>)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">stop_workers</span>(self) -> <span class="text-rose-400">None</span>:
+        self._running = <span class="text-rose-400">False</span>
+        <span class="text-purple-400">for</span> t <span class="text-purple-400">in</span> self._worker_tasks:
+            t.cancel()
+        <span class="text-purple-400">await</span> asyncio.gather(*self._worker_tasks, return_exceptions=<span class="text-rose-400">True</span>)
+        self._worker_tasks.clear()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_worker_loop</span>(self, worker_name: str) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">while</span> self._running:
+            <span class="text-purple-400">try</span>:
+                task: TaskEnvelope = <span class="text-purple-400">await</span> self._queue.get()
+            <span class="text-purple-400">except</span> asyncio.CancelledError:
+                <span class="text-purple-400">break</span>
+
+            handler = self._handlers.get(task.task_type)
+            <span class="text-purple-400">if not</span> handler:
+                logger.error(f<span class="text-amber-300">"No handler registered for {task.task_type}."</span>)
+                self._queue.task_done()
+                <span class="text-purple-400">continue</span>
+
+            <span class="text-purple-400">try</span>:
+                <span class="text-slate-500"># Process task with timeout</span>
+                <span class="text-purple-400">await</span> asyncio.wait_for(handler(task.payload), timeout=2.0)
+                self._queue.task_done()
+            <span class="text-purple-400">except</span> Exception <span class="text-purple-400">as</span> exc:
+                task.retries_made += 1
+                logger.warning(f<span class="text-amber-300">"Task {task.task_id} failed attempt {task.retries_made}: {str(exc)}"</span>)
+
+                <span class="text-purple-400">if</span> task.retries_made &gt;= task.max_retries:
+                    <span class="text-slate-500"># POISON PILL: Divert to Dead Letter Queue (DLQ)</span>
+                    logger.error(f<span class="text-amber-300">"Task {task.task_id} exceeded max retries. Diverting to DLQ."</span>)
+                    <span class="text-purple-400">if</span> self.dlq_sink_fn:
+                        <span class="text-purple-400">await</span> self.dlq_sink_fn(task, str(exc))
+                    self._queue.task_done()
+                <span class="text-purple-400">else</span>:
+                    <span class="text-slate-500"># Re-enqueue for retry</span>
+                    self._queue.task_done()
+                    <span class="text-purple-400">await</span> self._queue.put(task)</pre>
+            </div>
+
+            <!-- File 3: src/omniroute/api/worker_router.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Task Intake &amp; DLQ Inspection Router: <code class="text-purple-700">src/omniroute/workers/router.py</code></span>
+                    <span class="text-slate-400">FastAPI &amp; Backpressure Control</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, status, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel
+<span class="text-purple-400">from</span> sqlalchemy.ext.asyncio <span class="text-purple-400">import</span> AsyncSession
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> select
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> AsyncGenerator
+
+<span class="text-purple-400">from</span> omniroute.workers.queue_engine <span class="text-purple-400">import</span> (
+    BoundedWorkerEngine, TaskEnvelope, BackpressureExceededError
+)
+<span class="text-purple-400">from</span> omniroute.workers.models <span class="text-purple-400">import</span> DeadLetterTaskModel
+
+router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/tasks"</span>, tags=[<span class="text-amber-300">"Async Task Processing"</span>])
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">EnqueueTaskRequestDTO</span>(BaseModel):
+    task_type: str
+    payload: dict
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_worker_engine</span>() -> BoundedWorkerEngine:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_session</span>() -> AsyncGenerator[AsyncSession, <span class="text-rose-400">None</span>]:
+    <span class="text-purple-400">raise</span> NotImplementedError
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/enqueue"</span>,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary=<span class="text-amber-300">"Enqueue Background Task with Proactive Backpressure"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">enqueue_background_task</span>(
+    dto: EnqueueTaskRequestDTO,
+    engine: BoundedWorkerEngine = Depends(get_worker_engine)
+):
+    task = TaskEnvelope(
+        task_id=f<span class="text-amber-300">"task_{uuid.uuid4().hex[:10]}"</span>,
+        task_type=dto.task_type,
+        payload=dto.payload
+    )
+
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">await</span> engine.enqueue(task)
+    <span class="text-purple-400">except</span> BackpressureExceededError <span class="text-purple-400">as</span> exc:
+        <span class="text-slate-500"># Backpressure triggered &rarr; Fail fast with HTTP 429 Too Many Requests</span>
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc)
+        )
+
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"status"</span>: <span class="text-amber-300">"ACCEPTED"</span>, <span class="text-amber-300">"task_id"</span>: task.task_id}
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/dlq"</span>, status_code=status.HTTP_200_OK)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">inspect_dead_letter_queue</span>(db: AsyncSession = Depends(get_session)):
+    <span class="text-slate-500">"""SRE Inspection Endpoint: Queries quarantined poison pill tasks."""</span>
+    stmt = select(DeadLetterTaskModel).order_by(DeadLetterTaskModel.quarantined_at.desc()).limit(20)
+    res = <span class="text-purple-400">await</span> db.execute(stmt)
+    tasks = res.scalars().all()
+    <span class="text-purple-400">return</span> [
+        {
+            <span class="text-amber-300">"id"</span>: t.id,
+            <span class="text-amber-300">"task_type"</span>: t.task_type,
+            <span class="text-amber-300">"failure_reason"</span>: t.failure_reason,
+            <span class="text-amber-300">"attempts"</span>: t.attempts_made,
+            <span class="text-amber-300">"quarantined_at"</span>: t.quarantined_at
+        }
+        <span class="text-purple-400">for</span> t <span class="text-purple-400">in</span> tasks
+    ]</pre>
+            </div>
+
+            <!-- File 4: tests/test_async_workers.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">4. Asynchronous Worker Test Battery: <code class="text-purple-700">tests/test_async_workers.py</code></span>
+                    <span class="text-slate-400">PyTest Suite</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+
+<span class="text-purple-400">from</span> omniroute.workers.queue_engine <span class="text-purple-400">import</span> (
+    BoundedWorkerEngine, TaskEnvelope, BackpressureExceededError
+)
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestAsyncWorkerEngineSuite</span>:
+    <span class="text-slate-500">"""Verifies bounded backpressure, task processing, and poison pill DLQ routing."""</span>
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_bounded_queue_enforces_backpressure_rejection</span>(self):
+        <span class="text-slate-500"># Bounded queue with capacity = 2</span>
+        engine = BoundedWorkerEngine(max_queue_size=2, worker_concurrency=0)
+
+        t1 = TaskEnvelope(<span class="text-amber-300">"t1"</span>, <span class="text-amber-300">"GENERATE_PDF"</span>, {})
+        t2 = TaskEnvelope(<span class="text-amber-300">"t2"</span>, <span class="text-amber-300">"GENERATE_PDF"</span>, {})
+        t3 = TaskEnvelope(<span class="text-amber-300">"t3"</span>, <span class="text-amber-300">"GENERATE_PDF"</span>, {})
+
+        <span class="text-slate-500"># Enqueue first 2 tasks successfully</span>
+        <span class="text-purple-400">await</span> engine.enqueue(t1)
+        <span class="text-purple-400">await</span> engine.enqueue(t2)
+
+        <span class="text-slate-500"># 3rd task MUST trigger BackpressureExceededError</span>
+        <span class="text-purple-400">with</span> pytest.raises(BackpressureExceededError, match=<span class="text-amber-300">"capacity (2) exceeded"</span>):
+            <span class="text-purple-400">await</span> engine.enqueue(t3, timeout_sec=0.02)
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_worker_successfully_processes_task</span>(self):
+        processed_tasks = []
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">mock_pdf_handler</span>(payload: dict):
+            processed_tasks.append(payload[<span class="text-amber-300">"trip_id"</span>])
+
+        engine = BoundedWorkerEngine(max_queue_size=10, worker_concurrency=1)
+        engine.register_handler(<span class="text-amber-300">"GENERATE_PDF"</span>, mock_pdf_handler)
+
+        <span class="text-purple-400">await</span> engine.start_workers()
+
+        task = TaskEnvelope(<span class="text-amber-300">"t_99"</span>, <span class="text-amber-300">"GENERATE_PDF"</span>, {<span class="text-amber-300">"trip_id"</span>: <span class="text-amber-300">"trip_12345"</span>})
+        <span class="text-purple-400">await</span> engine.enqueue(task)
+
+        <span class="text-slate-500"># Wait briefly for worker task pickup</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.05)
+        <span class="text-purple-400">await</span> engine.stop_workers()
+
+        assert processed_tasks == [<span class="text-amber-300">"trip_12345"</span>]
+
+    <span class="text-purple-400">@pytest.mark.asyncio</span>
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_poison_pill_diverted_to_dead_letter_queue</span>(self):
+        quarantined_tasks = []
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">mock_dlq_sink</span>(task: TaskEnvelope, error: str):
+            quarantined_tasks.append((task.task_id, error))
+
+        <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">crashing_poison_handler</span>(payload: dict):
+            <span class="text-purple-400">raise</span> ZeroDivisionError(<span class="text-amber-300">"Poison Pill Payload Corrupted"</span>)
+
+        engine = BoundedWorkerEngine(max_queue_size=10, worker_concurrency=1, dlq_sink_fn=mock_dlq_sink)
+        engine.register_handler(<span class="text-amber-300">"CORRUPTED_TASK"</span>, crashing_poison_handler)
+
+        <span class="text-purple-400">await</span> engine.start_workers()
+
+        poison_task = TaskEnvelope(
+            task_id=<span class="text-amber-300">"poison_1"</span>,
+            task_type=<span class="text-amber-300">"CORRUPTED_TASK"</span>,
+            payload={},
+            max_retries=3
+        )
+        <span class="text-purple-400">await</span> engine.enqueue(poison_task)
+
+        <span class="text-slate-500"># Wait for 3 retry attempts to exhaust</span>
+        <span class="text-purple-400">await</span> asyncio.sleep(0.15)
+        <span class="text-purple-400">await</span> engine.stop_workers()
+
+        assert len(quarantined_tasks) == 1
+        assert quarantined_tasks[0][0] == <span class="text-amber-300">"poison_1"</span>
+        assert <span class="text-amber-300">"Poison Pill Payload Corrupted"</span> <span class="text-purple-400">in</span> quarantined_tasks[0][1]</pre>
+            </div>
+        </section>
+
+        <!-- Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b-2 border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Queue Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blocking the Asyncio Event Loop in Workers</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900 font-bold">time.sleep(5)</code> or executing heavy CPU cryptographic hashing directly inside an <code class="font-mono">async def</code> task handler.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this freezes the entire worker process:</strong> The Asyncio event loop is cooperative and runs on a single thread. When one task blocks the thread for 5 seconds, <strong>zero other tasks can run, socket heartbeats fail, and health-check probes timeout</strong>! Always offload blocking CPU or synchronous I/O work to a thread pool via <code class="font-mono text-rose-950 font-bold">loop.run_in_executor()</code>.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Infinite Retries Without Dead Letter Queues</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring message brokers (RabbitMQ/Celery) to automatically redeliver failed tasks infinitely without an upper retry bound.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes Head-of-Line blocking:</strong> A single poison pill payload crashes the worker, gets redelivered, crashes it again, and consumes 100% of CPU cycles in an infinite crash loop. Valid business tasks queued behind the poison pill are starved forever. <strong>Always bound retries (max 3 attempts) and divert failures to a Dead Letter Queue!</strong>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating OmniRoute Milestone 14</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the asynchronous worker test suite and verify bounded backpressure and poison pill DLQ diversion:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run PyTest Battery -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute the Asynchronous Worker test battery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/test_async_workers.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected output: 3 passed in ~0.25s. Confirms bounded queue backpressure rejection, asynchronous task execution, and poison pill DLQ quarantine!
+                    </span>
+                </div>
+
+                <!-- Step 2: Interactive REPL Demonstration -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate Bounded Queue Backpressure in Python REPL:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        python -c "import asyncio; from omniroute.workers.queue_engine import BoundedWorkerEngine, TaskEnvelope; q = BoundedWorkerEngine(max_queue_size=1); async def run(): await q.enqueue(TaskEnvelope('1', 'T', {})); print('Enqueued 1'); await q.enqueue(TaskEnvelope('2', 'T', {})); asyncio.run(run())"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Raises <code class="text-emerald-400 font-mono">BackpressureExceededError</code> immediately when attempting to enqueue task #2 into a saturated buffer!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 15 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 15: Stream Processing: Log-Centric Architectures (Kafka, Pulsar &amp; Redpanda)</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving to distributed streaming: Partitioning keys, consumer group rebalancing, offset commits, avoiding hot partitions, and streaming 10,000,000 events/sec through Apache Kafka.</p>
+            </div>
+            <a href="Chapter 15 - Stream Processing - Log-Centric Architectures (Kafka, Pulsar and Redpanda).html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 15 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

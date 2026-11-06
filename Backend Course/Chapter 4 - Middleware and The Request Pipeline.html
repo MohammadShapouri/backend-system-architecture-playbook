@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 4: Middleware, APIRouter &amp; The Pipeline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 04 - Pipeline, Observability &amp; APIRouter Modularization)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Cross-Cutting Concerns &amp; Modularity
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Middleware, The Request Pipeline, &amp; APIRouter
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Mastering the ASGI onion: Hooking into request/response flows for security, telemetry, Correlation IDs (<code class="font-mono text-emerald-400">X-Request-ID</code>), structured JSON logging, and error normalization, while decomposing monolith route files into scalable domain modules with <code class="font-mono text-emerald-400">APIRouter</code>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 04: Splitting the Monolith</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        Our <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">main.py</code> is growing too large. In this chapter, we modularize NoteVault into domain-driven routers (<code class="font-mono text-purple-300">app/routers/notes.py</code> and <code class="font-mono text-purple-300">app/routers/views.py</code>), introduce custom timing headers, implement distributed request tracing via Correlation IDs (<code class="font-mono text-purple-300">X-Request-ID</code>), establish structured JSON logging, enforce strict CORS restrictions, and install a global fallback exception handler.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[260px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The ASGI "Onion" Architecture</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CORS browser handshakes &amp; origins</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Correlation IDs (<code class="text-purple-300">X-Request-ID</code>) &amp; contextvars</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Structured single-line JSON logging</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Global Exception Handlers</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Modular <code class="text-purple-300">APIRouter</code> hierarchy</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Middleware -->
+        <section id="cs-middleware" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cross-Cutting Concerns &amp; The "Onion" Architecture</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In software engineering, a <strong>cross-cutting concern</strong> is logic that must run across every single feature, but doesn't belong inside any specific domain function. Logging request durations, parsing security tokens, blocking unauthorized domains, and compressing payloads are all cross-cutting concerns.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                If you had to write telemetry code inside all 50 endpoints in your system, changing how headers are formatted would require editing 50 separate files. Middleware solves this using the <strong>Decorator/Interception Pattern</strong> (frequently referred to as the <em>Onion Architecture</em>).
+            </p>
+
+            <!-- Detailed Visual Onion Diagram -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-mono font-bold uppercase tracking-widest text-emerald-400">The ASGI Request/Response Onion</span>
+                    <p class="text-slate-400 text-xs mt-1">Middlewares execute in symmetrical reverse order on the return path</p>
+                </div>
+
+                <div class="flex flex-col items-center gap-2 font-mono text-[11px] sm:text-xs">
+                    <!-- Layer 1 -->
+                    <div class="w-full max-w-xl p-3 bg-sky-950/70 border border-sky-600 rounded-2xl text-center shadow-lg">
+                        <span class="text-sky-300 font-bold block">1. Global CORS Middleware</span>
+                        <span class="text-[10px] text-slate-400">Checks Origin headers; handles OPTIONS preflight immediately</span>
+                        
+                        <!-- Layer 2 -->
+                        <div class="mt-2 p-3 bg-indigo-950/70 border border-indigo-600 rounded-xl text-center">
+                            <span class="text-indigo-300 font-bold block">2. Custom Profiling, Correlation ID &amp; Telemetry Middleware</span>
+                            <span class="text-[10px] text-slate-400">Generates/binds X-Request-ID &rarr; captures monotonic start time &rarr; awaits downstream &rarr; computes &amp; stamps latency headers</span>
+
+                            <!-- Layer 3 -->
+                            <div class="mt-2 p-3 bg-purple-950/70 border border-purple-600 rounded-lg text-center">
+                                <span class="text-purple-300 font-bold block">3. Routing &amp; Exception Handler Boundary</span>
+                                <span class="text-[10px] text-slate-400">Matches path, invokes dependency tree, validates schemas</span>
+
+                                <!-- Core -->
+                                <div class="mt-2 p-3 bg-emerald-950 border border-emerald-500 rounded-md text-center font-bold text-emerald-300">
+                                    &bull; Core Controller Logic: get_note() / create_note() &bull;
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-slate-400 font-mono text-center">
+                    <strong>Notice the symmetric traversal:</strong> Request enters Outer &rarr; Middle &rarr; Core. Response leaves Core &rarr; Middle &rarr; Outer.
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. Implementation: The call_next Pattern & Under-The-Hood Mechanics -->
+        <section id="call-next-pattern" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The <code>call_next</code> Execution Flow</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI provides a high-level decorator: <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-emerald-600 font-bold">@app.middleware("http")</code>. This converts an asynchronous generator function into an ASGI-compliant middleware class under the hood using Starlette's <code class="font-mono text-xs text-slate-800">BaseHTTPMiddleware</code>.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Deconstructing the Middleware Function Signature</h3>
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">@app.middleware</span>(<span class="text-amber-300">"http"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">telemetry_middleware</span>(request: Request, call_next):
+    <span class="text-slate-500"># -------------------------------------------------------------</span>
+    <span class="text-slate-500"># PHASE 1: PRE-PROCESSING (Runs before route logic)</span>
+    <span class="text-slate-500"># You can inspect headers, log incoming client IPs, or reject early.</span>
+    <span class="text-slate-500"># -------------------------------------------------------------</span>
+    start_time = time.perf_counter()
+
+    <span class="text-slate-500"># Transfer control down the chain to the next middleware or route</span>
+    response = <span class="text-purple-400">await</span> call_next(request)
+
+    <span class="text-slate-500"># -------------------------------------------------------------</span>
+    <span class="text-slate-500"># PHASE 2: POST-PROCESSING (Runs after controller returns)</span>
+    <span class="text-slate-500"># You can mutate outgoing headers, set cookies, or log status codes.</span>
+    <span class="text-slate-500"># -------------------------------------------------------------</span>
+    duration = time.perf_counter() - start_time
+    response.headers[<span class="text-amber-300">"X-Process-Time-Sec"</span>] = f<span class="text-amber-300">"&#123;duration:.6f&#125;"</span>
+
+    <span class="text-purple-400">return</span> response</pre>
+
+                <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded-r-xl text-xs text-sky-900 space-y-1">
+                    <p class="font-bold">Computer Science Detail: Why <code>time.perf_counter()</code> over <code>time.time()</code>?</p>
+                    <p class="text-sky-800 text-[11px] leading-relaxed">
+                        Never use <code class="font-mono">time.time()</code> to calculate request latency. <code class="font-mono">time.time()</code> measures system clock time (wall-clock time), which can be altered or step-jumped backwards by NTP (Network Time Protocol) server synchronization. <code class="font-mono">time.perf_counter()</code> is a <strong>strictly monotonic clock</strong> with nanosecond resolution, guaranteeing it only ever moves forward.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Deep Dive: Correlation IDs & Structured JSON Logging -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-mono font-bold">Observability Standard</span>
+                    Distributed Tracing: Correlation IDs (<code class="font-mono text-emerald-950">X-Request-ID</code>) &amp; Structured JSON Logs
+                </h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    In high-throughput multi-worker clusters, thousands of log lines from different requests interleave on <code class="font-mono text-slate-800">stdout</code> every second. If a user reports a bug, searching logs by raw timestamp or error string is impossible.
+                </p>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    The enterprise standard is <strong>Distributed Request Correlation</strong>: every incoming request is assigned a unique UUID (or inherits one from upstream gateways via <code class="font-mono text-purple-700 font-bold">X-Request-ID</code>). Using Python's standard library <code class="font-mono text-purple-700 font-bold">contextvars</code>, this ID is bound to the async execution context and stamped onto every log line and outgoing response header automatically:
+                </p>
+
+                <pre class="bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> contextvars <span class="text-purple-400">import</span> ContextVar
+
+<span class="text-slate-500"># 1. Asynchronous Context Variable: thread-safe and async-task-safe storage</span>
+request_id_ctx: ContextVar[str] = ContextVar(<span class="text-amber-300">"request_id"</span>, default=<span class="text-amber-300">"unknown"</span>)
+
+<span class="text-slate-500"># 2. Custom JSON Log Formatter: Outputs structured single-line JSON for aggregators</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">JSONLogFormatter</span>(logging.Formatter):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">format</span>(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            <span class="text-amber-300">"timestamp"</span>: self.formatTime(record, self.datefmt),
+            <span class="text-amber-300">"level"</span>: record.levelname,
+            <span class="text-amber-300">"request_id"</span>: request_id_ctx.get(),  <span class="text-slate-500"># Extracted dynamically from current async task!</span>
+            <span class="text-amber-300">"module"</span>: record.module,
+            <span class="text-amber-300">"message"</span>: record.getMessage()
+        }
+        <span class="text-purple-400">return</span> json.dumps(log_entry)
+
+<span class="text-slate-500"># 3. Middleware to capture/generate the ID and stamp the outgoing response</span>
+<span class="text-purple-400">@app.middleware</span>(<span class="text-amber-300">"http"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">correlation_id_middleware</span>(request: Request, call_next):
+    <span class="text-slate-500"># Inherit existing upstream ID from gateway, or generate a fresh UUID4</span>
+    corr_id = request.headers.get(<span class="text-amber-300">"X-Request-ID"</span>) <span class="text-purple-400">or</span> str(uuid.uuid4())
+    token = request_id_ctx.set(corr_id)
+    <span class="text-purple-400">try</span>:
+        response = <span class="text-purple-400">await</span> call_next(request)
+        response.headers[<span class="text-amber-300">"X-Request-ID"</span>] = corr_id
+        <span class="text-purple-400">return</span> response
+    <span class="text-purple-400">finally</span>:
+        request_id_ctx.reset(token)</pre>
+
+                <div class="bg-slate-50 p-4 rounded-xl text-slate-700 text-xs font-mono border border-slate-200 space-y-1">
+                    <span class="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">// Output in Log Aggregators (Datadog, Loki, CloudWatch):</span>
+                    <div class="text-emerald-700 text-[11px] leading-relaxed">
+                        {"timestamp": "2026-10-30 13:16:00", "level": "INFO", "request_id": "c8f2b3e4-41d9-4876-90a2-1b1e8476203a", "module": "notes", "message": "Note 42 fetched successfully"}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Important Library Note: BaseHTTPMiddleware Limitations -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-3">
+                <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                    <span>&#9888;&#65039;</span>
+                    Important Technical Note from Starlette Docs: The BaseHTTPMiddleware Streaming Caveat
+                </h3>
+                <p class="text-xs text-amber-900 leading-relaxed">
+                    Under the hood, <code class="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-950">@app.middleware("http")</code> relies on Starlette's <code class="font-mono text-amber-950 font-bold">BaseHTTPMiddleware</code>. While simple and readable, the official documentation highlights an internal performance quirk:
+                </p>
+                <p class="text-xs text-amber-800 leading-relaxed">
+                    <code class="font-mono">BaseHTTPMiddleware</code> buffers response streams to provide a high-level <code class="font-mono">Response</code> object. For standard REST APIs (like NoteVault), it is fast and completely acceptable. However, for massive streaming responses (like multi-gigabyte file downloads or Server-Sent Events/SSE), it can add memory pressure and obscure background task execution. High-throughput proxy applications often write pure ASGI middleware classes instead.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Security Deep Dive: Cross-Origin Resource Sharing (CORS) -->
+        <section id="cors-deep-dive" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">CORS: The Browser Sandbox &amp; Preflight Mechanics</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                One of the most misunderstood backend concepts is <strong>CORS (Cross-Origin Resource Sharing)</strong>.
+                <strong>CORS is not a backend firewall. CORS is a browser security protocol designed to protect users, not the server.</strong>
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Why CORS Exists -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-rose-100 text-rose-700 flex items-center justify-center text-xs font-mono font-bold">&cross;</span>
+                        The Threat: Cross-Site Request Forgery
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Imagine a user logs into their online banking dashboard at <code class="font-mono text-slate-800">bank.com</code>. In another browser tab, they visit an untrusted site: <code class="font-mono text-rose-600">malicious-game.com</code>.
+                    </p>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Without CORS enforcement, JavaScript running on <code class="font-mono text-rose-600">malicious-game.com</code> could issue a <code class="font-mono">fetch('https://bank.com/api/transfer')</code>. The browser would automatically attach the user's active session cookies, transferring funds silently!
+                    </p>
+                    <p class="text-[11px] text-slate-500 italic">
+                        The browser's Same-Origin Policy (SOP) blocks external sites from reading responses from other domains unless the target API explicitly permits that origin via CORS headers.
+                    </p>
+                </div>
+
+                <!-- The Preflight Handshake -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-mono font-bold">&check;</span>
+                        The Preflight (OPTIONS) Handshake
+                    </h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        For requests that modify server state (like <code class="font-mono">POST</code> with JSON or <code class="font-mono">DELETE</code>), the browser pauses and sends an <strong>OPTIONS</strong> request first:
+                    </p>
+                    <div class="bg-slate-900 text-slate-300 p-3 rounded-lg text-[10px] font-mono space-y-1">
+                        <div class="text-sky-300">1. Browser &rarr; OPTIONS /api/v1/notes (Origin: https://notevault.app)</div>
+                        <div class="text-emerald-400">2. Backend &rarr; 200 OK (Access-Control-Allow-Origin: https://notevault.app)</div>
+                        <div class="text-purple-300">3. Browser &rarr; POST /api/v1/notes (Actual Payload Transmitted)</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 italic">
+                        If the backend does not return the correct <code class="font-mono">Access-Control-Allow-Origin</code>, the browser halts execution immediately before your route handler ever runs.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Global Exception Handlers -->
+        <section id="exception-handlers" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Defensive Reliability: Global Exception Handlers</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an unexpected bug occurs in a Python function (such as a database timeout or a division by zero), an unhandled exception will cause Uvicorn to crash out with an internal server error. In development, Uvicorn outputs a raw Python stack trace. In production, exposing stack traces gives attackers insights into your folder layout, libraries, and source code.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">Normalizing Errors into Structured RFC 7807 JSON</h3>
+                <p class="text-xs text-slate-600">
+                    FastAPI allows intercepting broad exceptions using <code class="font-mono text-purple-700 font-bold">@app.exception_handler</code>. This catches errors, logs them internally for engineering triage, and returns a clean, predictable JSON error object:
+                </p>
+
+                <pre class="bg-slate-900 text-emerald-400 p-5 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> JSONResponse
+
+<span class="text-purple-400">@app.exception_handler</span>(Exception)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">global_fallback_exception_handler</span>(request: Request, exc: Exception):
+    <span class="text-slate-500"># 1. Log the unhandled trace internally to Sentry or standard error streams</span>
+    <span class="text-slate-500"># logger.error(f"Unhandled system fault on {request.url.path}: {exc}", exc_info=True)</span>
+    
+    <span class="text-slate-500"># 2. Return a safe, sanitized, standardized payload with an RFC compliant structure</span>
+    <span class="text-purple-400">return</span> JSONResponse(
+        status_code=500,
+        content={
+            <span class="text-amber-300">"error"</span>: <span class="text-amber-300">"InternalServerError"</span>,
+            <span class="text-amber-300">"message"</span>: <span class="text-amber-300">"An unexpected error occurred. Our engineering team has been alerted."</span>,
+            <span class="text-amber-300">"path"</span>: request.url.path
+        }
+    )</pre>
+            </div>
+        </section>
+
+        <!-- 5. Scaling Architecture: The APIRouter -->
+        <section id="apirouter-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Scaling Architecture: The <code>APIRouter</code> Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                By Chapter 3, our <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">main.py</code> contained schemas, memory databases, HTML rendering routes, and API endpoints. In enterprise codebases, this violates the <strong>Single Responsibility Principle</strong>.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI provides <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">APIRouter</code>. Think of an <code class="font-mono text-xs text-purple-700">APIRouter</code> as a "mini-FastAPI" application that manages its own sub-tree of endpoints. We organize NoteVault into discrete modules:
+            </p>
+
+            <!-- File Architecture Hierarchy Diagram -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-300 font-mono text-xs overflow-x-auto shadow-inner border border-slate-800">
+                <span class="text-emerald-400 font-bold">notevault_backend/</span><br>
+                ├── <span class="text-sky-300">app/</span><br>
+                │   ├── <span class="text-purple-300">__init__.py</span><br>
+                │   ├── <span class="text-emerald-300">config.py</span>                   <span class="text-slate-500"># Pydantic environment settings</span><br>
+                │   ├── <span class="text-emerald-300">schemas.py</span>                  <span class="text-slate-500"># NoteBase, NoteCreate, NoteResponse</span><br>
+                │   ├── <span class="text-emerald-300 font-bold">routers/</span>                  <span class="text-slate-500"># Modular route sub-packages</span><br>
+                │   │   ├── <span class="text-purple-300">__init__.py</span><br>
+                │   │   ├── <span class="text-sky-300 font-bold">notes.py</span>             <span class="text-slate-500"># Pure JSON REST API endpoints (/api/v1/notes)</span><br>
+                │   │   └── <span class="text-sky-300 font-bold">views.py</span>             <span class="text-slate-500"># Jinja2 SSR HTML Dashboard endpoints (/notes)</span><br>
+                │   └── <span class="text-emerald-300 font-bold">main.py</span>                   <span class="text-slate-500"># Root app: Assembles middlewares and mounts routers</span><br>
+                └── <span class="text-sky-300">templates/</span><br>
+                &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="text-purple-300">base.html</span><br>
+                &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="text-purple-300">notes_dashboard.html</span>
+            </div>
+        </section>
+
+        <!-- 6. Step-by-Step Code: Building Milestone 04 -->
+        <section id="step-by-step-code" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 04 Implementation</h2>
+            </div>
+
+            <!-- File 1: app/routers/notes.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Modular REST Router: <code class="text-purple-700">app/routers/notes.py</code></span>
+                    <span class="text-slate-400">JSON Endpoint Domain</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Notes API Router (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional, List
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, HTTPException, status, Query, Path
+<span class="text-purple-400">from</span> app.schemas <span class="text-purple-400">import</span> NoteCreate, NoteUpdate, NoteResponse
+
+<span class="text-slate-500"># Initialize domain router. </span>
+<span class="text-slate-500"># Notice we do NOT include the prefix or tags here: we apply them cleanly upon mounting!</span>
+router = APIRouter()
+
+<span class="text-slate-500"># Shared Datastore Reference (Isolated in DB module in Chapter 06)</span>
+NOTE_DATABASE: dict[int, dict] = {
+    1: {
+        <span class="text-amber-300">"id"</span>: 1,
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"FastAPI Architecture Rules"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Always validate input boundaries; keep business logic modular."</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"backend"</span>, <span class="text-amber-300">"python"</span>],
+        <span class="text-amber-300">"priority"</span>: 2,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+    }
+}
+NOTE_ID_COUNTER = 1
+
+
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">""</span>, <span class="text-slate-500"># Path is empty because prefix="/api/v1/notes" handles the root!</span>
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Create a new note"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">create_note</span>(payload: NoteCreate):
+    <span class="text-purple-400">global</span> NOTE_ID_COUNTER
+    NOTE_ID_COUNTER += 1
+
+    new_record = payload.model_dump()
+    new_record.update({
+        <span class="text-amber-300">"id"</span>: NOTE_ID_COUNTER,
+        <span class="text-amber-300">"is_archived"</span>: <span class="text-rose-400">False</span>,
+        <span class="text-amber-300">"created_at"</span>: datetime.now(timezone.utc),
+        <span class="text-amber-300">"updated_at"</span>: <span class="text-rose-400">None</span>,
+    })
+    NOTE_DATABASE[NOTE_ID_COUNTER] = new_record
+    <span class="text-purple-400">return</span> new_record
+
+
+<span class="text-purple-400">@router.get</span>(
+    <span class="text-amber-300">""</span>,
+    response_model=List[NoteResponse],
+    summary=<span class="text-amber-300">"List and filter notes"</span>
+)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">list_notes</span>(
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>, min_length=2, max_length=50),
+    include_archived: bool = Query(<span class="text-rose-400">False</span>),
+    limit: int = Query(10, ge=1, le=100)
+):
+    results = list(NOTE_DATABASE.values())
+    <span class="text-purple-400">if not</span> include_archived:
+        results = [n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> results <span class="text-purple-400">if not</span> n[<span class="text-amber-300">"is_archived"</span>]]
+
+    <span class="text-purple-400">if</span> search:
+        q = search.lower()
+        results = [
+            n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> results 
+            <span class="text-purple-400">if</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"content"</span>].lower()
+        ]
+    <span class="text-purple-400">return</span> results[:limit]
+
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, response_model=NoteResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">get_note</span>(note_id: int = Path(..., ge=1)):
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+    <span class="text-purple-400">return</span> NOTE_DATABASE[note_id]
+
+
+<span class="text-purple-400">@router.patch</span>(<span class="text-amber-300">"/&#123;note_id&#125;"</span>, response_model=NoteResponse)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">update_note</span>(note_id: int = Path(..., ge=1), payload: NoteUpdate = ...):
+    <span class="text-purple-400">if</span> note_id <span class="text-purple-400">not in</span> NOTE_DATABASE:
+        <span class="text-purple-400">raise</span> HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f<span class="text-amber-300">"Note &#123;note_id&#125; does not exist."</span>
+        )
+
+    existing = NOTE_DATABASE[note_id]
+    update_data = payload.model_dump(exclude_unset=<span class="text-rose-400">True</span>)
+    <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> update_data.items():
+        existing[k] = v
+
+    existing[<span class="text-amber-300">"updated_at"</span>] = datetime.now(timezone.utc)
+    NOTE_DATABASE[note_id] = existing
+    <span class="text-purple-400">return</span> existing</pre>
+            </div>
+
+            <!-- File 2: app/routers/views.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Modular View Router: <code class="text-purple-700">app/routers/views.py</code></span>
+                    <span class="text-slate-400">HTML Dashboard Domain</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Web View Router (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Request, Query
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> HTMLResponse
+<span class="text-purple-400">from</span> fastapi.templating <span class="text-purple-400">import</span> Jinja2Templates
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.routers.notes <span class="text-purple-400">import</span> NOTE_DATABASE
+
+router = APIRouter()
+templates = Jinja2Templates(directory=<span class="text-amber-300">"templates"</span>)
+
+<span class="text-purple-400">@router.get</span>(<span class="text-amber-300">"/notes"</span>, response_class=HTMLResponse, include_in_schema=<span class="text-rose-400">False</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">render_notes_dashboard</span>(
+    request: Request,
+    search: Optional[str] = Query(<span class="text-rose-400">None</span>)
+):
+    notes = list(NOTE_DATABASE.values())
+    <span class="text-purple-400">if</span> search:
+        q = search.lower()
+        notes = [
+            n <span class="text-purple-400">for</span> n <span class="text-purple-400">in</span> notes 
+            <span class="text-purple-400">if</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"title"</span>].lower() <span class="text-purple-400">or</span> q <span class="text-purple-400">in</span> n[<span class="text-amber-300">"content"</span>].lower()
+        ]
+
+    <span class="text-purple-400">return</span> templates.TemplateResponse(
+        request=request,
+        name=<span class="text-amber-300">"notes_dashboard.html"</span>,
+        context={
+            <span class="text-amber-300">"app_name"</span>: settings.APP_NAME,
+            <span class="text-amber-300">"environment"</span>: settings.ENVIRONMENT,
+            <span class="text-amber-300">"notes"</span>: notes,
+            <span class="text-amber-300">"search_query"</span>: search,
+        }
+    )</pre>
+            </div>
+
+            <!-- File 3: app/main.py (Refactored) -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Root Application Orchestrator: <code class="text-purple-700">app/main.py</code></span>
+                    <span class="text-slate-400">Assembles Middlewares &amp; Mounts Routers</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Core Application Factory (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> uuid
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> contextvars <span class="text-purple-400">import</span> ContextVar
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> FastAPI, Request
+<span class="text-purple-400">from</span> fastapi.responses <span class="text-purple-400">import</span> JSONResponse
+<span class="text-purple-400">from</span> fastapi.middleware.cors <span class="text-purple-400">import</span> CORSMiddleware
+
+<span class="text-purple-400">from</span> app.config <span class="text-purple-400">import</span> settings
+<span class="text-purple-400">from</span> app.routers <span class="text-purple-400">import</span> notes, views
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Structured Logging &amp; Correlation ID Setup</span>
+<span class="text-slate-500"># ==============================================================================</span>
+request_id_ctx: ContextVar[str] = ContextVar(<span class="text-amber-300">"request_id"</span>, default=<span class="text-amber-300">"unknown"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">JSONLogFormatter</span>(logging.Formatter):
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">format</span>(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            <span class="text-amber-300">"timestamp"</span>: self.formatTime(record, self.datefmt),
+            <span class="text-amber-300">"level"</span>: record.levelname,
+            <span class="text-amber-300">"request_id"</span>: request_id_ctx.get(),
+            <span class="text-amber-300">"module"</span>: record.module,
+            <span class="text-amber-300">"message"</span>: record.getMessage()
+        }
+        <span class="text-purple-400">return</span> json.dumps(log_entry)
+
+logger = logging.getLogger(<span class="text-amber-300">"notevault"</span>)
+handler = logging.StreamHandler()
+handler.setFormatter(JSONLogFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+<span class="text-slate-500"># 1. Instantiate Root FastAPI Application</span>
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=<span class="text-amber-300">"Production knowledge vault with modular APIRouter hierarchy."</span>,
+    version=<span class="text-amber-300">"1.3.0"</span>,
+)
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 2. Configure ASGI Middleware Pipeline</span>
+<span class="text-slate-500"># (Middlewares execute in reverse order of addition: last added = outermost layer)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># Middleware Layer A: Custom Monotonic Request Duration Profiler</span>
+<span class="text-purple-400">@app.middleware</span>(<span class="text-amber-300">"http"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">add_process_time_header</span>(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = <span class="text-purple-400">await</span> call_next(request)
+    process_duration = time.perf_counter() - start_time
+    <span class="text-slate-500"># Format duration with nanosecond accuracy</span>
+    response.headers[<span class="text-amber-300">"X-Process-Time-Sec"</span>] = f<span class="text-amber-300">"&#123;process_duration:.6f&#125;"</span>
+    <span class="text-purple-400">return</span> response
+
+<span class="text-slate-500"># Middleware Layer B: Correlation ID Tracing Middleware</span>
+<span class="text-purple-400">@app.middleware</span>(<span class="text-amber-300">"http"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">correlation_id_middleware</span>(request: Request, call_next):
+    corr_id = request.headers.get(<span class="text-amber-300">"X-Request-ID"</span>) <span class="text-purple-400">or</span> str(uuid.uuid4())
+    token = request_id_ctx.set(corr_id)
+    <span class="text-purple-400">try</span>:
+        logger.info(f<span class="text-amber-300">"Processing request: &#123;request.method&#125; &#123;request.url.path&#125;"</span>)
+        response = <span class="text-purple-400">await</span> call_next(request)
+        response.headers[<span class="text-amber-300">"X-Request-ID"</span>] = corr_id
+        <span class="text-purple-400">return</span> response
+    <span class="text-purple-400">finally</span>:
+        request_id_ctx.reset(token)
+
+<span class="text-slate-500"># Middleware Layer C: Production CORS Security Enforcement</span>
+<span class="text-slate-500"># Never use allow_origins=["*"] in production with credentials enabled!</span>
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        <span class="text-amber-300">"http://localhost:3000"</span>,       <span class="text-slate-500"># Local React/Vue dev frontend</span>
+        <span class="text-amber-300">"https://app.notevault.io"</span>,    <span class="text-slate-500"># Production SaaS portal</span>
+    ],
+    allow_credentials=<span class="text-rose-400">True</span>,
+    allow_methods=[<span class="text-amber-300">"GET"</span>, <span class="text-amber-300">"POST"</span>, <span class="text-amber-300">"PATCH"</span>, <span class="text-amber-300">"DELETE"</span>, <span class="text-amber-300">"OPTIONS"</span>],
+    allow_headers=[<span class="text-amber-300">"Content-Type"</span>, <span class="text-amber-300">"Authorization"</span>, <span class="text-amber-300">"X-Process-Time-Sec"</span>, <span class="text-amber-300">"X-Request-ID"</span>],
+)
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 3. Global Exception Boundary</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">@app.exception_handler</span>(Exception)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">global_unhandled_exception_handler</span>(request: Request, exc: Exception):
+    <span class="text-slate-500"># Catch-all failsafe: prevents raw Python trace leaks</span>
+    logger.error(f<span class="text-amber-300">"Unhandled system fault on &#123;request.url.path&#125;: &#123;exc&#125;"</span>, exc_info=<span class="text-rose-400">True</span>)
+    <span class="text-purple-400">return</span> JSONResponse(
+        status_code=500,
+        content={
+            <span class="text-amber-300">"error"</span>: <span class="text-amber-300">"InternalServerError"</span>,
+            <span class="text-amber-300">"message"</span>: <span class="text-amber-300">"An unexpected error occurred in NoteVault."</span>,
+            <span class="text-amber-300">"path"</span>: request.url.path,
+            <span class="text-amber-300">"request_id"</span>: request_id_ctx.get()
+        }
+    )
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 4. Mount Domain Routers (The Clean Assembly)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># Mount Notes API endpoints under /api/v1/notes</span>
+app.include_router(
+    notes.router,
+    prefix=f<span class="text-amber-300">"&#123;settings.API_V1_PREFIX&#125;/notes"</span>,
+    tags=[<span class="text-amber-300">"Notes API"</span>]
+)
+
+<span class="text-slate-500"># Mount HTML Web Views directly on root path</span>
+app.include_router(views.router)</pre>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blocking the Async Event Loop in Middleware</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing synchronous blocking I/O calls inside middleware (e.g., using <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">requests.get()</code> or querying a synchronous DB session).
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this is catastrophic:</strong> Middleware executes on <strong>every single HTTP request</strong> arriving at your server (including health checks and static files). If your middleware pauses synchronously for 500ms, the entire Python process freezes for all concurrent users!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>CORS Wildcard with Credentials</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Setting <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">allow_origins=["*"]</code> together with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">allow_credentials=True</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why browsers reject this:</strong> The W3C CORS specification strictly forbids sending authorization headers or cookies if the server wildcard-matches all origins. Browsers will automatically fail the preflight request with a console security violation.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Validating NoteVault Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Verify that your modular routers, process-time middleware, Correlation ID tracing, and CORS security checks are working as intended:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Check 1: Telemetry Header -->
+                <div>
+                    <span class="text-slate-500"># 1. Inspect response headers to verify the X-Process-Time-Sec and X-Request-ID headers:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/notes
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected headers: x-process-time-sec: 0.000... and x-request-id: &lt;uuid&gt;</span>
+                </div>
+
+                <!-- Check 2: Pass custom Correlation ID -->
+                <div>
+                    <span class="text-slate-500"># 2. Pass a custom Correlation ID and confirm it is preserved:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        curl -i http://127.0.0.1:8000/api/v1/notes -H "X-Request-ID: my-custom-trace-12345"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Verify terminal output displays a single-line JSON log with "request_id": "my-custom-trace-12345".</span>
+                </div>
+
+                <!-- Check 3: Preflight Handshake -->
+                <div>
+                    <span class="text-slate-500"># 3. Simulate a browser CORS preflight OPTIONS request:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 mt-1 overflow-x-auto">
+                        curl -i -X OPTIONS http://127.0.0.1:8000/api/v1/notes \
+                        -H "Origin: http://localhost:3000" \
+                        -H "Access-Control-Request-Method: POST"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Expected response: HTTP 200 OK with access-control-allow-origin: http://localhost:3000</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 5 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Dependencies &amp; Dependency Injection (The FastAPI Way)</h4>
+                <p class="text-xs text-slate-500">Inverting control: Resolving the DI graph, resource lifecycle management with yield, connection pooling, and test overriding.</p>
+            </div>
+            <a href="chapter5_dependencies.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 5 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 9: Automated Testing &amp; Self-Documenting APIs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>FastAPI Engineering Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">NoteVault (Milestone 09 - Automated Test Harness &amp; OpenAPI Spec)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Verification &amp; API Contracts
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Automated Testing &amp; The Documentation Contract
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Engineering for resilience: The Testing Pyramid, in-memory ASGI simulation via <code class="font-mono text-emerald-400">TestClient</code>, isolated database sandboxing with Pytest fixtures, hot-swapping dependencies, and compiling self-documenting OpenAPI 3.1 contracts.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">NoteVault Milestone 09: The Automated Test Suite</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl">
+                        A backend without automated tests is an outage waiting to happen. In this milestone, we introduce <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">tests/</code>, build an ephemeral in-memory database fixture that creates and destroys a clean database schema for each test session, and write end-to-end integration tests verifying registration, token generation, note isolation, and unauthorized rejection.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Testing Pyramid &amp; AAA pattern</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> In-memory ASGI via <code class="text-purple-300">TestClient</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Pytest fixtures &amp; DB sandboxing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Clean <code class="text-purple-300">dependency_overrides</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> OpenAPI 3.1 &amp; Swagger customization</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Testing & The AAA Pattern -->
+        <section id="cs-testing" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Testing Pyramid &amp; The AAA Pattern</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Automated tests are not merely tools to catch typos; they are the <strong>executable specification</strong> of your system. In professional software engineering, test suites are architected as an intentional hierarchy known as the <strong>Testing Pyramid</strong>.
+            </p>
+
+            <!-- Testing Pyramid Visual -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6">
+                <div class="text-center">
+                    <span class="text-xs font-mono font-bold uppercase tracking-widest text-emerald-400">The Modern Backend Testing Pyramid</span>
+                    <p class="text-slate-400 text-xs mt-1">Balancing execution speed, cost, and confidence</p>
+                </div>
+
+                <div class="flex flex-col items-center gap-2 max-w-xl mx-auto font-mono text-xs">
+                    <!-- Top: E2E -->
+                    <div class="w-1/3 p-3 bg-rose-950 border border-rose-500 rounded-t-xl text-center shadow-lg">
+                        <span class="text-rose-300 font-bold block">End-to-End (E2E)</span>
+                        <span class="text-[9px] text-rose-200">Slow &bull; Expensive &bull; Full network stack</span>
+                    </div>
+
+                    <!-- Middle: Integration / Route -->
+                    <div class="w-2/3 p-3.5 bg-purple-950 border border-purple-500 text-center shadow-lg">
+                        <span class="text-purple-300 font-bold block text-sm">Integration &amp; API Route Tests (FastAPI Focus)</span>
+                        <span class="text-[10px] text-purple-200">Validates HTTP routes, Pydantic schemas, Auth guards, &amp; SQL queries against ephemeral test DBs</span>
+                    </div>
+
+                    <!-- Base: Unit Tests -->
+                    <div class="w-full p-4 bg-emerald-950 border border-emerald-500 rounded-b-xl text-center shadow-lg">
+                        <span class="text-emerald-300 font-bold block text-sm">Unit Tests</span>
+                        <span class="text-[10px] text-emerald-200">Ultra-fast (&lt; 1ms) &bull; Isolated functions &bull; Custom validators &bull; Pure business logic</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The AAA Pattern Card -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">The AAA Pattern: Structure of a Professional Test</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    To maintain readable, predictable test suites, every test function should follow the <strong>Arrange-Act-Assert (AAA)</strong> pattern:
+                </p>
+                <div class="grid md:grid-cols-3 gap-4 text-xs font-mono">
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-sky-700 font-bold block text-sm">1. Arrange</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Set up the preconditions: insert test user records into the test database, generate headers, and build mock data.
+                        </p>
+                    </div>
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-purple-700 font-bold block text-sm">2. Act</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Trigger the target behavior: issue the HTTP request using <code class="font-mono text-purple-800">client.post()</code> or <code class="font-mono text-purple-800">client.get()</code>.
+                        </p>
+                    </div>
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-emerald-700 font-bold block text-sm">3. Assert</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Verify the outcome: verify the HTTP status code, check JSON attributes, and confirm database mutations occurred.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Inside the TestClient: In-Memory ASGI Simulation -->
+        <section id="testclient-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: How <code>TestClient</code> Works</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Many developers assume that running automated tests requires starting a live server process (such as Uvicorn on port 8000) and sending real TCP requests over localhost.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI’s <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">TestClient</code> is built on <strong>HTTPX</strong> (and Starlette's testing core). It does <em>not</em> open any network ports. It calls your ASGI application callable (<code class="font-mono text-xs text-slate-800">app(scope, receive, send)</code>) directly in-memory using an HTTPX transport adapter.
+            </p>
+
+            <!-- TestClient Flow Diagram -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    In-Memory ASGI Execution Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-48">
+                        <span class="text-sky-900 font-bold block">1. Pytest Test</span>
+                        <span class="text-[10px] text-slate-500">client.post('/notes')</span>
+                    </div>
+                    <div class="text-slate-400 font-bold">&rarr; In-Memory &rarr;</div>
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-56">
+                        <span class="text-purple-900 font-bold block">2. HTTPX ASGITransport</span>
+                        <span class="text-[10px] text-slate-500">Passes scope, receive, send directly</span>
+                    </div>
+                    <div class="text-slate-400 font-bold">&rarr; Execution &rarr;</div>
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-48">
+                        <span class="text-emerald-900 font-bold block">3. FastAPI Application</span>
+                        <span class="text-[10px] text-slate-500">Middlewares &bull; DI &bull; Routes</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-xl text-slate-600 text-[11px] font-sans border border-slate-200 space-y-1">
+                    <p class="font-bold text-slate-900 font-mono">Why In-Memory Execution Matters:</p>
+                    <ul class="list-disc pl-4 space-y-0.5">
+                        <li><strong>Blazing Fast:</strong> No TCP handshakes, no OS socket negotiation, no port collisions. Hundreds of tests can run in a few seconds.</li>
+                        <li><strong>Deterministic Lifecycles:</strong> FastAPI startup and shutdown lifecycle events (like database connections or caches) run reliably using a context manager.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Isolated Database Sandboxing Pattern -->
+        <section id="database-isolation" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Database Sandboxing: Isolated Test Environments</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The most dangerous testing anti-pattern is running tests against a shared development database. Tests will alter real data, collide on unique constraints (e.g., duplicate user emails), and fail unpredictably depending on execution order.
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900">The 4-Step Test Sandboxing Strategy</h3>
+                <div class="grid sm:grid-cols-2 gap-4 text-xs font-mono">
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-purple-700 font-bold block">1. Ephemeral Test Engine</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Create a separate SQLite engine using a dedicated file (<code class="font-mono text-slate-800">sqlite:///./test_notevault.db</code>) or an in-memory instance, completely isolated from your development database.
+                        </p>
+                    </div>
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-sky-700 font-bold block">2. Fresh Schema Generation</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Call <code class="font-mono text-slate-800">Base.metadata.create_all(bind=engine)</code> at the start of the test run to generate tables from scratch.
+                        </p>
+                    </div>
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-emerald-700 font-bold block">3. Dependency Override</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Use <code class="font-mono text-slate-800">app.dependency_overrides[get_db] = override_get_db</code> so FastAPI injects the test database session instead of the production one.
+                        </p>
+                    </div>
+                    <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-rose-700 font-bold block">4. Guaranteed Teardown</span>
+                        <p class="text-slate-600 font-sans text-[11px] leading-relaxed">
+                            Call <code class="font-mono text-slate-800">Base.metadata.drop_all(bind=engine)</code> and remove the test file after tests finish to ensure no state leaks between test runs.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. The Documentation Contract: OpenAPI 3.1 & Swagger UI -->
+        <section id="openapi-contract" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Living Contracts: OpenAPI 3.1 &amp; Swagger Customization</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In traditional frameworks, documentation is often written manually in external tools like Confluence or Postman, where it quickly becomes outdated as the code evolves.
+            </p>
+
+            <p class="text-slate-700 leading-relaxed">
+                FastAPI generates an <strong>OpenAPI 3.1</strong> specification directly from your Python code at runtime. Every Pydantic <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">Field(description=...)</code>, route parameter annotation, docstring, and status code automatically populates the interactive documentation at <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-600 font-bold">/docs</code> (Swagger UI) and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-emerald-600 font-bold">/redoc</code> (ReDoc).
+            </p>
+
+            <!-- Docstring Parsing Visual -->
+            <div class="bg-slate-900 p-6 rounded-2xl text-slate-100 font-mono text-xs overflow-x-auto space-y-3 border border-slate-800 shadow-xl">
+                <div class="text-emerald-400 font-bold">// How FastAPI Maps Python Code to OpenAPI Specification</div>
+                <pre class="leading-relaxed">
+<span class="text-purple-400">@router.post</span>(
+    <span class="text-amber-300">"/notes"</span>,
+    response_model=NoteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary=<span class="text-amber-300">"Create a new personal note"</span>,
+    response_description=<span class="text-amber-300">"The newly committed note record containing assigned server ID."</span>,
+    tags=[<span class="text-amber-300">"Notes API"</span>]
+)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">create_note</span>(...):
+    <span class="text-slate-500">"""
+    Creates a new note associated with the authenticated user.
+
+    - **title**: Must be between 3 and 120 characters
+    - **content**: Markdown supported text
+    - **tags**: Up to 10 unique categorization labels
+    """</span>
+    ...</pre>
+                <div class="text-slate-400 font-sans text-[11px] pt-1">
+                    The triple-quoted markdown docstring is parsed and rendered as rich formatted text directly inside the Swagger documentation at <code class="font-mono text-emerald-300">/docs</code>.
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Step-by-Step Code: NoteVault Milestone 09 Implementation -->
+        <section id="notevault-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">NoteVault Milestone 09: Full Test Suite Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble the test harness for NoteVault:
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy</div>
+                <div>notevault_backend/</div>
+                <div>├── app/</div>
+                <div>│   ├── main.py</div>
+                <div>│   ├── database.py</div>
+                <div>│   ├── dependencies.py</div>
+                <div>│   └── ...</div>
+                <div>└── <span class="text-emerald-300 font-bold">tests/</span>                     <span class="text-slate-500"># Dedicated test package</span></div>
+                <div>    ├── <span class="text-purple-300">__init__.py</span></div>
+                <div>    ├── <span class="text-emerald-300 font-bold">conftest.py</span>              <span class="text-slate-500"># Pytest root: isolated DB fixtures &amp; TestClient setup</span></div>
+                <div>    ├── <span class="text-sky-300 font-bold">test_auth.py</span>             <span class="text-slate-500"># Tests registration, password hashing, &amp; JWT issuance</span></div>
+                <div>    └── <span class="text-sky-300 font-bold">test_notes.py</span>            <span class="text-slate-500"># Tests note CRUD, validation, &amp; multi-tenant security</span></div>
+            </div>
+
+            <!-- File 1: tests/conftest.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Pytest Configuration &amp; Sandboxed Fixtures: <code class="text-purple-700">tests/conftest.py</code></span>
+                    <span class="text-slate-400">Database Teardown Harness</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Pytest Fixtures &amp; Test Engine (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Generator
+<span class="text-purple-400">from</span> fastapi.testclient <span class="text-purple-400">import</span> TestClient
+<span class="text-purple-400">from</span> sqlalchemy <span class="text-purple-400">import</span> create_engine
+<span class="text-purple-400">from</span> sqlalchemy.orm <span class="text-purple-400">import</span> sessionmaker, Session
+
+<span class="text-purple-400">from</span> app.main <span class="text-purple-400">import</span> app
+<span class="text-purple-400">from</span> app.database <span class="text-purple-400">import</span> Base
+<span class="text-purple-400">from</span> app.dependencies <span class="text-purple-400">import</span> get_db
+
+<span class="text-slate-500"># 1. Dedicated test SQLite database file (Completely separate from notevault.db)</span>
+TEST_DATABASE_URL = <span class="text-amber-300">"sqlite:///./test_notevault.db"</span>
+
+test_engine = create_engine(
+    TEST_DATABASE_URL,
+    connect_args={<span class="text-amber-300">"check_same_thread"</span>: <span class="text-rose-400">False</span>}
+)
+TestingSessionLocal = sessionmaker(
+    bind=test_engine,
+    autocommit=<span class="text-rose-400">False</span>,
+    autoflush=<span class="text-rose-400">False</span>,
+    expire_on_commit=<span class="text-rose-400">False</span>
+)
+
+<span class="text-purple-400">@pytest.fixture</span>(scope=<span class="text-amber-300">"session"</span>, autouse=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">setup_test_database</span>():
+    <span class="text-slate-500">"""
+    Runs ONCE per test suite invocation:
+    1. Generates clean tables in test_notevault.db
+    2. Yields control to run tests
+    3. Drops tables and removes file on completion
+    """</span>
+    Base.metadata.create_all(bind=test_engine)
+    <span class="text-purple-400">yield</span>
+    Base.metadata.drop_all(bind=test_engine)
+    <span class="text-purple-400">if</span> os.path.exists(<span class="text-amber-300">"test_notevault.db"</span>):
+        os.remove(<span class="text-amber-300">"test_notevault.db"</span>)
+
+<span class="text-purple-400">@pytest.fixture</span>()
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">db_session</span>() -> Generator[Session, <span class="text-rose-400">None</span>, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""
+    Provides an isolated database session per test function.
+    Rolls back any uncommitted changes to guarantee test isolation.
+    """</span>
+    session = TestingSessionLocal()
+    <span class="text-purple-400">try</span>:
+        <span class="text-purple-400">yield</span> session
+    <span class="text-purple-400">finally</span>:
+        session.rollback()
+        session.close()
+
+<span class="text-purple-400">@pytest.fixture</span>()
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">client</span>(db_session: Session) -> Generator[TestClient, <span class="text-rose-400">None</span>, <span class="text-rose-400">None</span>]:
+    <span class="text-slate-500">"""
+    Yields an in-memory TestClient with dependencies hot-swapped to use the test database.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">override_get_db</span>():
+        <span class="text-purple-400">yield</span> db_session
+
+    <span class="text-slate-500"># Hot-swap production get_db dependency with our test fixture session</span>
+    app.dependency_overrides[get_db] = override_get_db
+    
+    <span class="text-purple-400">with</span> TestClient(app) <span class="text-purple-400">as</span> test_client:
+        <span class="text-purple-400">yield</span> test_client
+    
+    <span class="text-slate-500"># Clear overrides after the test completes</span>
+    app.dependency_overrides.clear()</pre>
+            </div>
+
+            <!-- File 2: tests/test_auth.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Authentication Test Suite: <code class="text-purple-700">tests/test_auth.py</code></span>
+                    <span class="text-slate-400">Verifying Identity Boundaries</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Auth Integration Tests (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi.testclient <span class="text-purple-400">import</span> TestClient
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_register_user_success</span>(client: TestClient):
+    <span class="text-slate-500"># Arrange &amp; Act</span>
+    response = client.post(
+        <span class="text-amber-300">"/api/v1/auth/register"</span>,
+        json={<span class="text-amber-300">"email"</span>: <span class="text-amber-300">"testuser@notevault.io"</span>, <span class="text-amber-300">"password"</span>: <span class="text-amber-300">"StrongPassword123"</span>}
+    )
+    data = response.json()
+
+    <span class="text-slate-500"># Assert (AAA Pattern)</span>
+    <span class="text-purple-400">assert</span> response.status_code == 201
+    <span class="text-purple-400">assert</span> data[<span class="text-amber-300">"email"</span>] == <span class="text-amber-300">"testuser@notevault.io"</span>
+    <span class="text-purple-400">assert</span> <span class="text-amber-300">"id"</span> <span class="text-purple-400">in</span> data
+    <span class="text-purple-400">assert</span> <span class="text-amber-300">"hashed_password"</span> <span class="text-purple-400">not in</span> data  <span class="text-slate-500"># Guarantee sensitive hash is not leaked!</span>
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_register_duplicate_email_conflict</span>(client: TestClient):
+    <span class="text-slate-500"># Arrange: First registration</span>
+    client.post(
+        <span class="text-amber-300">"/api/v1/auth/register"</span>,
+        json={<span class="text-amber-300">"email"</span>: <span class="text-amber-300">"duplicate@notevault.io"</span>, <span class="text-amber-300">"password"</span>: <span class="text-amber-300">"StrongPassword123"</span>}
+    )
+
+    <span class="text-slate-500"># Act: Duplicate registration attempt</span>
+    response = client.post(
+        <span class="text-amber-300">"/api/v1/auth/register"</span>,
+        json={<span class="text-amber-300">"email"</span>: <span class="text-amber-300">"duplicate@notevault.io"</span>, <span class="text-amber-300">"password"</span>: <span class="text-amber-300">"StrongPassword123"</span>}
+    )
+
+    <span class="text-slate-500"># Assert: Expect 409 Conflict</span>
+    <span class="text-purple-400">assert</span> response.status_code == 409
+    <span class="text-purple-400">assert</span> <span class="text-amber-300">"already exists"</span> <span class="text-purple-400">in</span> response.json()[<span class="text-amber-300">"detail"</span>]
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_login_success_and_jwt_issuance</span>(client: TestClient):
+    <span class="text-slate-500"># Arrange: Create user</span>
+    email = <span class="text-amber-300">"login_test@notevault.io"</span>
+    pwd = <span class="text-amber-300">"ValidPassword123"</span>
+    client.post(<span class="text-amber-300">"/api/v1/auth/register"</span>, json={<span class="text-amber-300">"email"</span>: email, <span class="text-amber-300">"password"</span>: pwd})
+
+    <span class="text-slate-500"># Act: Log in using OAuth2 password flow form</span>
+    response = client.post(
+        <span class="text-amber-300">"/api/v1/auth/token"</span>,
+        data={<span class="text-amber-300">"username"</span>: email, <span class="text-amber-300">"password"</span>: pwd}
+    )
+    tokens = response.json()
+
+    <span class="text-slate-500"># Assert</span>
+    <span class="text-purple-400">assert</span> response.status_code == 200
+    <span class="text-purple-400">assert</span> <span class="text-amber-300">"access_token"</span> <span class="text-purple-400">in</span> tokens
+    <span class="text-purple-400">assert</span> tokens[<span class="text-amber-300">"token_type"</span>] == <span class="text-amber-300">"bearer"</span></pre>
+            </div>
+
+            <!-- File 3: tests/test_notes.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Notes CRUD &amp; BOLA Security Test Suite: <code class="text-purple-700">tests/test_notes.py</code></span>
+                    <span class="text-slate-400">Multi-Tenant Isolation Verification</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># NoteVault Backend - Notes CRUD &amp; Multi-Tenancy Tests (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi.testclient <span class="text-purple-400">import</span> TestClient
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_get_auth_header</span>(client: TestClient, email: str, password: str = <span class="text-amber-300">"Password123"</span>) -> dict:
+    <span class="text-slate-500">"""Helper function to register and log in a user, returning the auth header."""</span>
+    client.post(<span class="text-amber-300">"/api/v1/auth/register"</span>, json={<span class="text-amber-300">"email"</span>: email, <span class="text-amber-300">"password"</span>: password})
+    res = client.post(<span class="text-amber-300">"/api/v1/auth/token"</span>, data={<span class="text-amber-300">"username"</span>: email, <span class="text-amber-300">"password"</span>: password})
+    token = res.json()[<span class="text-amber-300">"access_token"</span>]
+    <span class="text-purple-400">return</span> {<span class="text-amber-300">"Authorization"</span>: f<span class="text-amber-300">"Bearer &#123;token&#125;"</span>}
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_create_and_read_note</span>(client: TestClient):
+    <span class="text-slate-500"># Arrange</span>
+    headers = _get_auth_header(client, <span class="text-amber-300">"alice@notevault.io"</span>)
+    note_payload = {
+        <span class="text-amber-300">"title"</span>: <span class="text-amber-300">"Pytest Verification Note"</span>,
+        <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Ensuring automated testing works"</span>,
+        <span class="text-amber-300">"tags"</span>: [<span class="text-amber-300">"testing"</span>, <span class="text-amber-300">"pytest"</span>],
+        <span class="text-amber-300">"priority"</span>: 2
+    }
+
+    <span class="text-slate-500"># Act</span>
+    create_res = client.post(<span class="text-amber-300">"/api/v1/notes"</span>, json=note_payload, headers=headers)
+    created_note = create_res.json()
+
+    <span class="text-slate-500"># Assert</span>
+    <span class="text-purple-400">assert</span> create_res.status_code == 201
+    <span class="text-purple-400">assert</span> created_note[<span class="text-amber-300">"title"</span>] == note_payload[<span class="text-amber-300">"title"</span>]
+    <span class="text-purple-400">assert</span> <span class="text-amber-300">"id"</span> <span class="text-purple-400">in</span> created_note
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">test_multi_tenant_isolation_bola_defense</span>(client: TestClient):
+    <span class="text-slate-500">"""
+    SECURITY TEST:
+    Verify that Bob CANNOT view or access a note created by Alice.
+    Protects against Broken Object Level Authorization (BOLA).
+    """</span>
+    <span class="text-slate-500"># 1. Alice creates a private note</span>
+    alice_headers = _get_auth_header(client, <span class="text-amber-300">"alice_private@notevault.io"</span>)
+    res = client.post(
+        <span class="text-amber-300">"/api/v1/notes"</span>,
+        json={<span class="text-amber-300">"title"</span>: <span class="text-amber-300">"Alice Secret Diary"</span>, <span class="text-amber-300">"content"</span>: <span class="text-amber-300">"Top secret notes"</span>, <span class="text-amber-300">"tags"</span>: []},
+        headers=alice_headers
+    )
+    alice_note_id = res.json()[<span class="text-amber-300">"id"</span>]
+
+    <span class="text-slate-500"># 2. Bob authenticates as an independent user</span>
+    bob_headers = _get_auth_header(client, <span class="text-amber-300">"bob_adversary@notevault.io"</span>)
+
+    <span class="text-slate-500"># 3. Bob attempts to list notes: Alice's note must NOT be in the results</span>
+    bob_list_res = client.get(<span class="text-amber-300">"/api/v1/notes"</span>, headers=bob_headers)
+    bob_notes = bob_list_res.json()
+    <span class="text-purple-400">assert</span> all(note[<span class="text-amber-300">"id"</span>] != alice_note_id <span class="text-purple-400">for</span> note <span class="text-purple-400">in</span> bob_notes)
+
+    <span class="text-slate-500"># 4. Bob attempts to directly delete Alice's note: Expect 404 (Not Found / Unauthorized)</span>
+    delete_res = client.delete(f<span class="text-amber-300">"/api/v1/notes/&#123;alice_note_id&#125;"</span>, headers=bob_headers)
+    <span class="text-purple-400">assert</span> delete_res.status_code == 404</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting to Clear Dependency Overrides</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Mutating <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">app.dependency_overrides</code> in one test and forgetting to call <code class="font-mono text-rose-900">.clear()</code> after completion.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this causes subtle bugs:</strong> The override remains registered for the rest of the test suite. Subsequent tests will unexpectedly use mock objects instead of real dependencies. Always use a Pytest fixture teardown block or a context manager to clear overrides reliably.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Relying on Execution Order in Tests</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono text-rose-900">test_create_note()</code> and assuming <code class="font-mono text-rose-900">test_read_note()</code> will run immediately after it.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed">
+                        <strong>Why this fails:</strong> Test runners (like Pytest) randomize test execution order to detect hidden dependencies. Every single test function must be self-contained, provisioning its own required preconditions during the Arrange step.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing the NoteVault Automated Test Suite</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm">
+                Ensure <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">pytest</code> and <code class="font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400">httpx</code> are installed in your virtual environment. Run the test suite from your project root:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Pytest -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute all automated tests with verbose output:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest -v
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Pytest will discover tests in tests/ and execute them using the in-memory ASGI transport.</span>
+                </div>
+
+                <!-- Step 2: Coverage Check -->
+                <div>
+                    <span class="text-slate-500"># 2. (Optional) Run with line-by-line coverage analysis:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-sky-300 mt-1">
+                        pytest --cov=app tests/
+                    </div>
+                </div>
+
+                <!-- Step 3: Inspect Interactive Docs -->
+                <div>
+                    <span class="text-slate-500"># 3. Boot the application and verify OpenAPI documentation:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-slate-300 mt-1">
+                        uvicorn app.main:app --reload
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block">Open http://127.0.0.1:8000/docs to explore the interactive Swagger UI documentation.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Production-Ready Backend (Packaging, Docker &amp; Cloud Deployment)</h4>
+                <p class="text-xs text-slate-500">Shipping NoteVault: Multi-stage Docker builds, Nginx reverse proxies, Gunicorn worker management, and production readiness checklists.</p>
+            </div>
+            <a href="chapter10_production.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

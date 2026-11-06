@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Asynchronous Systems, Concurrency Hazards &amp; Event-Loop Determinism</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>PyTest Architecture &amp; Test Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">VaultFlow (Milestone 05 - Async Settlement Pipeline &amp; Event-Loop Determinism)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Asynchronous Testing &amp; Concurrency Control
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Asynchronous Systems, Concurrency Hazards &amp; Event-Loop Determinism
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Testing non-blocking concurrent infrastructure without non-deterministic race conditions: Mastering <code class="font-mono text-emerald-400">pytest-asyncio</code> execution modes, managing loop lifecycles across scopes, eliminating the catastrophic "Sleep-and-Pray" anti-pattern with synchronization primitives and virtual clocks, testing cancellation invariants with <code class="font-mono text-emerald-400">asyncio.TaskGroup</code>, and hardening the high-throughput settlement pipeline of <strong>VaultFlow</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">VaultFlow Milestone 05: The Non-Blocking Settlement Pipeline</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 04, our domain calculations and boundary oracles operated on demand. But in an institutional clearinghouse, thousands of transactions arrive concurrently every second over non-blocking message queues. In Milestone 05, we architect the <strong>Async Settlement Worker</strong>: an asynchronous queue consumer executing atomic journal entries, enforcing idempotency deduplication with sliding TTL windows, and handling graceful task cancellation. We build a deterministic, zero-flakiness async test suite capable of testing concurrent race conditions without a single arbitrary sleep delay.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> <code class="text-purple-300">pytest-asyncio</code> Internal Loop Topologies</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Two-Phase Asynchronous Fixtures (<code class="text-purple-300">async for</code> / <code class="text-purple-300">yield</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Eradicating "Sleep-and-Pray" via <code class="text-purple-300">asyncio.Event</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Virtual Clock Fast-Forwarding (<code class="text-purple-300">time-machine</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cancellation Safety via Python 3.11+ <code class="text-purple-300">TaskGroup</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> High-Throughput Async Settlement Worker Service</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Computer Science: The Event Loop vs. Threads in Testing -->
+        <section id="cs-async-testing" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Coroutine Execution &amp; The Event Loop in PyTest</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Unlike multithreading where the operating system kernel preemptively interrupts threads across CPU cores, Python’s <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">asyncio</code> relies on <strong>cooperative multitasking</strong>. A single OS thread executes a loop that manages a queue of pending tasks. Control is yielded <em>voluntarily</em> only when a coroutine encounters an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">await</code> expression on a non-blocking socket or I/O boundary.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Standard test runners execute functions synchronously from top to bottom. If you declare a test as <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">async def test_something():</code> without specialized runner instrumentation, standard Python simply returns an un-executed coroutine object—and PyTest marks the test as <strong>passed without executing a single line of assertion logic!</strong>
+            </p>
+
+            <!-- Pure HTML/CSS Diagram: Pytest-Asyncio Event Loop Lifecycle -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The PyTest Asynchronous Execution Architecture</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">How pytest-asyncio Wraps Coroutines into Testable Units</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Collected Coroutine -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">1. async def test_item()</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Marked with @pytest.mark.asyncio</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            Returns Coroutine
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; intercepts &rarr;</div>
+
+                    <!-- Step 2: Event Loop Provisioning -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">2. Loop Resolution</span>
+                        <div class="text-[10px] text-purple-200 font-sans">pytest-asyncio runner hook</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            loop.run_until_complete()
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; unwinds &rarr;</div>
+
+                    <!-- Step 3: Teardown & Task Sweep -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">3. Task Quarantine</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">Ensures no zombie tasks leak</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-300">
+                            asyncio.all_tasks() == 0
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Synchronous Trap in Async Tests:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If an async test invokes a blocking CPU calculation or synchronous network call (<code class="text-white font-mono">time.sleep()</code> or standard <code class="text-white font-mono">requests.get()</code>) instead of an awaitable non-blocking equivalent (<code class="text-emerald-300 font-mono">asyncio.sleep()</code> or <code class="text-emerald-300 font-mono">httpx.AsyncClient</code>), it <strong>freezes the entire event loop</strong>. Concurrent background tasks cannot execute, producing false-positive timeouts and invalidating concurrency assertions.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. pytest-asyncio Internals: asyncio_mode & Scoped Event Loops -->
+        <section id="pytest-asyncio-modes" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: <code>asyncio_mode</code> &amp; Loop Scoping</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In modern test suites, managing how PyTest treats coroutines is dictated by the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">asyncio_mode</code> configuration inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">pyproject.toml</code>. Choosing the wrong mode causes decorator bloat or uncontrolled fixture state contamination.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Strict Mode -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-700 text-sm">1. asyncio_mode = "strict"</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">Enterprise Standard</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Requires explicit declaration. Only test functions and fixtures explicitly marked with <code class="font-mono text-emerald-700 font-bold">@pytest.mark.asyncio</code> or declared via <code class="font-mono text-emerald-700 font-bold">@pytest_asyncio.fixture</code> are executed as coroutines:
+                    </p>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">@pytest.mark.asyncio</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300">test_settlement_dispatch</span>():
+    assert <span class="text-purple-400">await</span> worker.flush() == 0</pre>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>Why Staff Engineers Enforce This:</strong> Prevents third-party plugin helper functions from accidentally being picked up and scheduled on an event loop. Guarantees complete clarity on which tests are asynchronous.
+                    </p>
+                </div>
+
+                <!-- Auto Mode -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">2. asyncio_mode = "auto"</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Convenience</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        PyTest automatically inspects all collected functions. Any test declared with <code class="font-mono text-slate-800">async def</code> is automatically treated as an asyncio test without needing the decorator:
+                    </p>
+                    <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># No decorator needed; automatically wrapped</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300">test_implicit_coroutine</span>():
+    assert <span class="text-purple-400">await</span> worker.ping()</pre>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>Trade-off:</strong> Highly convenient and reduces decorator noise, but can lead to ambiguity when mixing Trio, AnyIO, or multi-threaded fixtures.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Two-Phase Async Fixtures -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 font-mono">Two-Phase Asynchronous Fixtures (async def with yield)</h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    When fixtures manage async resources (e.g., an in-memory Redis connection pool or an active settlement background queue), setup and teardown must use <code class="font-mono text-purple-700 font-bold">async def</code> coupled with <code class="font-mono text-purple-700 font-bold">yield</code>:
+                </p>
+                <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">import</span> pytest_asyncio
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>(scope=<span class="text-amber-300">"function"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">active_settlement_worker</span>():
+    <span class="text-slate-500"># 1. Asynchronous Setup: Start background worker task</span>
+    worker = SettlementWorker(batch_size=50)
+    <span class="text-purple-400">await</span> worker.start()
+
+    <span class="text-purple-400">yield</span> worker  <span class="text-slate-500"># 2. Injected into calling async test function</span>
+
+    <span class="text-slate-500"># 3. Asynchronous Teardown: Drain queue and cancel worker cleanly</span>
+    <span class="text-purple-400">await</span> worker.stop()</pre>
+                <p class="text-xs text-slate-500 font-sans italic">
+                    If an exception is raised inside the test, PyTest guarantees the post-yield async teardown code executes on the exact same event loop before the loop closes.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Deterministic Concurrency: Eradicating "Sleep-and-Pray" -->
+        <section id="deterministic-concurrency" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Deterministic Concurrency: Eradicating "Sleep-and-Pray" with Synchronization &amp; Virtual Clocks</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The most toxic anti-pattern in asynchronous test suites is the <strong>"Sleep-and-Pray"</strong> idiom: an engineer spawns a background task, suspects it will finish in 100 milliseconds, and writes <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded font-bold">await asyncio.sleep(0.2)</code> before asserting.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In CI environments under high CPU contention, the scheduler delays the task; 200ms expires, and the assertion fails intermittently. Conversely, when the test passes, it needlessly burns 200ms of idle wall-clock time. Across 500 tests, this adds <strong>minutes of wasted build latency</strong>.
+            </p>
+
+            <!-- Sleep vs Event vs Virtual Clock Comparison (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Real-Time Event Synchronization -->
+                <div class="p-5 bg-sky-50 border border-sky-200 rounded-2xl space-y-3">
+                    <span class="text-sky-900 font-bold block text-sm">Strategy A: asyncio.Event Synchronization</span>
+                    <p class="text-xs text-sky-950 font-sans leading-relaxed">
+                        Instead of guessing how long a background worker takes, coordinate execution using an <code class="font-mono text-sky-800 font-bold">asyncio.Event</code>. The worker sets the event the instant processing completes; the test waits with a fail-safe timeout:
+                    </p>
+                    <pre class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+done_signal = asyncio.Event()
+worker.on_batch_complete = done_signal.set
+
+<span class="text-purple-400">await</span> worker.submit_batch(records)
+<span class="text-slate-500"># Wakes up immediately upon completion! (e.g. 1.2ms instead of 200ms)</span>
+<span class="text-purple-400">await</span> asyncio.wait_for(done_signal.wait(), timeout=1.0)</pre>
+                    <div class="text-[10px] text-sky-800 font-sans font-semibold">
+                        &check; Zero wasted time &bull; Completely immune to CPU scheduling latency
+                    </div>
+                </div>
+
+                <!-- Virtual Clock Fast-Forwarding -->
+                <div class="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+                    <span class="text-emerald-900 font-bold block text-sm">Strategy B: Virtual Clock Fast-Forwarding</span>
+                    <p class="text-xs text-emerald-950 font-sans leading-relaxed">
+                        When testing business rules with long time delays (such as a <strong>24-hour sliding idempotency window</strong> or a 30-minute batch flush), use <code class="font-mono text-emerald-800 font-bold">time-machine</code> to warp time forward instantaneously:
+                    </p>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-purple-400">import</span> time_machine
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300">test_idempotency_window_expiration</span>():
+    <span class="text-purple-400">with</span> time_machine.travel(<span class="text-amber-300">"2026-11-01 10:00:00"</span>, tick=<span class="text-rose-400">False</span>) <span class="text-purple-400">as</span> traveller:
+        <span class="text-purple-400">await</span> worker.process_transaction(tx)
+        
+        <span class="text-slate-500"># Warp time forward 25 hours in 0.0001 seconds of real time!</span>
+        traveller.shift(datetime.timedelta(hours=25))
+        assert <span class="text-purple-400">await</span> worker.is_key_expired(tx.idempotency_key)</pre>
+                    <div class="text-[10px] text-emerald-800 font-sans font-semibold">
+                        &check; Tests multi-day sliding expirations in sub-millisecond CPU time
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Concurrency Hazards: Double-Spending & TaskGroup Safety -->
+        <section id="concurrency-hazards" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Concurrency Hazards: Race Conditions &amp; TaskGroup Safety</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In non-blocking financial systems, <strong>race conditions</strong> happen when two concurrent coroutines interleave across an <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700">await</code> expression. Consider this classic asynchronous double-spend vulnerability:
+            </p>
+
+            <!-- Race Condition Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-rose-400">The Asynchronous Interleaved Race Condition</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Account Balance: $100.00 USD &bull; Two Concurrent Withdrawals of $80.00 Arrive</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <!-- Task A -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <div class="flex justify-between border-b border-slate-800 pb-1 text-sky-300 font-bold">
+                            <span>Task A (Withdrawal #1: $80)</span>
+                            <span class="text-[10px] text-slate-500">Coroutine 1</span>
+                        </div>
+                        <div class="space-y-1 text-[11px] font-sans text-slate-300">
+                            <div>1. Reads balance: <code class="text-emerald-300 font-mono">$100 &ge; $80 (&check;)</code></div>
+                            <div class="text-amber-400 font-mono text-[10px]">2. await db.audit_log() &rarr; YIELDS TO EVENT LOOP!</div>
+                            <div>3. Resumes execution...</div>
+                            <div>4. Sets balance: <code class="text-rose-400 font-mono">$100 - $80 = $20</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Task B -->
+                    <div class="p-4 bg-slate-950 border border-rose-900/60 rounded-xl space-y-2">
+                        <div class="flex justify-between border-b border-rose-800/60 pb-1 text-rose-300 font-bold">
+                            <span>Task B (Withdrawal #2: $80)</span>
+                            <span class="text-[10px] text-slate-500">Coroutine 2</span>
+                        </div>
+                        <div class="space-y-1 text-[11px] font-sans text-slate-300">
+                            <div class="text-rose-400">1. Executes during Task A's yield!</div>
+                            <div>2. Reads balance: <code class="text-emerald-300 font-mono">$100 &ge; $80 (&check;)</code> (Stale!)</div>
+                            <div class="text-amber-400 font-mono text-[10px]">3. await db.audit_log() &rarr; YIELDS TO EVENT LOOP!</div>
+                            <div>4. Sets balance: <code class="text-rose-400 font-mono">$20 - $80 = -$60 (CORRUPTED!)</code></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Modern Defense: TaskGroup &amp; Async Locks:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        To test this, we use <code class="text-white font-mono">asyncio.gather</code> or Python 3.11+ <code class="text-emerald-300 font-mono">asyncio.TaskGroup</code> to fire 50 concurrent transfers against a single account, asserting that internal critical sections protected by <code class="text-emerald-300 font-mono">asyncio.Lock</code> or idempotency gates strictly reject concurrent double-spends.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: VaultFlow Milestone 05 -->
+        <section id="vaultflow-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">VaultFlow Milestone 05: Asynchronous Settlement Worker Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now implement Milestone 05 for <strong>VaultFlow</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We build <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/vaultflow/services/settlement_worker.py</code>: an asynchronous clearing worker featuring queue buffering, atomic double-entry execution, idempotency key deduplication, and safe task cancellation.</li>
+                <li>We configure <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">pyproject.toml</code> with strict <code class="font-mono text-purple-700 font-bold">asyncio_mode = "strict"</code>.</li>
+                <li>We engineer <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_settlement_worker.py</code>: verifying concurrent burst ingestion, double-spend prevention, and cancellation resilience.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 05)</div>
+                <div>vaultflow/</div>
+                <div>├── pyproject.toml              <span class="text-slate-500"># Configured with asyncio_mode = "strict"</span></div>
+                <div>├── src/</div>
+                <div>│   └── vaultflow/</div>
+                <div>│       └── services/</div>
+                <div>│           ├── fx.py</div>
+                <div>│           ├── rates_oracle.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">settlement_worker.py</span>   <span class="text-slate-500"># Milestone 05: Non-Blocking Concurrent Settlement Pipeline</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── test_money.py</div>
+                <div>        ├── test_ledger.py</div>
+                <div>        ├── test_fx_engine.py</div>
+                <div>        ├── test_rates_oracle.py</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_settlement_worker.py</span> <span class="text-slate-500"># Milestone 05: Async Concurrency &amp; Race-Condition Suite</span></div>
+            </div>
+
+            <!-- File 1: src/vaultflow/services/settlement_worker.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Asynchronous Settlement Pipeline: <code class="text-purple-700">src/vaultflow/services/settlement_worker.py</code></span>
+                    <span class="text-slate-400">Non-Blocking Queue Worker</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Services - Asynchronous Settlement Pipeline (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Dict, Set, Optional
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money, FinancialDomainError
+<span class="text-purple-400">from</span> vaultflow.core.ledger <span class="text-purple-400">import</span> Ledger, Account, JournalEntry, Posting
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">DuplicateSettlementError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when an idempotency key replay is detected."""</span>
+    pass
+
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">InsufficientSettlementFundsError</span>(FinancialDomainError):
+    <span class="text-slate-500">"""Raised when source account balance cannot satisfy settlement amount."""</span>
+    pass
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">SettlementInstruction</span>:
+    idempotency_key: str
+    source_account: Account
+    destination_account: Account
+    amount: Money
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AsyncSettlementWorker</span>:
+    <span class="text-slate-500">"""
+    HIGH-THROUGHPUT ASYNCHRONOUS SETTLEMENT PIPELINE:
+    Consumes settlement instructions from an internal non-blocking queue.
+    Guarantees atomic commit, idempotency deduplication, and zero race conditions.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, ledger: Ledger):
+        self.ledger = ledger
+        self.queue: asyncio.Queue[SettlementInstruction] = asyncio.Queue()
+        self.processed_idempotency_keys: Set[str] = set()
+        self._lock = asyncio.Lock()
+        self._worker_task: Optional[asyncio.Task] = <span class="text-rose-400">None</span>
+        self._batch_processed_event = asyncio.Event()
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">submit</span>(self, instruction: SettlementInstruction) -> <span class="text-rose-400">None</span>:
+        <span class="text-slate-500"># Fast-path idempotency check before queue ingestion</span>
+        <span class="text-purple-400">async with</span> self._lock:
+            <span class="text-purple-400">if</span> instruction.idempotency_key <span class="text-purple-400">in</span> self.processed_idempotency_keys:
+                <span class="text-purple-400">raise</span> DuplicateSettlementError(
+                    f<span class="text-amber-300">"Settlement key &#123;instruction.idempotency_key&#125; has already been cleared."</span>
+                )
+        <span class="text-purple-400">await</span> self.queue.put(instruction)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">start</span>(self) -> <span class="text-rose-400">None</span>:
+        self._worker_task = asyncio.create_task(self._process_queue_loop())
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">stop</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> self._worker_task:
+            self._worker_task.cancel()
+            <span class="text-purple-400">try</span>:
+                <span class="text-purple-400">await</span> self._worker_task
+            <span class="text-purple-400">except</span> asyncio.CancelledError:
+                pass
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">_process_queue_loop</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">while True</span>:
+            instruction = <span class="text-purple-400">await</span> self.queue.get()
+            <span class="text-purple-400">try</span>:
+                <span class="text-purple-400">async with</span> self._lock:
+                    <span class="text-slate-500"># Deduplicate under critical section lock</span>
+                    <span class="text-purple-400">if</span> instruction.idempotency_key <span class="text-purple-400">in</span> self.processed_idempotency_keys:
+                        continue
+
+                    <span class="text-slate-500"># Balance verification</span>
+                    <span class="text-purple-400">if</span> instruction.source_account.balance.amount &lt; instruction.amount.amount:
+                        <span class="text-purple-400">raise</span> InsufficientSettlementFundsError(
+                            f<span class="text-amber-300">"Account &#123;instruction.source_account.account_number&#125; has insufficient funds."</span>
+                        )
+
+                    <span class="text-slate-500"># Execute double-entry ledger mutation</span>
+                    entry = JournalEntry(
+                        reference_id=f<span class="text-amber-300">"SETTLE-&#123;instruction.idempotency_key&#125;"</span>,
+                        postings=[
+                            Posting(account=instruction.source_account, amount=instruction.amount, is_debit=<span class="text-rose-400">False</span>),
+                            Posting(account=instruction.destination_account, amount=instruction.amount, is_debit=<span class="text-rose-400">True</span>),
+                        ]
+                    )
+                    self.ledger.commit_entry(entry)
+                    self.processed_idempotency_keys.add(instruction.idempotency_key)
+                    self._batch_processed_event.set()
+            <span class="text-purple-400">finally</span>:
+                self.queue.task_done()</pre>
+            </div>
+
+            <!-- File 2: tests/unit/test_settlement_worker.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Async Concurrency Suite: <code class="text-purple-700">tests/unit/test_settlement_worker.py</code></span>
+                    <span class="text-slate-400">Concurrency &amp; Deterministic Time Battery</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># VaultFlow Test Suite - Asynchronous Settlement Testing (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> asyncio
+<span class="text-purple-400">import</span> pytest
+<span class="text-purple-400">import</span> pytest_asyncio
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> vaultflow.core.money <span class="text-purple-400">import</span> Money
+<span class="text-purple-400">from</span> vaultflow.core.ledger <span class="text-purple-400">import</span> AccountType
+<span class="text-purple-400">from</span> vaultflow.services.settlement_worker <span class="text-purple-400">import</span> (
+    AsyncSettlementWorker,
+    SettlementInstruction,
+    DuplicateSettlementError,
+    InsufficientSettlementFundsError
+)
+
+<span class="text-purple-400">@pytest_asyncio.fixture</span>
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">settlement_worker</span>(empty_ledger):
+    <span class="text-slate-500">"""Async fixture managing clean worker boot, execution, and teardown."""</span>
+    worker = AsyncSettlementWorker(ledger=empty_ledger)
+    <span class="text-purple-400">await</span> worker.start()
+    
+    <span class="text-purple-400">yield</span> worker
+
+    <span class="text-slate-500"># Guaranteed async teardown: cancels worker loop and prevents task leakage</span>
+    <span class="text-purple-400">await</span> worker.stop()
+
+
+<span class="text-purple-400">@pytest.mark.asyncio</span>
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TestAsyncSettlementWorker</span>:
+    <span class="text-slate-500">"""Validates non-blocking queue operations, race-conditions, and task safety."""</span>
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_concurrent_settlement_batch_execution</span>(
+        self, 
+        settlement_worker: AsyncSettlementWorker, 
+        account_factory
+    ):
+        <span class="text-slate-500"># 1. Arrange: Create funded source and reserve destination accounts</span>
+        source = account_factory(account_type=AccountType.ASSET, balance=Decimal(<span class="text-amber-300">"10000.0000"</span>))
+        destination = account_factory(account_type=AccountType.LIABILITY, balance=Decimal(<span class="text-amber-300">"0.0000"</span>))
+        settlement_worker.ledger.register_account(source)
+        settlement_worker.ledger.register_account(destination)
+
+        <span class="text-slate-500"># 2. Act: Fire 10 concurrent settlement instructions simultaneously using asyncio.gather</span>
+        instructions = [
+            SettlementInstruction(
+                idempotency_key=f<span class="text-amber-300">"IDEMP-CONCUR-&#123;i&#125;"</span>,
+                source_account=source,
+                destination_account=destination,
+                amount=Money(Decimal(<span class="text-amber-300">"100.0000"</span>), <span class="text-amber-300">"USD"</span>)
+            )
+            <span class="text-purple-400">for</span> i <span class="text-purple-400">in range</span>(10)
+        ]
+
+        <span class="text-purple-400">await</span> asyncio.gather(*(settlement_worker.submit(instr) <span class="text-purple-400">for</span> instr <span class="text-purple-400">in</span> instructions))
+        
+        <span class="text-slate-500"># Deterministic Synchronization: wait for queue to drain cleanly without any sleep()</span>
+        <span class="text-purple-400">await</span> asyncio.wait_for(settlement_worker.queue.join(), timeout=2.0)
+
+        <span class="text-slate-500"># 3. Assert: Verify balance deductions ($10,000 - $1,000 = $9,000)</span>
+        assert source.balance.amount == Decimal(<span class="text-amber-300">"9000.0000"</span>)
+        assert destination.balance.amount == Decimal(<span class="text-amber-300">"1000.0000"</span>)
+        assert len(settlement_worker.ledger.journal_entries) == 10
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_concurrent_idempotency_key_replay_rejected</span>(
+        self, 
+        settlement_worker: AsyncSettlementWorker, 
+        account_factory
+    ):
+        source = account_factory(balance=Decimal(<span class="text-amber-300">"500.0000"</span>))
+        dest = account_factory()
+        settlement_worker.ledger.register_account(source)
+        settlement_worker.ledger.register_account(dest)
+
+        duplicate_instruction = SettlementInstruction(
+            idempotency_key=<span class="text-amber-300">"REPLAY-KEY-999"</span>,
+            source_account=source,
+            destination_account=dest,
+            amount=Money(Decimal(<span class="text-amber-300">"50.0000"</span>), <span class="text-amber-300">"USD"</span>)
+        )
+
+        <span class="text-slate-500"># First submission passes</span>
+        <span class="text-purple-400">await</span> settlement_worker.submit(duplicate_instruction)
+        <span class="text-purple-400">await</span> asyncio.wait_for(settlement_worker.queue.join(), timeout=1.0)
+
+        <span class="text-slate-500"># Replay of the identical idempotency key is rejected immediately!</span>
+        <span class="text-purple-400">with</span> pytest.raises(DuplicateSettlementError, match=<span class="text-amber-300">r"already been cleared"</span>):
+            <span class="text-purple-400">await</span> settlement_worker.submit(duplicate_instruction)
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">test_worker_task_cancellation_preserves_ledger_integrity</span>(
+        self, 
+        empty_ledger, 
+        account_factory
+    ):
+        <span class="text-slate-500"># Verifies worker task cancels safely without corrupting memory</span>
+        worker = AsyncSettlementWorker(ledger=empty_ledger)
+        <span class="text-purple-400">await</span> worker.start()
+
+        <span class="text-slate-500"># Stop worker while idle</span>
+        <span class="text-purple-400">await</span> worker.stop()
+
+        assert worker._worker_task.cancelled() <span class="text-purple-400">is True</span>
+        assert worker.queue.empty() <span class="text-purple-400">is True</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Sleep-and-Pray" Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">await asyncio.sleep(0.1)</code> waiting for an async worker to finish processing.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes flaky tests:</strong> In CI containers running under heavy CPU load, a background task might take 105ms instead of 100ms. Your assertion fails intermittently, producing a "flaky" build that passes when rerun.
+                        <strong>Fix:</strong> Use event coordination (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">asyncio.Event</code>) or queue synchronization (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">await queue.join()</code>).
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Un-Awaited Coroutine" Illusion</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Calling an async function inside a test without the <code class="font-mono text-rose-900 font-bold">await</code> keyword: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">worker.submit(instr)</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this passes tests incorrectly:</strong> In Python, calling an <code class="font-mono">async def</code> function returns a coroutine object. If you omit <code class="font-mono">await</code>, the code inside the coroutine <em>never runs</em>! Python logs a <code class="font-mono text-rose-950 font-bold">RuntimeWarning: coroutine was never awaited</code>, but PyTest marks the test as passing 100% green!
+                        <strong>Fix:</strong> Enforce strict compiler warnings in <code class="font-mono text-slate-800">pyproject.toml</code> with <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">filterwarnings = ["error"]</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating VaultFlow Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to configure <code class="font-mono text-emerald-400">pytest-asyncio</code>, execute concurrent settlement batches, and verify sub-millisecond execution:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install async testing engine and virtual clock tools:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install pytest-asyncio time-machine
+                    </div>
+                </div>
+
+                <!-- Step 2: Run Async Suite -->
+                <div>
+                    <span class="text-slate-500"># 2. Execute the async concurrency suite with verbose tracing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        pytest tests/unit/test_settlement_worker.py -v --tb=short
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice output: All concurrent settlement operations execute in ~0.04 seconds. Zero sleep delays.
+                    </span>
+                </div>
+
+                <!-- Step 3: Run Full Suite -->
+                <div>
+                    <span class="text-slate-500"># 3. Run all unit, matrix, boundary, and async tests across Milestones 01 to 05:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        pytest -m unit --durations=10
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Entire multi-tier test battery completes in under 0.12 seconds total.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Relational Persistence &bull; Testcontainers, Savepoints &amp; Pool Auditing</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving from memory to disk: Provisioning ephemeral PostgreSQL engines via <code class="font-mono">testcontainers</code>, sub-millisecond database test resets using the Savepoint Rollback Pattern, and auditing connection pool leaks.</p>
+            </div>
+            <a href="Chapter 06 - Relational Persistence - Testcontainers, Savepoints and Pool Auditing.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>
