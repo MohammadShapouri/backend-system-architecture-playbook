@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: Foundations of Telemetry &amp; Systems Logging: The Anatomy of an Event</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 01 - The Anatomy of an Event &amp; Pure Telemetry Core)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Telemetry Fundamentals &amp; Event Schemas
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Foundations of Telemetry &amp; Systems Logging: The Anatomy of an Event
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing distributed software observability from the ground up: Why a log is an immutable record of discrete past reality rather than a casual debug string, the mechanics of the Three Pillars (Logs, Metrics, Traces), formulating the strict <strong>What to Log vs. What NOT to Log</strong> decision boundary, evaluating log storage destinations across architectures (text files, databases, search clusters, and object stores), and engineering the pure, high-performance structured JSON telemetry core for <strong>PulsePay</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "PulsePay": Mission-Critical Financial Routing</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        To truly master production logging, theoretical toy examples are insufficient. Throughout this 10-chapter curriculum, we architect, containerize, scale, and debug <strong>PulsePay</strong>: a high-throughput, multi-currency financial clearinghouse and real-time transaction router. In a high-concurrency payment engine, missing a single error event during a settlement timeout costs real capital, an un-redacted card number incurs catastrophic PCI-DSS non-compliance fines, and an unbuffered synchronous logger can lock the entire payment gateway. In Milestone 01, we lay the bedrock: defining our universal JSON event schema, configuring strict ISO-8601 microsecond timestamps, and enforcing Twelve-Factor event stream standards.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Discrete Event Anatomy vs. Casual Prints</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Three Pillars (Logs, Metrics, Traces)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Universal Structured JSON Event Schema</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> What to Log vs. What NOT to Log Matrix</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Storage Trade-offs: Files vs. DBs vs. Sinks</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Twelve-Factor App Principle XI Streaming</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PulsePay Zero-Allocation Event Encoder</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of an Event: Immutability and State -->
+        <section id="cs-event-anatomy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Anatomy of a System Event</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In software engineering, a log entry is frequently misunderstood as a simple string printed to a console to assist a developer during local debugging. In production distributed systems, this mindset leads to catastrophic observability failures.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Fundamentally, <strong>a log is an immutable, timestamped record of discrete past reality</strong>. Once an event transpires—whether an HTTP authorization failure, a ledger debit of $50,000 USD, or a TCP socket drop to an upstream banking partner—that historical fact can never be altered, rewritten, or unsent. An event is a statement of truth:
+            </p>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 text-center">
+                Event = f(Timestamp, State Transition, Actor Identity, Environmental Context, Outcome)
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an application calls <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">print(f"Payment {tx_id} processed for {amount}")</code>, it destroys the event's structural integrity:
+            </p>
+
+            <!-- Comparison Table: Print vs Structured Log -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Attribute</th>
+                            <th class="p-3">Ad-Hoc Print Statement</th>
+                            <th class="p-3">Structured Production Event</th>
+                            <th class="p-3">Enterprise Impact</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 bg-white">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-purple-700">Type Definition</td>
+                            <td class="p-3 text-rose-600 font-bold">&cross; Unstructured Free-Text String</td>
+                            <td class="p-3 text-emerald-600 font-bold">&check; Schema-Validated Key/Value Document</td>
+                            <td class="p-3 text-slate-500 font-sans">Enables automatic indexing, filtering, and aggregation in query engines without fragile regular expressions.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-purple-700">Temporal Anchor</td>
+                            <td class="p-3 text-rose-600 font-bold">&cross; Absent or Local Machine Time</td>
+                            <td class="p-3 text-emerald-600 font-bold">&check; ISO-8601 UTC + Monotonic Delta</td>
+                            <td class="p-3 text-slate-500 font-sans">Eliminates Daylight Saving Time ambiguities and guarantees precise cross-service event ordering.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-purple-700">Severity Tiering</td>
+                            <td class="p-3 text-rose-600 font-bold">&cross; None (Everything is identical)</td>
+                            <td class="p-3 text-emerald-600 font-bold">&check; RFC 5424 Syslog Classification</td>
+                            <td class="p-3 text-slate-500 font-sans">Allows dynamic routing: discarding trace-level noise while triggering automated on-call pages for emergencies.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-purple-700">Context Traceability</td>
+                            <td class="p-3 text-rose-600 font-bold">&cross; Zero metadata attached</td>
+                            <td class="p-3 text-emerald-600 font-bold">&check; Correlated via Trace/Span IDs</td>
+                            <td class="p-3 text-slate-500 font-sans">Stitches 10 disparate microservice operations into a unified, linear transaction narrative.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 2. The Three Pillars of Observability: Logs vs Metrics vs Traces -->
+        <section id="three-pillars" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Three Pillars of Observability Demystified</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In modern systems engineering, telemetry divides into three distinct but deeply symbiotic primitives: <strong>Metrics</strong>, <strong>Logs</strong>, and <strong>Traces</strong>. Junior engineers frequently attempt to force logs to do the job of metrics (e.g., logging every heartbeat to count requests), or attempt to use metrics to solve debugging problems that require logs.
+            </p>
+
+            <!-- Three Pillars Grid -->
+            <div class="grid md:grid-cols-3 gap-6 font-mono text-xs">
+                <!-- Pillar 1: Metrics -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-sky-700 text-sm">1. Metrics (The Dashboard)</span>
+                            <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Aggregable</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            Numeric, constant-size values aggregated over fixed time intervals (counters, gauges, histograms). 
+                            <br><br>
+                            <strong>What they tell you:</strong> <em>"Something is wrong!"</em> Metrics tell you that payment latency spiked to 4.2 seconds or that HTTP 500 error rates jumped to 3.8%.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px]">
+                        <strong>Cost:</strong> Low &bull; O(1) storage regardless of traffic volume.
+                    </div>
+                </div>
+
+                <!-- Pillar 2: Logs -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between border-emerald-300 ring-1 ring-emerald-300">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-emerald-700 text-sm">2. Logs (The Autopsy)</span>
+                            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Rich Narrative</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            High-cardinality, contextual, structured event payloads containing stack traces, error codes, local variables, and domain states.
+                            <br><br>
+                            <strong>What they tell you:</strong> <em>"Why it went wrong!"</em> Logs tell you that payment <code>TX-9921</code> failed because Citibank's API returned HTTP 504 Gateway Timeout during TLS handshake.
+                        </p>
+                    </div>
+                    <div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                        <strong>Cost:</strong> High &bull; Linear O(N) scaling with request volume.
+                    </div>
+                </div>
+
+                <!-- Pillar 3: Traces -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-purple-700 text-sm">3. Traces (The Journey)</span>
+                            <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Topological</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            The request journey through a distributed network graph. A directed acyclic graph (DAG) of spans representing timing boundaries across service hops.
+                            <br><br>
+                            <strong>What they tell you:</strong> <em>"Where it went wrong!"</em> Traces isolate that 3,800ms of a 4,000ms delay was spent waiting inside the fraud-check microservice.
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px]">
+                        <strong>Cost:</strong> Medium &bull; Controlled by head/tail sampling.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interlocking Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Production Triage Workflow
+                </div>
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <div class="p-3 bg-sky-950/60 border border-sky-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Alert (Metrics)</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Payment error rate &gt; 1% triggers PagerDuty</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; narrows to &rarr;</div>
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Isolation (Traces)</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Trace shows 500 error originated in Ledger Service</span>
+                    </div>
+                    <div class="text-emerald-400 font-bold">&rarr; root cause in &rarr;</div>
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Root Cause (Logs)</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Correlated log reveals Deadlock on account ID ACC-901</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. What to Log vs. What NOT to Log: The Definitive Policy -->
+        <section id="what-to-log" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Decision Matrix: What to Log vs. What NOT to Log</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The most severe errors in logging engineering fall into two opposing extremes: <strong>logging too little</strong> (leaving on-call engineers blind during a production outage) or <strong>logging too much of the wrong data</strong> (leaking financial credentials, violating federal privacy statutes, and triggering multi-thousand-dollar cloud ingestion bills).
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- What MUST Be Logged -->
+                <div class="bg-emerald-50/50 border border-emerald-200 p-6 rounded-2xl space-y-4">
+                    <div class="flex items-center gap-2 text-emerald-900 font-bold font-mono text-sm border-b border-emerald-200 pb-2">
+                        <span>&check;</span>
+                        <span>WHAT MUST BE LOGGED (The Signal)</span>
+                    </div>
+                    <ul class="text-xs text-emerald-950 space-y-2.5 font-sans leading-relaxed">
+                        <li>
+                            <strong class="font-mono text-emerald-900">1. State Transitions &amp; Lifecycle Events:</strong>
+                            <br>System startup, graceful shutdown, configuration updates, and business entity lifecycle changes (e.g., account created, payment authorized, refund cleared).
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">2. Security &amp; Authorization Boundaries:</strong>
+                            <br>Authentication successes, permission denials, password reset requests, token generation events, and rate-limit violations with IP context.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">3. Outbound Network &amp; Integration Calls:</strong>
+                            <br>Target endpoint, HTTP method, status code, response time in milliseconds, and retry attempt numbers (crucial for vendor accountability).
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">4. Degraded Operation Warnings:</strong>
+                            <br>Circuit breaker trips, cache fallbacks, high connection pool utilization (&gt;80%), and impending disk exhaustion warnings.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">5. Unhandled Errors &amp; Business Invariants:</strong>
+                            <br>Full exception tracebacks, root cause chains, and violated domain rules (e.g., attempt to settle an already settled transaction).
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- What MUST NOT Be Logged -->
+                <div class="bg-rose-50/50 border border-rose-200 p-6 rounded-2xl space-y-4">
+                    <div class="flex items-center gap-2 text-rose-900 font-bold font-mono text-sm border-b border-rose-200 pb-2">
+                        <span>&cross;</span>
+                        <span>WHAT MUST NEVER BE LOGGED (The Toxic Waste)</span>
+                    </div>
+                    <ul class="text-xs text-rose-950 space-y-2.5 font-sans leading-relaxed">
+                        <li>
+                            <strong class="font-mono text-rose-900">1. Cardholder &amp; Payment Data (PCI-DSS):</strong>
+                            <br>Primary Account Numbers (PANs), Card Verification Values (CVV/CVC), PIN blocks, and expiration dates. Logging these incurs mandatory regulatory fines.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">2. Sensitive Authentication Credentials:</strong>
+                            <br>Cleartext passwords, session cookies, private cryptographic keys, API bearer tokens, and OAuth refresh tokens.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">3. Personally Identifiable Information (PII/GDPR):</strong>
+                            <br>Social Security numbers, national IDs, medical data, and raw user home addresses unless explicitly salted and masked.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">4. High-Frequency Tight-Loop Iterations:</strong>
+                            <br>Logging inside a loop of 100,000 array elements. This locks application threads, swamps buffers, and freezes I/O.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">5. Unbounded Binary Payloads &amp; Files:</strong>
+                            <br>Dumping raw PDF bytes, image binary chunks, or 50MB raw database payloads into stdout.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Storage Topologies: Where to Keep Logs in Different Architectures -->
+        <section id="storage-topologies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Topologies: Where to Keep Logs Across Architectures</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                One of the most consequential architectural decisions an engineer makes is selecting <strong>where logs reside</strong>. Storing logs improperly can degrade transactional databases, fill container filesystems, or drain team budgets through massive cloud storage markups.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Option 1: Filesystem -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-800 text-sm">1. Local Disk Files (/var/log)</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold">Monoliths Only</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Writing directly to rotating flat files on the host filesystem. Standard practice for standalone monolithic daemons.
+                    </p>
+                    <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-emerald-700 font-mono">&check; Pros:</strong> Zero network dependencies; accessible via standard Unix CLI tools (<code class="font-mono">grep</code>, <code class="font-mono">awk</code>, <code class="font-mono">tail</code>).</div>
+                        <div><strong class="text-rose-700 font-mono">&cross; Cons:</strong> Dies in cloud/containers. When autoscaling groups terminate an instance, all local log files vanish instantly. Multi-process file contention causes truncation.</div>
+                    </div>
+                </div>
+
+                <!-- Option 2: The Database Anti-Pattern -->
+                <div class="bg-white p-6 rounded-2xl border border-rose-200 shadow-sm space-y-3 bg-rose-50/20">
+                    <div class="flex items-center justify-between border-b border-rose-100 pb-2">
+                        <span class="font-bold text-rose-800 text-sm">2. Primary Relational DB (SQL)</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">Critical Anti-Pattern</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Executing <code class="text-rose-700 font-mono">INSERT INTO logs ...</code> directly into your PostgreSQL or MySQL business database.
+                    </p>
+                    <div class="bg-rose-50 p-2.5 rounded-lg border border-rose-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-rose-700 font-mono">&cross; The Hazard:</strong> Enormous write amplification, index bloat, table locks, and massive Write-Ahead Log (WAL) overhead. If the database experiences load, logging freezes the app, taking down the entire system!</div>
+                    </div>
+                </div>
+
+                <!-- Option 3: Dedicated Log Search Engine -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-800 text-sm">3. Inverted Search (OpenSearch/ES)</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Full-Text Power</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Indexing tokenized log streams into distributed Lucene clusters for high-speed free-text exploration.
+                    </p>
+                    <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-emerald-700 font-mono">&check; Pros:</strong> Blazing-fast unstructured search across petabytes of text.</div>
+                        <div><strong class="text-rose-700 font-mono">&cross; Cons:</strong> Massive RAM consumption, complex cluster operations, and high infrastructure expenses.</div>
+                    </div>
+                </div>
+
+                <!-- Option 4: Index-Free Cloud Storage -->
+                <div class="bg-white p-6 rounded-2xl border border-emerald-300 shadow-sm space-y-3 ring-1 ring-emerald-300">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-800 text-sm">4. Chunked Object Store (Loki / S3)</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Cloud-Native Standard</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Indexing *only* metadata labels and streaming compressed chunks into cheap object storage (AWS S3, MinIO, GCS).
+                    </p>
+                    <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-emerald-700 font-mono">&check; Pros:</strong> 80% cheaper than Elasticsearch; zero index maintenance; natively scales with Kubernetes. Grep-at-query speed.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Twelve-Factor App Principle XI: Logs as Event Streams -->
+        <section id="twelve-factor" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Twelve-Factor App: Principle XI (Logs as Event Streams)</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The landmark <a href="https://12factor.net/logs" target="_blank" class="text-emerald-600 font-bold underline">Twelve-Factor App methodology</a> establishes the gold standard for cloud-native software architecture. Principle XI states:
+            </p>
+            <blockquote class="p-4 bg-slate-900 text-slate-200 border-l-4 border-emerald-500 rounded-r-2xl font-mono text-xs leading-relaxed">
+                "A twelve-factor app never concerns itself with routing or storage of its output stream. It should not attempt to write to or manage logfiles. Instead, each running process writes its event stream, unbuffered, to stdout."
+            </blockquote>
+            <p class="text-slate-700 leading-relaxed">
+                In containerized microservice architectures (Docker, Kubernetes), the runtime environment intercepts standard streams. The application simply emits structured JSON to file descriptor 1 (`stdout`) and file descriptor 2 (`stderr`). Host-level agents (like Vector or Fluent Bit) capture the stream, handle network buffering, and forward records to persistent storage. This completely decouples application business logic from logging infrastructure.
+            </p>
+
+            <!-- Twelve-Factor Pipeline Visual -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Decoupled Twelve-Factor Streaming Architecture
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- App Container -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-sky-300 font-bold block text-sm">Application (PulsePay)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Zero disk file handlers</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-amber-300">
+                            Writes JSON to stdout
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; captured by &rarr;</div>
+
+                    <!-- Container Runtime -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-300 font-bold block text-sm">Container Engine (CRI)</span>
+                        <div class="text-[10px] text-purple-200 font-sans">Pipes stream to node log</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-emerald-300">
+                            /var/log/pods/*.log
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; shipped by &rarr;</div>
+
+                    <!-- Forwarder / DaemonSet -->
+                    <div class="p-4 bg-emerald-950/60 border border-emerald-500 rounded-2xl w-full md:w-56 space-y-1.5">
+                        <span class="text-emerald-300 font-bold block text-sm">Node Agent (Vector)</span>
+                        <div class="text-[10px] text-emerald-200 font-sans">DaemonSet scrapes &amp; ships</div>
+                        <div class="text-[10px] bg-slate-900 p-1.5 rounded text-sky-300">
+                            Routes to Loki / S3
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Project Implementation: PulsePay Milestone 01 -->
+        <section id="pulsepay-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 01: Pure Telemetry &amp; Event Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 01 for <strong>PulsePay</strong>. We build a high-performance, schema-enforced, zero-external-dependency logging core that implements our universal JSON event schema, adheres strictly to Twelve-Factor stdout streaming, handles fixed-point financial <code class="font-mono text-slate-800">Decimal</code> values cleanly, and enforces RFC 5424 severity standards.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// PulsePay Project Structure (Milestone 01)</div>
+                <div>pulsepay/</div>
+                <div>├── pyproject.toml              <span class="text-slate-500"># Project dependencies and formatting standards</span></div>
+                <div>└── src/</div>
+                <div>    └── pulsepay/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── observability/</div>
+                <div>            ├── __init__.py</div>
+                <div>            ├── <span class="text-emerald-300 font-bold">schemas.py</span>         <span class="text-slate-500"># Universal Structured Log Event Schema</span></div>
+                <div>            ├── <span class="text-emerald-300 font-bold">formatters.py</span>      <span class="text-slate-500"># Ultra-Fast JSON Log Formatter</span></div>
+                <div>            └── <span class="text-purple-300 font-bold">engine.py</span>          <span class="text-slate-500"># Centralized Logger Factory &amp; Stream Configuration</span></div>
+            </div>
+
+            <!-- File 1: src/pulsepay/observability/schemas.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Universal Structured Log Event Schema: <code class="text-purple-700">src/pulsepay/observability/schemas.py</code></span>
+                    <span class="text-slate-400">Data Contract Layer</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - Universal Structured Log Event Schema (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass, field, asdict
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Optional
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">import</span> sys
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">LogLevel</span>(str, Enum):
+    <span class="text-slate-500"># RFC 5424 Syslog Severity Mapping</span>
+    DEBUG = <span class="text-amber-300">"DEBUG"</span>        <span class="text-slate-500"># Informational events useful during diagnostic sessions</span>
+    INFO = <span class="text-amber-300">"INFO"</span>          <span class="text-slate-500"># Normal operational events: lifecycle changes, transfers</span>
+    WARNING = <span class="text-amber-300">"WARNING"</span>    <span class="text-slate-500"># Unexpected condition handled gracefully (e.g. rate-limit retries)</span>
+    ERROR = <span class="text-amber-300">"ERROR"</span>        <span class="text-slate-500"># Operation failed: unhandled exceptions, network drops</span>
+    CRITICAL = <span class="text-amber-300">"CRITICAL"</span>  <span class="text-slate-500"># System-wide outage: primary database down, data corruption risk</span>
+
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>, slots=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PulseLogEvent</span>:
+    <span class="text-slate-500">"""
+    IMMUTABLE STRUCTURED LOG DOCUMENT:
+    Defines the non-negotiable enterprise schema for all events emitted
+    by PulsePay services. Conforms strictly to machine-indexable standards.
+    """</span>
+    message: str
+    level: LogLevel = LogLevel.INFO
+    timestamp: str = field(
+        default_factory=<span class="text-purple-400">lambda</span>: datetime.now(timezone.utc).isoformat(timespec=<span class="text-amber-300">"microseconds"</span>)
+    )
+    service_name: str = <span class="text-amber-300">"pulsepay-core"</span>
+    service_version: str = <span class="text-amber-300">"1.0.0"</span>
+    environment: str = field(default_factory=<span class="text-purple-400">lambda</span>: os.getenv(<span class="text-amber-300">"PULSEPAY_ENV"</span>, <span class="text-amber-300">"production"</span>))
+    process_id: int = field(default_factory=os.getpid)
+    
+    <span class="text-slate-500"># Distributed Contextual Fields</span>
+    correlation_id: Optional[str] = <span class="text-rose-400">None</span>
+    trace_id: Optional[str] = <span class="text-rose-400">None</span>
+    span_id: Optional[str] = <span class="text-rose-400">None</span>
+
+    <span class="text-slate-500"># Domain Execution Metadata</span>
+    action: Optional[str] = <span class="text-rose-400">None</span>
+    duration_ms: Optional[float] = <span class="text-rose-400">None</span>
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    error_details: Optional[Dict[str, Any]] = <span class="text-rose-400">None</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">to_dict</span>(self) -> Dict[str, Any]:
+        <span class="text-slate-500"># Exclude None values cleanly to preserve disk and network bandwidth</span>
+        raw = asdict(self)
+        <span class="text-purple-400">return</span> {k: v <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> raw.items() <span class="text-purple-400">if</span> v <span class="text-purple-400">is not None</span>}</pre>
+            </div>
+
+            <!-- File 2: src/pulsepay/observability/formatters.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Ultra-Fast JSON Event Formatter: <code class="text-purple-700">src/pulsepay/observability/formatters.py</code></span>
+                    <span class="text-slate-400">Serialization Engine</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - High-Speed JSON Formatter (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, date
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any
+<span class="text-purple-400">from</span> pulsepay.observability.schemas <span class="text-purple-400">import</span> PulseLogEvent, LogLevel
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PulseJSONEncoder</span>(json.JSONEncoder):
+    <span class="text-slate-500">"""
+    PRODUCTION JSON ENCODER:
+    Handles exact financial Decimal precision, dates, and non-serializable objects
+    without raising TypeError and crashing active transaction worker threads.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">default</span>(self, obj: Any) -> Any:
+        <span class="text-purple-400">if isinstance</span>(obj, Decimal):
+            <span class="text-slate-500"># Format financial Decimals to exact fixed-point strings</span>
+            <span class="text-purple-400">return</span> f<span class="text-amber-300">"&#123;obj:.4f&#125;"</span>
+        <span class="text-purple-400">if isinstance</span>(obj, (datetime, date)):
+            <span class="text-purple-400">return</span> obj.isoformat()
+        <span class="text-purple-400">if isinstance</span>(obj, set):
+            <span class="text-purple-400">return list</span>(obj)
+        <span class="text-purple-400">if isinstance</span>(obj, Exception):
+            <span class="text-purple-400">return</span> {<span class="text-amber-300">"type"</span>: obj.__class__.__name__, <span class="text-amber-300">"message"</span>: str(obj)}
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">return super</span>().default(obj)
+        <span class="text-purple-400">except</span> TypeError:
+            <span class="text-slate-500"># Fallback string representation prevents logging serialization failures</span>
+            <span class="text-purple-400">return</span> f<span class="text-amber-300">"&lt;NonSerializable: &#123;type(obj).__name__&#125;&gt;"</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PulseStructuredFormatter</span>(logging.Formatter):
+    <span class="text-slate-500">"""
+    Standard logging.Formatter plugin translating LogRecord instances
+    into single-line, NDJSON (Newline Delimited JSON) documents.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">format</span>(self, record: logging.LogRecord) -> str:
+        <span class="text-slate-500"># Extract structured metadata attached via logger.info("...", extra={...})</span>
+        extra_attrs = {
+            k: v <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> record.__dict__.items()
+            <span class="text-purple-400">if</span> k <span class="text-purple-400">not in</span> logging.LogRecord(<span class="text-amber-300">""</span>, 0, <span class="text-amber-300">""</span>, 0, <span class="text-amber-300">""</span>, (), <span class="text-rose-400">None</span>).__dict__
+            <span class="text-purple-400">and</span> k <span class="text-purple-400">not in</span> (<span class="text-amber-300">"message"</span>, <span class="text-amber-300">"asctime"</span>)
+        }
+
+        error_details = <span class="text-rose-400">None</span>
+        <span class="text-purple-400">if</span> record.exc_info:
+            exc_type, exc_val, _ = record.exc_info
+            error_details = {
+                <span class="text-amber-300">"exception_type"</span>: exc_type.__name__ <span class="text-purple-400">if</span> exc_type <span class="text-purple-400">else</span> <span class="text-amber-300">"UnknownException"</span>,
+                <span class="text-amber-300">"exception_message"</span>: str(exc_val),
+                <span class="text-amber-300">"stack_trace"</span>: self.formatException(record.exc_info),
+            }
+
+        event = PulseLogEvent(
+            message=record.getMessage(),
+            level=LogLevel(record.levelname),
+            correlation_id=extra_attrs.pop(<span class="text-amber-300">"correlation_id"</span>, <span class="text-rose-400">None</span>),
+            trace_id=extra_attrs.pop(<span class="text-amber-300">"trace_id"</span>, <span class="text-rose-400">None</span>),
+            span_id=extra_attrs.pop(<span class="text-amber-300">"span_id"</span>, <span class="text-rose-400">None</span>),
+            action=extra_attrs.pop(<span class="text-amber-300">"action"</span>, <span class="text-rose-400">None</span>),
+            duration_ms=extra_attrs.pop(<span class="text-amber-300">"duration_ms"</span>, <span class="text-rose-400">None</span>),
+            attributes=extra_attrs,
+            error_details=error_details,
+        )
+
+        <span class="text-purple-400">return</span> json.dumps(event.to_dict(), cls=PulseJSONEncoder)</pre>
+            </div>
+
+            <!-- File 3: src/pulsepay/observability/engine.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Centralized Logger Factory &amp; Stream Wiring: <code class="text-purple-700">src/pulsepay/observability/engine.py</code></span>
+                    <span class="text-slate-400">Twelve-Factor stdout Configuration</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - Central Engine &amp; Stream Configuration (Milestone 01)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">import</span> sys
+<span class="text-purple-400">from</span> pulsepay.observability.formatters <span class="text-purple-400">import</span> PulseStructuredFormatter
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">configure_root_logger</span>(log_level: str = <span class="text-amber-300">"INFO"</span>) -> logging.Logger:
+    <span class="text-slate-500">"""
+    BOOTSTRAPS PRODUCTION LOGGING ENGINE:
+    - Strictly routes all log events to sys.stdout (Twelve-Factor Principle XI).
+    - Attaches high-speed PulseStructuredFormatter.
+    - Neutralizes verbose third-party loggers (urllib3, asyncpg).
+    """</span>
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+    <span class="text-slate-500"># Remove any existing legacy or ad-hoc handlers</span>
+    <span class="text-purple-400">for</span> handler <span class="text-purple-400">in</span> root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    <span class="text-slate-500"># Bind unbuffered stdout stream handler</span>
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(PulseStructuredFormatter())
+    root_logger.addHandler(stdout_handler)
+
+    <span class="text-slate-500"># Silence chatty third-party library internals</span>
+    logging.getLogger(<span class="text-amber-300">"uvicorn.access"</span>).handlers = []
+    logging.getLogger(<span class="text-amber-300">"urllib3"</span>).setLevel(logging.WARNING)
+
+    <span class="text-purple-400">return</span> root_logger
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">get_logger</span>(name: str) -> logging.Logger:
+    <span class="text-slate-500">"""Factory returning a namespaced logger inherited from the structured root."""</span>
+    <span class="text-purple-400">return</span> logging.getLogger(f<span class="text-amber-300">"pulsepay.&#123;name&#125;"</span>)</pre>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Local Timezone Ambiguity" Disaster</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Generating timestamps with <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">datetime.now()</code> without setting <code class="font-mono text-rose-900 font-bold">timezone.utc</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys observability:</strong> In production clusters spanning multi-region availability zones, services log events with hours of clock divergence. During Daylight Saving Time transitions, one hour of logs literally overwrites the previous hour chronologically, making distributed root-cause debugging impossible.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Database Table Logging" Bottleneck</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Creating a database table called <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">app_logs</code> and writing every exception directly with SQLAlchemy.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes total system collapse:</strong> When traffic spikes or a database slowdown occurs, your database slows down. The application reacts by logging connection pool warnings, which triggers thousands of new writes to the already failing database. This feedback loop guarantees a full platform crash.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the virtual environment, execute the structured event validation harness, and prove Twelve-Factor unbuffered streaming:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Initialize Virtual Environment -->
+                <div>
+                    <span class="text-slate-500"># 1. Setup virtual environment:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+                    </div>
+                </div>
+
+                <!-- Step 2: Execute Telemetry Engine Test Script -->
+                <div>
+                    <span class="text-slate-500"># 2. Run inline Python script testing structured logging and Decimal serialization:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+python -c '
+from decimal import Decimal
+from pulsepay.observability.engine import configure_root_logger, get_logger
+
+configure_root_logger("DEBUG")
+logger = get_logger("settlement")
+
+logger.info(
+    "Clearing payment transaction",
+    extra={
+        "correlation_id": "TX-CORR-88319",
+        "action": "PAYMENT_SETTLE",
+        "amount": Decimal("150000.5000"),
+        "currency": "USD",
+        "duration_ms": 14.82
+    }
+)
+'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected Output: A single line of machine-parseable NDJSON with strict ISO-8601 UTC microsecond timestamp, fixed-point decimal amount, and structured action attributes!
+                    </span>
+                </div>
+
+                <!-- Step 3: Pipe to jq for Automated Schema Validation -->
+                <div>
+                    <span class="text-slate-500"># 3. Prove machine-indexability by piping stdout directly into jq:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+python -c '
+from pulsepay.observability.engine import configure_root_logger, get_logger
+configure_root_logger()
+get_logger("auth").warning("Authentication threshold reached", extra={"client_ip": "192.168.1.104"})
+' | jq '.level, .timestamp, .attributes.client_ip'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output reflects clean, error-free parsing with zero string extraction regex required!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Python Runtime Logging Internals &amp; High-Throughput Handlers</h4>
+                <p class="text-xs text-slate-500 font-sans">Deconstructing CPython logging internals: Eliminating global lock contention, non-blocking asynchronous logging with <code class="font-mono">QueueHandler</code> and <code class="font-mono">QueueListener</code>, and benchmarking high-concurrency event ingestion in <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 02 - Python Runtime Logging Internals and High-Throughput Handlers.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

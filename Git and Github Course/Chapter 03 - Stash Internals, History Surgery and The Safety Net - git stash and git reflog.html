@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 03: Stash Internals, History Surgery &amp; The Safety Net: git stash and git reflog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 03 - Emergency Recovery &amp; State Surgery Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 03 &bull; State Surgery &amp; Reference Log Forensics
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Stash Internals, History Surgery &amp; The Safety Net: git stash and git reflog
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating operational disruptions and recovering from disastrous repository states: The multi-parent commit architecture of <code class="font-mono text-emerald-400">git stash</code>, capturing untracked files with <code class="font-mono text-emerald-400">-u</code>, the Three Trees mechanics of <code class="font-mono text-emerald-400">git reset</code> (--soft, --mixed, --hard), and using <code class="font-mono text-emerald-400">git reflog</code> as an immutable time-travel safety net in <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">ShipForge Milestone 03: History Surgery &amp; Disaster Recovery</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 and 02, we established ShipForge's immutable object model, semantic commit discipline, and branch topologies. In Milestone 03, we tackle the reality of production engineering: handling emergency hotfix context switches without polluting commit histories, rectifying premature commits using <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">git commit --amend</code>, comparing the exact state transitions of <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">git reset</code> modes, and using reference logs to resurrect "permanently deleted" branches.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 03 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Parent Commit Architecture of Stashes</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Stash Operations (<code class="text-purple-300">apply</code> vs <code class="text-purple-300">pop</code>, <code class="text-purple-300">-u</code> flag)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Three-Tree Reset Matrix (<code class="text-purple-300">--soft</code>, <code class="text-purple-300">--mixed</code>, <code class="text-purple-300">--hard</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Anatomy of <code class="text-purple-300">.git/logs/HEAD</code> Reference Logs</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Disaster Recovery: Resurrecting Deleted Branches</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Safe Surgical History Amendment Protocols</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Stashing: Multi-Parent Commit Storage -->
+        <section id="stash-internals" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Hidden Multi-Parent Architecture of git stash</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Many developers conceptualize <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">git stash</code> as a clipboard or temporary clipboard buffer in memory. In reality, <strong>Git stores stashes directly in the permanent object store as special multi-parent commits</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When you execute <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">git stash push</code>, Git synthesizes two (or three, if untracked files are captured) separate commit objects and updates the reference file at <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">.git/refs/stash</code>:
+            </p>
+
+            <!-- Multi-Parent Stash DAG Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    Internal Anatomy of a Stash Reference: stash@{0}
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-center gap-6">
+                    <!-- Base Commit (HEAD) -->
+                    <div class="w-full md:w-56 p-4 bg-slate-950 border border-slate-700 rounded-2xl space-y-2 text-center">
+                        <span class="text-slate-400 font-bold block text-[11px]">Parent 1: HEAD Commit</span>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-slate-300">
+                            The commit you were currently on when stashing.
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold text-lg">&larr; Parent 1 &larr;</div>
+
+                    <!-- Main Stash Commit -->
+                    <div class="w-full md:w-64 p-5 bg-purple-950/80 border-2 border-purple-500 rounded-2xl space-y-2 shadow-lg">
+                        <div class="flex items-center justify-between border-b border-purple-800 pb-1">
+                            <span class="text-purple-300 font-bold">stash@{0} Commit</span>
+                            <span class="text-[9px] bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded">WIP on main</span>
+                        </div>
+                        <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                            Snapshot of your <strong>Working Directory</strong> changes. Linked to Parent 1, Parent 2, and Parent 3.
+                        </p>
+                    </div>
+
+                    <div class="text-sky-400 font-bold text-lg">&rarr; Parent 2 &rarr;</div>
+
+                    <!-- Index Commit -->
+                    <div class="w-full md:w-56 p-4 bg-sky-950/80 border border-sky-600 rounded-2xl space-y-2 text-center">
+                        <span class="text-sky-300 font-bold block text-[11px]">Parent 2: Index Tree</span>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-sky-200">
+                            Snapshot of changes that were staged in the index at stash time!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Third Parent Callout (Untracked) -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs block">The Third Parent: git stash -u (--include-untracked)</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        By default, <code class="text-purple-300 font-mono">git stash</code> ignores untracked files completely. If you add the <code class="text-emerald-300 font-mono">-u</code> flag, Git creates a <strong>third parent commit</strong> containing all untracked files before wiping them from the working tree. Always use <code class="text-emerald-300 font-mono">git stash -u</code> during context switches to avoid leaving orphan files on disk!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Stash Operations Taxonomy Grid -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs mt-6">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">git stash apply</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Non-Destructive</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Restores changes from the top stash into your working directory <strong>without removing the stash from the stack</strong>. Ideal when testing stashed changes across multiple target branches safely.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">git stash pop</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Apply &amp; Drop</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Applies the top stash and immediately deletes it from the stack. <em>Warning:</em> If merge conflicts occur during the pop, Git intentionally leaves the stash on the stack so you do not lose your work!
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">git stash branch</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Conflict Insulator</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Creates and switches to a brand-new branch rooted at the exact commit where the stash was created, then applies the stash cleanly. Neutralizes conflicts caused by an evolving <code class="font-mono text-slate-800">main</code> branch.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. History Surgery: Amending and The Three Reset Modes -->
+        <section id="reset-and-amend" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">History Surgery: git commit --amend &amp; The Three Reset Modes</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you make a mistake in Git, you don't overwrite history in place—Git's object store is strictly append-only. Commands like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">git commit --amend</code> and <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">git reset</code> generate new commits or move branch pointers across the <strong>Three Trees</strong> (Working Directory, Staging Index, and HEAD):
+            </p>
+
+            <!-- Reset Matrix Table (Pure HTML/CSS) -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse bg-white rounded-2xl border border-slate-200 shadow-sm font-sans text-xs">
+                    <thead>
+                        <tr class="bg-slate-900 text-white font-mono text-[11px]">
+                            <th class="p-4 rounded-tl-2xl">Reset Mode</th>
+                            <th class="p-4">HEAD Pointer (Commit Tree)</th>
+                            <th class="p-4">Staging Area (Index)</th>
+                            <th class="p-4 rounded-tr-2xl">Working Directory (Disk Files)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700">
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-sky-700 bg-sky-50/50">git reset --soft &lt;commit&gt;</td>
+                            <td class="p-4 text-emerald-700 font-bold">&check; Moves to target commit</td>
+                            <td class="p-4 text-slate-500 font-medium">&cross; UNTOUCHED (Retains staged state)</td>
+                            <td class="p-4 text-slate-500 font-medium">&cross; UNTOUCHED (Retains local disk edits)</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-purple-700 bg-purple-50/50">git reset --mixed &lt;commit&gt; (Default)</td>
+                            <td class="p-4 text-emerald-700 font-bold">&check; Moves to target commit</td>
+                            <td class="p-4 text-rose-700 font-bold">&check; CLEARED (Matches target commit)</td>
+                            <td class="p-4 text-slate-500 font-medium">&cross; UNTOUCHED (Local disk edits preserved!)</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-rose-700 bg-rose-50/50">git reset --hard &lt;commit&gt;</td>
+                            <td class="p-4 text-emerald-700 font-bold">&check; Moves to target commit</td>
+                            <td class="p-4 text-rose-700 font-bold">&check; CLEARED (Matches target commit)</td>
+                            <td class="p-4 text-rose-700 font-bold">&check; OVERWRITTEN (Destroys local uncommitted edits!)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Deep Dive on Amend -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono text-xs">
+                <span class="font-bold text-slate-900 block text-sm">Under the Hood: How "git commit --amend" Works</span>
+                <p class="font-sans text-slate-600 text-xs leading-relaxed">
+                    When you run <code class="font-mono text-purple-700 font-bold">git commit --amend</code>, Git does <em>not</em> modify the existing commit in place. Because every commit's identity is cryptographically bound to its contents, timestamp, and parent pointer via its SHA hash, modifying anything forces Git to <strong>synthesize a brand-new commit object</strong>:
+                </p>
+                <div class="bg-slate-900 text-slate-200 p-4 rounded-xl space-y-2 text-[11px]">
+                    <div class="text-slate-400">1. Original Commit [SHA: 8f31b2] &larr; Points to Parent [SHA: 1a9e40]</div>
+                    <div class="text-emerald-400 font-bold">2. Developer executes: git commit --amend</div>
+                    <div class="text-sky-300">3. Git writes NEW Commit [SHA: 4c92a7] pointing to the same Parent [SHA: 1a9e40]</div>
+                    <div class="text-purple-300">4. Branch reference is moved to point to [SHA: 4c92a7]</div>
+                    <div class="text-rose-400">&rarr; Old commit [8f31b2] is abandoned, becoming unreachable from the branch tip!</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Ultimate Safety Net: git reflog -->
+        <section id="reflog-safety-net" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Ultimate Safety Net: git reflog and Reference Logs Forensics</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                What happens to commits that are abandoned after a <code class="font-mono text-slate-800">--hard</code> reset, a rebase, or an accidental branch deletion with <code class="font-mono text-slate-800">git branch -D</code>? <strong>They are not deleted immediately.</strong>
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Git maintains a private, local chronological journal of every movement of <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">HEAD</code> inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">.git/logs/HEAD</code>. This journal is called the <strong>Reference Log (Reflog)</strong>:
+            </p>
+
+            <!-- Reflog Anatomy Box -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-4 shadow-xl">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span class="text-emerald-400 font-bold">// Anatomy of an Entry in .git/logs/HEAD</span>
+                    <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Local Journal</span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-[11px] space-y-1">
+                    <div><span class="text-purple-400">HEAD@{0}</span>: commit: feat(auth): implement rsa key rotation</div>
+                    <div><span class="text-purple-400">HEAD@{1}</span>: reset: moving to HEAD~1 <span class="text-rose-400 font-bold">&larr; ACCIDENTAL HARD RESET!</span></div>
+                    <div><span class="text-purple-400">HEAD@{2}</span>: commit: feat(auth): implement session validation</div>
+                    <div><span class="text-purple-400">HEAD@{3}</span>: checkout: moving from main to feature/auth-service</div>
+                </div>
+                <div class="text-[11px] text-slate-400 font-sans leading-relaxed">
+                    Reflog coordinates like <code class="text-purple-300 font-mono">HEAD@{1}</code> represent points in time where HEAD rested. By running <code class="text-emerald-300 font-mono">git reset --hard HEAD@{2}</code> or referencing the raw SHA recorded in the reflog, you can rewind repository state and undo destructive mistakes instantly.
+                </div>
+            </div>
+
+            <!-- Retention Rules Callout -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-6 rounded-r-2xl space-y-2 font-mono text-xs">
+                <span class="text-amber-900 font-bold block text-sm">Reflog Lifecycle &amp; Garbage Collection Constraints</span>
+                <p class="font-sans text-slate-700 text-xs leading-relaxed">
+                    Reflog entries do not last forever. They are governed by Git's automatic garbage collection daemon (<code class="font-mono text-purple-700 font-bold">git gc</code>):
+                </p>
+                <ul class="font-sans text-slate-600 text-xs list-disc pl-5 space-y-1 mt-1">
+                    <li><strong>Reachable Commits:</strong> Kept in the reflog for a default of <strong>90 days</strong> (<code class="font-mono text-slate-800">gc.reflogExpire</code>).</li>
+                    <li><strong>Unreachable / Dangling Commits:</strong> Kept for a default of <strong>30 days</strong> (<code class="font-mono text-slate-800">gc.reflogExpireUnreachable</code>) before being permanently purged from disk.</li>
+                    <li><strong>Reflog is strictly local:</strong> Reflogs are never transferred across the network during <code class="font-mono text-slate-800">git push</code> or <code class="font-mono text-slate-800">git fetch</code>!</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 4. Production Implementation: ShipForge Milestone 03 -->
+        <section id="shipforge-milestone-03" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ShipForge Milestone 03: Emergency Stashing &amp; Disaster Recovery</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now execute Milestone 03 for <strong>ShipForge</strong>: simulating a real-world production emergency. We stash dirty, uncommitted feature code containing untracked files, patch a critical hotfix, restore our working state cleanly, and execute a branch recovery exercise using reference logs.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated ShipForge Hierarchy (Milestone 03)</div>
+                <div>shipforge/</div>
+                <div>├── .git/</div>
+                <div>│   ├── logs/</div>
+                <div>│   │   ├── HEAD                        <span class="text-purple-300 font-bold"># Active reference log time machine</span></div>
+                <div>│   │   └── refs/heads/                 <span class="text-slate-500"># Branch-specific logs</span></div>
+                <div>│   └── refs/stash                      <span class="text-emerald-300 font-bold"># Multi-parent stash reference pointer</span></div>
+                <div>├── src/</div>
+                <div>│   └── shipforge/</div>
+                <div>│       ├── auth.py</div>
+                <div>│       └── <span class="text-emerald-300 font-bold">hotfix.py</span>                      <span class="text-slate-500"># Milestone 03: Emergency hotfix module</span></div>
+                <div>└── tests/</div>
+                <div>    └── <span class="text-sky-300 font-bold">test_auth.py</span>                       <span class="text-slate-500"># Untracked feature test file</span></div>
+            </div>
+
+            <!-- Scenario Code Script Block -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Forensic Recovery Walkthrough: <code class="text-purple-700">recovery_protocol.sh</code></span>
+                    <span class="text-slate-400">Terminal Production Runbook</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># ShipForge Disaster Recovery Protocol &amp; Stash Lifecycle</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># 1. SCENARIO A: Emergency Hotfix Context Switch</span>
+<span class="text-slate-500"># Developer is working on 'feature/auth-service' with modified and untracked files</span>
+echo <span class="text-amber-300">"uncommitted auth logic"</span> &gt;&gt; src/shipforge/auth.py
+echo <span class="text-amber-300">"test payload"</span> &gt; tests/test_auth.py
+
+<span class="text-slate-500"># Stash EVERYTHING (including untracked tests) with a descriptive label</span>
+git stash push -u -m <span class="text-amber-300">"WIP: auth token logic and test scaffold"</span>
+
+<span class="text-slate-500"># Switch to main and apply emergency production patch</span>
+git switch main
+git switch -c hotfix/critical-security-patch
+echo <span class="text-amber-300">"def patch_leak(): return True"</span> &gt; src/shipforge/hotfix.py
+git add src/shipforge/hotfix.py
+git commit -m <span class="text-amber-300">"fix(security): patch token leak vulnerability"</span>
+
+<span class="text-slate-500"># Merge hotfix into main</span>
+git switch main
+git merge --no-ff hotfix/critical-security-patch -m <span class="text-amber-300">"merge: resolve security hotfix"</span>
+git branch -d hotfix/critical-security-patch
+
+<span class="text-slate-500"># Return to feature branch and re-apply stashed work</span>
+git switch feature/auth-service
+git stash pop
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># 2. SCENARIO B: Catastrophic Branch Deletion &amp; Reflog Resurrection</span>
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># Suppose an engineer accidentally deletes feature/auth-service with unmerged commits:</span>
+git switch main
+git branch -D feature/auth-service  <span class="text-slate-500"># Force deletes unmerged branch!</span>
+
+<span class="text-slate-500"># QUERY REFLOG to find the last known commit SHA on that branch</span>
+<span class="text-slate-500"># git reflog show HEAD</span>
+<span class="text-slate-500"># Output: 7c4912b HEAD@{2}: commit: feat(auth): implement token authentication service</span>
+
+<span class="text-slate-500"># RESURRECT BRANCH instantly from the commit hash discovered in the reflog:</span>
+git switch -c feature/auth-service 7c4912b
+
+<span class="text-slate-500"># &check; Branch is fully restored with zero data loss!</span></pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Stashing Without the -u Flag</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Running a bare <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git stash</code> when new files have been created in the repository.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes broken builds:</strong> Default stashing captures tracked files only. All new untracked files remain sitting in your working directory. When you switch to another branch (like a release hotfix branch), those untracked files travel with you, polluting your test runs and accidentally getting committed to the wrong branch!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Assuming Reflog Protects Untracked Files</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Running <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git reset --hard</code> while holding uncommitted, untracked working files.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>The Limits of Reflog:</strong> The Reference Log tracks movements of <em>commits</em>. If you wipe uncommitted changes from your disk using <code class="font-mono">git reset --hard</code> or <code class="font-mono">git clean -fd</code> without first committing or stashing with <code class="font-mono">-u</code>, <strong>those changes never entered the Git object database and are gone forever</strong>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating ShipForge Milestone 03</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to inspect raw stash commit objects, query the reference log, and practice non-destructive resets:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Inspect Stash Object -->
+                <div>
+                    <span class="text-slate-500"># 1. Create a stash and inspect its multi-parent commit object structure:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        echo "temporary edit" &gt;&gt; README.md<br>
+                        git stash push -m "inspect-stash-test"<br>
+                        git cat-file -p stash@{0}
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice that the commit output explicitly prints multiple "parent" lines!
+                    </span>
+                </div>
+
+                <!-- Step 2: Query Reflog -->
+                <div>
+                    <span class="text-slate-500"># 2. View the complete reference log timeline:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        git reflog --date=relative
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Displays the relative time, command name, and target SHA for every HEAD transition.
+                    </span>
+                </div>
+
+                <!-- Step 3: Test Soft Reset -->
+                <div>
+                    <span class="text-slate-500"># 3. Perform a soft reset to squash or recommit without losing staged state:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        git reset --soft HEAD~1<br>
+                        git status
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Your commit is unwound, but all files remain staged in the Index, ready for an immediate updated commit.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 04 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 04: Advanced History Surgery, Interactive Rebase &amp; Eradicating Accidental Leaks</h4>
+                <p class="text-xs text-slate-500 font-sans">Deep dive into <code class="font-mono">git rebase -i</code>, why deleting an accidental secret in a new commit fails completely, scrubbing repository history with <code class="font-mono">git-filter-repo</code>, and safe force pushing with <code class="font-mono">--force-with-lease</code>.</p>
+            </div>
+            <a href="Chapter 04 - Advanced History Surgery, Interactive Rebase and Eradicating Accidental Leaks.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 04 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

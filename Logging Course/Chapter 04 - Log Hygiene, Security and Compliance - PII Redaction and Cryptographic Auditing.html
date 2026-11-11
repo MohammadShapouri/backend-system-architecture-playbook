@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: Log Hygiene, Security &amp; Compliance: PII Redaction and Cryptographic Auditing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 04 - Zero-Leak Redaction &amp; Tamper-Evident Audit Trails)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; Compliance, Security &amp; Audit Trails
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Log Hygiene, Security &amp; Compliance: PII Redaction and Cryptographic Auditing
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Protecting privacy boundaries and satisfying statutory audits: Translating PCI-DSS 4.0, GDPR, and SOC 2 Type II mandates into automated engineering controls, implementing high-throughput in-memory data sanitization with the Luhn validation algorithm, separating operational logs from immutable audit ledgers, and building tamper-evident HMAC-SHA256 cryptographic log chains for <strong>PulsePay</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 04: Zero-Leak Redaction &amp; Statutory Ledgers</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 03, we engineered PulsePay's structured JSON telemetry engine, non-blocking queue offloaders, and distributed W3C trace correlation. In Milestone 04, we confront the legal and regulatory reality of financial systems. A single credit card number leaked into a log stream violates PCI-DSS Requirement 3 and triggers devastating fines, while unhashed audit records fail SOC 2 non-repudiation standards. We engineer a dual-track security pipeline: a zero-allocation in-memory PII scrubber that intercepts card numbers and auth tokens before serialization, and a standalone <strong>Tamper-Evident Audit Ledger</strong> that cryptographically seals financial operations into a verifiable HMAC-SHA256 hash chain.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Statutory Mandates: PCI-DSS 4.0, GDPR, SOC 2</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> In-Memory Scrubbing: Key-Checking vs. Regex</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> False-Positive Prevention with Luhn Checks</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Operational Logs vs. Immutable Audit Ledgers</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cryptographic Hash Chaining with HMAC-SHA256</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Tamper-Detection &amp; Audit Verification Engine</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Legal & Regulatory Engineering Landscape -->
+        <section id="regulatory-frameworks" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Regulatory Engineering: PCI-DSS 4.0, GDPR &amp; SOC 2 Type II</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Engineers frequently treat compliance as an administrative checkbox handled by legal departments. In enterprise architectures, <strong>compliance is a software requirement enforced at the compiler and runtime layer</strong>. A software engineer who prints a raw dictionary containing payment payloads can single-handedly invalidate an organization's banking license.
+            </p>
+
+            <!-- Regulatory Matrix Grid -->
+            <div class="grid md:grid-cols-3 gap-6 font-mono text-xs">
+                <!-- PCI-DSS 4.0 -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-rose-700 text-sm">PCI-DSS 4.0 (Req. 3 &amp; 10)</span>
+                            <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">Strict Liability</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            <strong>Requirement 3.4:</strong> Primary Account Numbers (PANs) must be masked wherever displayed or logged (maximum: first 6 and last 4 digits).
+                            <br><br>
+                            <strong>Requirement 3.2:</strong> Sensitive Authentication Data (SAD)—including CVV/CVC, PIN blocks, and full magnetic stripe data—<strong>must NEVER be stored or logged under any circumstances</strong>, even if encrypted or hashed!
+                        </p>
+                    </div>
+                    <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200 text-rose-800 text-[10px]">
+                        <strong>Penalty:</strong> $5,000–$100,000/month fines &bull; Immediate revocation of card processing rights.
+                    </div>
+                </div>
+
+                <!-- GDPR -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-sky-700 text-sm">GDPR (Art. 17 &amp; 32)</span>
+                            <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Privacy Mandate</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            <strong>Article 32:</strong> Requires technical pseudonymization and encryption of personal data (names, IP addresses, emails).
+                            <br><br>
+                            <strong>The Immutability Paradox (Article 17):</strong> Users have the "Right to Erasure". If you write an unmasked user email into an immutable, append-only log index, you cannot delete it without destroying the log volume!
+                        </p>
+                    </div>
+                    <div class="bg-sky-50 p-2.5 rounded-xl border border-sky-200 text-sky-800 text-[10px]">
+                        <strong>Rule:</strong> Never use raw personal identifiers as stream keys; log opaque surrogate IDs.
+                    </div>
+                </div>
+
+                <!-- SOC 2 Type II -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-purple-700 text-sm">SOC 2 Type II (Trust)</span>
+                            <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Audit Invariant</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            <strong>Trust Services Criteria:</strong> Mandates complete audit trails for all sensitive operations (fund transfers, role grants, auth failures).
+                            <br><br>
+                            <strong>Non-Repudiation:</strong> Auditors require cryptographic proof that log entries have not been modified, deleted, or backdated by system administrators or malicious intruders.
+                        </p>
+                    </div>
+                    <div class="bg-purple-50 p-2.5 rounded-xl border border-purple-200 text-purple-800 text-[10px]">
+                        <strong>Requirement:</strong> Append-only WORM storage + cryptographic signature chains.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. High-Performance In-Memory Redaction Mechanics -->
+        <section id="redaction-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">High-Performance In-Memory Scrubbing &amp; The Luhn Filter</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A common anti-pattern in logging pipelines is running unconstrained, multi-pattern regular expressions across the entire serialized JSON string for every log event. In high-throughput payment engines, scanning a 10KB payload with 15 complex regex patterns burns up to 3ms of CPU time per log line, throttling overall transaction throughput.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The enterprise architecture implements a <strong>two-tier defensive redactor</strong>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Tier 1: Key-Based Fast-Path -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-700 text-sm">Tier 1: Key-Based Fast-Path (O(1))</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold">&lt; 50ns</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Before running regex engines, the redactor inspects dictionary keys against a normalized, pre-hashed set of sensitive keywords (<code class="font-mono text-purple-700">password</code>, <code class="font-mono text-purple-700">cvv</code>, <code class="font-mono text-purple-700">token</code>, <code class="font-mono text-purple-700">authorization</code>, <code class="font-mono text-purple-700">secret</code>, <code class="font-mono text-purple-700">api_key</code>). If a key matches, its value is immediately replaced with <code class="font-mono text-slate-800">[REDACTED]</code> with zero regular expression overhead.
+                    </p>
+                </div>
+
+                <!-- Tier 2: Pattern-Based Regex with Luhn Check -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">Tier 2: Regex + Luhn Validation</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Zero False-Positives</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Free-text message strings are scanned with compiled regex patterns. When a potential 13-to-19 digit number is matched, the redactor runs the <strong>Luhn Algorithm (MOD-10)</strong> checksum. Only valid credit card numbers are masked (<code class="font-mono text-slate-800">4111********1111</code>); non-card numerical strings (like transaction IDs or timestamps) remain un-mutilated.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Visual Flowchart: Two-Tier Sanitization Engine (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The PulsePay In-Memory Sanitization Pipeline
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Input -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Raw Telemetry Event</span>
+                        <span class="text-[10px] text-slate-500 font-sans">Payload: {"cvv": "981", "msg": "Card 4111222233334444 approved"}</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; checks keys &rarr;</div>
+
+                    <!-- Step 2: Key Masking -->
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Exact Key Scrubber</span>
+                        <span class="text-[10px] text-purple-200 font-sans">O(1) Hash Set Match: "cvv" &rarr; "[REDACTED]"</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; Luhn scan &rarr;</div>
+
+                    <!-- Step 3: Luhn Verification -->
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Luhn Validator</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">MOD-10 Valid? &rarr; Mask to "4111********4444"</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono">&#9888; Why the Luhn Algorithm is Mandatory:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        A naive regex matching 16 digits (<code class="text-white font-mono">\b\d{16}\b</code>) will erroneously scrub account numbers, international tracking codes, and internal database primary keys, making logs unreadable. The Luhn algorithm verifies the mathematical checksum built into Visa, Mastercard, and Amex cards, guaranteeing that only authentic payment cards are redacted.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Where to Store Logs: Operational Logs vs. Compliance Audit Ledgers -->
+        <section id="operational-vs-audit" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Separation: Operational Telemetry vs. Compliance Ledgers</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A catastrophic mistake made by engineering teams is mixing **operational diagnostic logs** with **statutory compliance audit trails** in the same destination store. These two classes of data possess completely orthogonal operational requirements:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Operational Logs -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-800 text-sm">Operational Logs (Diagnostics)</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold">Fast &amp; Ephemeral</span>
+                    </div>
+                    <ul class="text-[11px] font-sans text-slate-600 space-y-2 leading-relaxed">
+                        <li><strong>Purpose:</strong> Debugging service health, performance profiling, tracking errors and network timeouts.</li>
+                        <li><strong>Volume:</strong> Gigabytes to terabytes per day (high volume).</li>
+                        <li><strong>Storage Destination:</strong> High-speed indexed search clusters (Grafana Loki, OpenSearch, Datadog).</li>
+                        <li><strong>Retention Policy:</strong> <strong>14 to 30 days</strong>. Auto-deleted via TTL expiration to minimize cloud costs.</li>
+                    </ul>
+                </div>
+
+                <!-- Compliance Audit Ledgers -->
+                <div class="bg-white p-6 rounded-2xl border border-emerald-300 shadow-sm space-y-3 ring-1 ring-emerald-300">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-800 text-sm">Compliance Audit Ledger (Statutory)</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Immutable &amp; Long-Term</span>
+                    </div>
+                    <ul class="text-[11px] font-sans text-slate-600 space-y-2 leading-relaxed">
+                        <li><strong>Purpose:</strong> Legal proof of financial transactions, role adjustments, and compliance governance.</li>
+                        <li><strong>Volume:</strong> Kilobytes to megabytes per day (low volume, high value).</li>
+                        <li><strong>Storage Destination:</strong> Immutable WORM (Write Once, Read Many) Object Storage (e.g. AWS S3 Object Lock, GCP Bucket Lock).</li>
+                        <li><strong>Retention Policy:</strong> <strong>7 to 10 years</strong> strictly enforced by regulatory mandate. Cannot be modified or deleted even by the cloud account owner!</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Cryptographic Auditing: HMAC-SHA256 Hash Chaining -->
+        <section id="cryptographic-auditing" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cryptographic Auditing: Tamper-Evident HMAC Hash Chaining</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                If an attacker gains administrative access to your logging server or storage bucket, what prevents them from modifying an audit log entry to cover up an unauthorized $1,000,000 fund transfer? Standard log files offer zero defense against post-write modification.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The enterprise solution is **Cryptographic Hash Chaining** (similar to a linear blockchain or Merkle ratchet). Every audit record computes an HMAC-SHA256 signature calculated from the current entry's contents **concatenated with the cryptographic hash of the previous log entry**:
+            </p>
+
+            <!-- Hash Chaining Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Cryptographic Audit Log Hash Chain
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Entry 0 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-60 space-y-1.5">
+                        <span class="text-purple-400 font-bold block">Audit Entry #0 (Genesis)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Initial State Anchor</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-amber-300 break-all">
+                            hash: e3b0c44298fc1c149afbf4c8996fb...
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; previous_hash &rarr;</div>
+
+                    <!-- Entry 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-60 space-y-1.5">
+                        <span class="text-sky-400 font-bold block">Audit Entry #1</span>
+                        <div class="text-[10px] text-slate-400 font-sans">TX: Transfer $500 USD</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-emerald-300 break-all">
+                            hash: HMAC(e3b0c44... + Payload_1)
+                        </div>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; previous_hash &rarr;</div>
+
+                    <!-- Entry 2 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-60 space-y-1.5">
+                        <span class="text-emerald-400 font-bold block">Audit Entry #2</span>
+                        <div class="text-[10px] text-slate-400 font-sans">TX: Account Freeze</div>
+                        <div class="text-[9px] bg-slate-900 p-1.5 rounded text-purple-300 break-all">
+                            hash: HMAC(Hash_1 + Payload_2)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-rose-400 font-mono">&#9888; The Tamper-Evident Guarantee:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If an attacker alters Entry #1 (e.g. changing $500 to $5), its recalculated HMAC will no longer match. Furthermore, Entry #2 will fail verification because its stored <code class="text-white font-mono">previous_hash</code> points to the original, un-tampered block. The entire ledger downstream becomes mathematically invalid, instantly exposing the fraud!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: PulsePay Milestone 04 -->
+        <section id="pulsepay-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 04: Zero-Leak Redactor &amp; Tamper-Evident Audit Ledger</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 04 for <strong>PulsePay</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/observability/redaction.py</code>: an in-memory redactor combining fast key lookups, Luhn MOD-10 credit card checks, and recursive dictionary traversal.</li>
+                <li>We build <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/observability/audit.py</code>: the cryptographic, append-only audit ledger with HMAC-SHA256 signature verification.</li>
+                <li>We wire the redactor directly into PulsePay's logging pipeline to ensure all emitted log events are scrubbed before reaching stdout or disks.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 04)</div>
+                <div>pulsepay/</div>
+                <div>├── src/</div>
+                <div>│   └── pulsepay/</div>
+                <div>│       ├── observability/</div>
+                <div>│       │   ├── schemas.py</div>
+                <div>│       │   ├── formatters.py</div>
+                <div>│       │   ├── queue_harness.py</div>
+                <div>│       │   ├── context.py</div>
+                <div>│       │   ├── filters.py</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">redaction.py</span>           <span class="text-slate-500"># Milestone 04: PII/PCI-DSS Redaction Engine &amp; Luhn Validator</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">audit.py</span>               <span class="text-slate-500"># Milestone 04: Cryptographic HMAC-SHA256 Audit Ledger</span></div>
+                <div>│       │   └── engine.py</div>
+                <div>│       └── web/</div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        ├── <span class="text-purple-300 font-bold">test_redaction.py</span>          <span class="text-slate-500"># Milestone 04: PCI-DSS masking verification suite</span></div>
+                <div>        └── <span class="text-purple-300 font-bold">test_audit_ledger.py</span>       <span class="text-slate-500"># Milestone 04: Cryptographic tampering detection tests</span></div>
+            </div>
+
+            <!-- File 1: src/pulsepay/observability/redaction.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Security Redactor &amp; Luhn Validator: <code class="text-purple-700">src/pulsepay/observability/redaction.py</code></span>
+                    <span class="text-slate-400">Zero-Leak In-Memory Sanitizer</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - PII / PCI-DSS Security Redactor (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> re
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Set, Union
+
+<span class="text-slate-500"># Normalized set of sensitive dictionary keys to scrub instantly (O(1))</span>
+SENSITIVE_KEYS: Set[str] = {
+    <span class="text-amber-300">"password"</span>, <span class="text-amber-300">"passwd"</span>, <span class="text-amber-300">"secret"</span>, <span class="text-amber-300">"api_key"</span>, <span class="text-amber-300">"apikey"</span>,
+    <span class="text-amber-300">"access_token"</span>, <span class="text-amber-300">"auth_token"</span>, <span class="text-amber-300">"authorization"</span>, <span class="text-amber-300">"bearer"</span>,
+    <span class="text-amber-300">"cvv"</span>, <span class="text-amber-300">"cvc"</span>, <span class="text-amber-300">"cvv2"</span>, <span class="text-amber-300">"pin"</span>, <span class="text-amber-300">"ssn"</span>, <span class="text-amber-300">"social_security"</span>
+}
+
+<span class="text-slate-500"># Regex matching potential payment card numbers (13-19 continuous or hyphen/space separated digits)</span>
+CARD_PATTERN = re.compile(<span class="text-amber-300">r"\b(?:\d[ -]*?){13,19}\b"</span>)
+
+<span class="text-slate-500"># Regex matching standard JWT bearer tokens</span>
+JWT_PATTERN = re.compile(<span class="text-amber-300">r"eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}"</span>)
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">is_valid_luhn</span>(number_str: str) -> bool:
+    <span class="text-slate-500">"""
+    LUHN ALGORITHM (MOD-10) CHECKSUM:
+    Validates whether a numeric sequence is an authentic payment card number.
+    Prevents false-positive redaction of transaction IDs and order references.
+    """</span>
+    clean = re.sub(<span class="text-amber-300">r"\D"</span>, <span class="text-amber-300">""</span>, number_str)
+    <span class="text-purple-400">if not</span> (<span class="text-purple-300">13</span> &lt;= len(clean) &lt;= <span class="text-purple-300">19</span>):
+        <span class="text-purple-400">return False</span>
+
+    digits = [int(c) <span class="text-purple-400">for</span> c <span class="text-purple-400">in</span> clean]
+    checksum = <span class="text-purple-300">0</span>
+    reverse_digits = digits[::-<span class="text-purple-300">1</span>]
+
+    <span class="text-purple-400">for</span> i, d <span class="text-purple-400">in enumerate</span>(reverse_digits):
+        <span class="text-purple-400">if</span> i % <span class="text-purple-300">2</span> == <span class="text-purple-300">1</span>:
+            d = d * <span class="text-purple-300">2</span>
+            <span class="text-purple-400">if</span> d &gt; <span class="text-purple-300">9</span>:
+                d -= <span class="text-purple-300">9</span>
+        checksum += d
+
+    <span class="text-purple-400">return</span> (checksum % <span class="text-purple-300">10</span>) == <span class="text-purple-300">0</span>
+
+
+<span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">mask_card_number</span>(match: re.Match) -> str:
+    raw = match.group(<span class="text-purple-300">0</span>)
+    clean = re.sub(<span class="text-amber-300">r"\D"</span>, <span class="text-amber-300">""</span>, raw)
+    <span class="text-purple-400">if</span> is_valid_luhn(clean):
+        <span class="text-slate-500"># Retain first 6 (BIN) and last 4 digits per PCI-DSS 4.0 guidelines</span>
+        <span class="text-purple-400">return</span> f<span class="text-amber-300">"&#123;clean[:6]&#125;&#123;'*' * (len(clean) - 10)&#125;&#123;clean[-4:]&#125;"</span>
+    <span class="text-purple-400">return</span> raw  <span class="text-slate-500"># Non-card numeric sequence left untouched!</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">PulseSecurityRedactor</span>:
+    <span class="text-slate-500">"""Enterprise recursive sanitizer executing two-tier in-memory scrubbing."""</span>
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">scrub_text</span>(cls, text: str) -> str:
+        <span class="text-purple-400">if not</span> isinstance(text, str):
+            <span class="text-purple-400">return</span> text
+        <span class="text-slate-500"># 1. Scrub JWT tokens</span>
+        sanitized = JWT_PATTERN.sub(<span class="text-amber-300">"[REDACTED_JWT_TOKEN]"</span>, text)
+        <span class="text-slate-500"># 2. Scrub payment cards validated via Luhn</span>
+        sanitized = CARD_PATTERN.sub(mask_card_number, sanitized)
+        <span class="text-purple-400">return</span> sanitized
+
+    <span class="text-purple-400">@classmethod</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">scrub_payload</span>(cls, data: Any) -> Any:
+        <span class="text-purple-400">if</span> isinstance(data, dict):
+            clean_dict = {}
+            <span class="text-purple-400">for</span> k, v <span class="text-purple-400">in</span> data.items():
+                <span class="text-purple-400">if</span> str(k).lower() <span class="text-purple-400">in</span> SENSITIVE_KEYS:
+                    clean_dict[k] = <span class="text-amber-300">"[REDACTED]"</span>
+                <span class="text-purple-400">else</span>:
+                    clean_dict[k] = cls.scrub_payload(v)
+            <span class="text-purple-400">return</span> clean_dict
+        <span class="text-purple-400">elif</span> isinstance(data, list):
+            <span class="text-purple-400">return</span> [cls.scrub_payload(item) <span class="text-purple-400">for</span> item <span class="text-purple-400">in</span> data]
+        <span class="text-purple-400">elif</span> isinstance(data, str):
+            <span class="text-purple-400">return</span> cls.scrub_text(data)
+        <span class="text-purple-400">return</span> data</pre>
+            </div>
+
+            <!-- File 2: src/pulsepay/observability/audit.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Tamper-Evident Audit Ledger: <code class="text-purple-700">src/pulsepay/observability/audit.py</code></span>
+                    <span class="text-slate-400">Cryptographic HMAC-SHA256 Hash Chain</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - Cryptographic Audit Ledger (Milestone 04)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> hmac
+<span class="text-purple-400">import</span> hashlib
+<span class="text-purple-400">import</span> json
+<span class="text-purple-400">from</span> dataclasses <span class="text-purple-400">import</span> dataclass, asdict
+<span class="text-purple-400">from</span> datetime <span class="text-purple-400">import</span> datetime, timezone
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, List, Optional
+<span class="text-purple-400">from</span> pulsepay.observability.formatters <span class="text-purple-400">import</span> PulseJSONEncoder
+
+GENESIS_HASH = <span class="text-amber-300">"0"</span> * <span class="text-purple-300">64</span>
+
+<span class="text-purple-400">@dataclass</span>(frozen=<span class="text-rose-400">True</span>)
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditEntry</span>:
+    sequence_id: int
+    timestamp: str
+    action: str
+    actor_id: str
+    payload: Dict[str, Any]
+    previous_hash: str
+    entry_hash: str
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">AuditLedgerLogger</span>:
+    <span class="text-slate-500">"""
+    IMMUTABLE CRYPTOGRAPHIC AUDIT LOG RECORDER:
+    Generates HMAC-SHA256 authenticated log blocks linked to predecessor hashes.
+    Guarantees non-repudiation and immediate detection of tampering or deletion.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, secret_key: bytes):
+        self._secret_key = secret_key
+        self._last_hash = GENESIS_HASH
+        self._sequence = <span class="text-purple-300">0</span>
+        self.ledger: List[AuditEntry] = []
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">_compute_hash</span>(self, sequence: int, timestamp: str, action: str, actor: str, payload_json: str, prev_hash: str) -> str:
+        message = f<span class="text-amber-300">"&#123;sequence&#125;|&#123;timestamp&#125;|&#123;action&#125;|&#123;actor&#125;|&#123;payload_json&#125;|&#123;prev_hash&#125;"</span>.encode(<span class="text-amber-300">"utf-8"</span>)
+        <span class="text-purple-400">return</span> hmac.new(self._secret_key, message, hashlib.sha256).hexdigest()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">record_event</span>(self, action: str, actor_id: str, payload: Dict[str, Any]) -> AuditEntry:
+        timestamp = datetime.now(timezone.utc).isoformat(timespec=<span class="text-amber-300">"microseconds"</span>)
+        payload_json = json.dumps(payload, sort_keys=<span class="text-rose-400">True</span>, cls=PulseJSONEncoder)
+
+        entry_hash = self._compute_hash(
+            sequence=self._sequence,
+            timestamp=timestamp,
+            action=action,
+            actor=actor_id,
+            payload_json=payload_json,
+            prev_hash=self._last_hash
+        )
+
+        entry = AuditEntry(
+            sequence_id=self._sequence,
+            timestamp=timestamp,
+            action=action,
+            actor_id=actor_id,
+            payload=payload,
+            previous_hash=self._last_hash,
+            entry_hash=entry_hash
+        )
+
+        self.ledger.append(entry)
+        self._last_hash = entry_hash
+        self._sequence += <span class="text-purple-300">1</span>
+        <span class="text-purple-400">return</span> entry
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">verify_integrity</span>(self) -> bool:
+        <span class="text-slate-500">"""
+        MATHEMATICAL VERIFICATION:
+        Traverses the entire ledger from Genesis to present.
+        Returns False immediately if any historical record has been modified!
+        """</span>
+        expected_prev_hash = GENESIS_HASH
+        <span class="text-purple-400">for</span> entry <span class="text-purple-400">in</span> self.ledger:
+            <span class="text-purple-400">if</span> entry.previous_hash != expected_prev_hash:
+                <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Previous hash linkage broken!</span>
+
+            payload_json = json.dumps(entry.payload, sort_keys=<span class="text-rose-400">True</span>, cls=PulseJSONEncoder)
+            recalculated = self._compute_hash(
+                sequence=entry.sequence_id,
+                timestamp=entry.timestamp,
+                action=entry.action,
+                actor=entry.actor_id,
+                payload_json=payload_json,
+                prev_hash=entry.previous_hash
+            )
+            <span class="text-purple-400">if</span> recalculated != entry.entry_hash:
+                <span class="text-purple-400">return False</span>  <span class="text-slate-500"># Payload data was tampered with!</span>
+
+            expected_prev_hash = entry.entry_hash
+
+        <span class="text-purple-400">return True</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Accidental Dict Dump" Vulnerability</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">logger.error("Payment failed", extra={"raw_req": request.__dict__})</code> in route error handlers.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes statutory penalties:</strong> Framework request objects contain un-sanitized client headers (including <code class="font-mono text-rose-900">Authorization: Bearer &lt;token&gt;</code> and session cookies). Dumping raw request state broadcasts sensitive auth tokens directly into third-party log search clusters.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Unvalidated Regular Expression" Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Masking every 16-digit sequence without checking the Luhn algorithm.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys observability:</strong> In financial microservices, tracking IDs, order numbers, and hardware MAC addresses frequently contain 16 contiguous digits. Blindly masking all numbers ruins system logs and prevents engineers from cross-referencing valid customer transaction IDs.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to verify that PulsePay's in-memory redactor sanitizes real credit cards while preserving non-card numbers, and prove that HMAC-SHA256 hash chains instantly detect log tampering:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Verify Luhn & Key Redactor -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute inline test validating Luhn card masking and key-based password scrubbing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+python3 -c '
+from pulsepay.observability.redaction import PulseSecurityRedactor
+
+payload = {
+    "password": "SuperSecretPassword123",
+    "order_id": "9921883199218831",  # 16 digits, but invalid Luhn! Should NOT mask.
+    "message": "Customer paid with card 4111222233334444 approved"  # Valid Visa card!
+}
+
+scrubbed = PulseSecurityRedactor.scrub_payload(payload)
+print("Password Scrubbed:", scrubbed["password"])
+print("Non-Card Preserved:", scrubbed["order_id"])
+print("Card Masked per PCI:", scrubbed["message"])
+'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice output: Password is replaced with [REDACTED], order ID remains visible, and card is masked to 4111********4444!
+                    </span>
+                </div>
+
+                <!-- Step 2: Test Cryptographic Tampering Detection -->
+                <div>
+                    <span class="text-slate-500"># 2. Simulate an unauthorized database tampering attack against the audit ledger:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+python3 -c '
+from pulsepay.observability.audit import AuditLedgerLogger
+
+ledger = AuditLedgerLogger(secret_key=b"super_secret_audit_key_2026")
+
+# Record two legitimate transactions
+ledger.record_event("TRANSFER", "USER_1", {"amount": "100.00", "to": "USER_2"})
+ledger.record_event("TRANSFER", "USER_2", {"amount": "50.00", "to": "USER_3"})
+
+print("Original Ledger Intact?", ledger.verify_integrity())
+
+# MALICIOUS ATTACK: Tamper with transaction #0 payload to steal money!
+tampered_entry = ledger.ledger[0]
+ledger.ledger[0] = type(tampered_entry)(
+    sequence_id=tampered_entry.sequence_id,
+    timestamp=tampered_entry.timestamp,
+    action=tampered_entry.action,
+    actor_id=tampered_entry.actor_id,
+    payload={"amount": "1000000.00", "to": "ATTACKER_ACCOUNT"},  # Altered!
+    previous_hash=tampered_entry.previous_hash,
+    entry_hash=tampered_entry.entry_hash
+)
+
+print("Tampered Ledger Intact?", ledger.verify_integrity())
+'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected Output: Returns True initially, and False immediately after the simulated attack! Proof of mathematical non-repudiation.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Monolithic vs. Microservice Logging Architectures: The Paradigm Shift</h4>
+                <p class="text-xs text-slate-500 font-sans">The death of the local file: Multi-worker file lock collisions in monoliths, distributed clock skew in microservices, and instrumenting outbound external HTTP calls with circuit breakers and timing in <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 05 - Monolithic vs. Microservice Logging Architectures - The Paradigm Shift.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

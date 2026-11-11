@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: GitHub Actions Foundations: Workflow Architecture &amp; Complete YAML Specification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 06 - CI Engine &amp; Workflow Specifications)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; CI/CD Architecture &amp; Workflow Engine
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                GitHub Actions Foundations: Workflow Architecture &amp; Complete YAML Specification
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Automating the repository verification gate: Deconstructing the GitHub Actions event-driven engine, ephemeral runner container lifecycles, execution contexts (<code class="font-mono text-emerald-400">github</code>, <code class="font-mono text-emerald-400">env</code>, <code class="font-mono text-emerald-400">steps</code>), concurrency budget throttling, least-privilege token permissions, and authoring an exhaustive, line-by-line commented production YAML specification for <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">ShipForge Milestone 06: Continuous Integration Engine</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 05, we established our human collaboration gates: pull request templates, rulesets, and code review assignments. In Milestone 06, we wire automated intelligence directly into the pull request pipeline. We engineer <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">.github/workflows/ci-pipeline.yml</code>—an enterprise-grade CI workflow executing static code analysis, security auditing, and test suites with concurrency cancellation, explicit timeouts, and hardened token permissions.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Actions Architecture (Events, Jobs, Runners, Steps)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Event Trigger Matrix (<code class="text-purple-300">push</code>, <code class="text-purple-300">pull_request</code>, <code class="text-purple-300">schedule</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Concurrency Throttling (<code class="text-purple-300">cancel-in-progress</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hardened Permissions (<code class="text-purple-300">GITHUB_TOKEN</code> Least Privilege)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Complete Line-by-Line Commented YAML Blueprint</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Local Workflow Emulation with <code class="text-purple-300">act</code></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The GitHub Actions Computer Science: Architecture & Topology -->
+        <section id="actions-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Event-Driven Actions Execution Topology</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                GitHub Actions is a distributed, event-driven orchestration system built on top of webhook ingestion pipelines and containerized execution agents. To design resilient workflows, you must master the 5 core conceptual layers of the runtime model:
+            </p>
+
+            <!-- 5 Conceptual Layers Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- Event / Trigger -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">1. Event Trigger (on:)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Webhook</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A specific repository activity (e.g., git push, pull request opened, issue labeled) or a temporal schedule (cron) that instantiates a workflow execution run.
+                    </p>
+                </div>
+
+                <!-- Workflow -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">2. Workflow</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Top-Level DAG</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A configurable automated process defined in a single YAML file located strictly in <code class="font-mono text-slate-800">.github/workflows/</code>. Contains one or more parallel or sequential jobs.
+                    </p>
+                </div>
+
+                <!-- Job -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">3. Job</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Isolated VM</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A set of sequential steps executed on the <strong>same runner instance</strong>. Jobs run in parallel by default, or sequentially when ordered via the <code class="font-mono text-emerald-700 font-bold">needs:</code> dependency array.
+                    </p>
+                </div>
+
+                <!-- Step -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-amber-600 text-sm">4. Step</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Atomic Task</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        An individual task within a job. Can be either an inline shell script (<code class="font-mono text-amber-700 font-bold">run:</code>) or a pre-packaged action module (<code class="font-mono text-amber-700 font-bold">uses:</code>). Steps share the local filesystem environment.
+                    </p>
+                </div>
+
+                <!-- Runner -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-indigo-600 text-sm">5. Runner</span>
+                        <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">Compute Host</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The virtual machine or container running the GitHub Actions runner agent. Provided as GitHub-hosted (e.g., <code class="font-mono text-slate-800">ubuntu-latest</code>, <code class="font-mono text-slate-800">windows-latest</code>) or custom self-hosted nodes.
+                    </p>
+                </div>
+
+                <!-- Action -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-600 text-sm">Action</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Reusable Unit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        A reusable, standalone unit of execution packaged as JavaScript, Docker containers, or composite YAML actions downloaded from the GitHub Marketplace.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Workflow Hierarchy Map (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs mt-6">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">Actions Runtime Hierarchy &amp; Step Isolation</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Visualizing Data Flow from Event Triggers to Step Shells</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Event -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Event Trigger</span>
+                        <span class="text-[10px] text-slate-400 font-sans">push / pull_request / dispatch</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; instantiates &rarr;</div>
+
+                    <!-- Job Runner -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Fresh Runner VM</span>
+                        <span class="text-[10px] text-purple-200 font-sans">ubuntu-latest ($GITHUB_WORKSPACE)</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; executes &rarr;</div>
+
+                    <!-- Step Sequence -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Sequential Steps</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">checkout &bull; setup &bull; test &bull; lint</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Job Isolation Invariant:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        Every job in a workflow provisions an entirely separate, fresh virtual machine. <strong>Files created in Job A do not exist on the filesystem of Job B!</strong> To share data between jobs, you must upload files as artifacts using <code class="text-purple-300 font-mono">actions/upload-artifact</code> or cache them using <code class="text-purple-300 font-mono">actions/cache</code>.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Triggers, Contexts, Expressions & Status Check Functions -->
+        <section id="triggers-and-contexts" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Triggers, Contexts &amp; The Expressions Engine</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Workflows access runtime information, secrets, and environment metadata through <strong>Contexts</strong> using GitHub's <strong>Expressions Engine</strong> (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">${{ &lt;expression&gt; }}</code>):
+            </p>
+
+            <!-- Contexts Comparison Grid -->
+            <div class="grid md:grid-cols-2 gap-4 font-mono text-xs">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-purple-700 font-bold block text-sm">github Context (${{ github.* }})</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Contains information about the workflow run and the event that triggered it.
+                    </p>
+                    <div class="bg-slate-900 p-2.5 rounded-lg text-slate-300 text-[10px] space-y-0.5">
+                        <div><code class="text-sky-300">github.actor</code>: Username of the commit/PR author</div>
+                        <div><code class="text-sky-300">github.ref</code>: Full git ref (e.g., <code class="text-slate-400">refs/heads/main</code>)</div>
+                        <div><code class="text-sky-300">github.sha</code>: The commit SHA that triggered the run</div>
+                        <div><code class="text-sky-300">github.event_name</code>: Name of triggering event (<code class="text-slate-400">push</code>, <code class="text-slate-400">pull_request</code>)</div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-emerald-700 font-bold block text-sm">steps &amp; env Contexts</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Interrogates step outputs and environment variables defined at workflow, job, or step scopes.
+                    </p>
+                    <div class="bg-slate-900 p-2.5 rounded-lg text-slate-300 text-[10px] space-y-0.5">
+                        <div><code class="text-emerald-300">steps.&lt;step_id&gt;.outputs.&lt;key&gt;</code>: Output values from a step</div>
+                        <div><code class="text-emerald-300">steps.&lt;step_id&gt;.outcome</code>: Outcome (<code class="text-slate-400">success</code>, <code class="text-slate-400">failure</code>)</div>
+                        <div><code class="text-emerald-300">env.&lt;var_name&gt;</code>: Values exported into runner environment</div>
+                        <div><code class="text-emerald-300">secrets.&lt;secret_name&gt;</code>: Encrypted repository secrets</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Check Functions -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono text-xs mt-4">
+                <span class="font-bold text-slate-900 block text-sm">Status Check Functions: Controlling Step Failure Execution</span>
+                <p class="font-sans text-slate-600 text-xs leading-relaxed">
+                    By default, when a step in a job fails, all subsequent steps in that job are skipped immediately. You can override this behavior using status check functions inside an <code class="font-mono text-purple-700 font-bold">if:</code> conditional:
+                </p>
+                <div class="grid md:grid-cols-4 gap-3 text-[11px] mt-2">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-emerald-700 block">success()</strong>
+                        <span class="text-[10px] text-slate-600 font-sans">Default: Executes only if all previous steps succeeded.</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-rose-700 block">failure()</strong>
+                        <span class="text-[10px] text-slate-600 font-sans">Executes only if any preceding step in the job failed. Perfect for cleanup or alerts!</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-sky-700 block">always()</strong>
+                        <span class="text-[10px] text-slate-600 font-sans">Forces execution regardless of whether previous steps succeeded, failed, or cancelled.</span>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-amber-700 block">cancelled()</strong>
+                        <span class="text-[10px] text-slate-600 font-sans">Executes only if the workflow run was manually cancelled by a user.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. The Complete, Annotated Production YAML Specification -->
+        <section id="yaml-specification" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Production YAML Specification: Complete Annotated Blueprint</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Below is the complete, production-grade Continuous Integration workflow engineered for <strong>ShipForge</strong>: <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">.github/workflows/ci-pipeline.yml</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Every single line is accompanied by an architectural comment explaining <strong>what the key does</strong>, <strong>default behaviors</strong>, <strong>security considerations</strong>, and <strong>valid configuration alternatives</strong>:
+            </p>
+
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">Production Specification: <code class="text-purple-700">.github/workflows/ci-pipeline.yml</code></span>
+                    <span class="text-slate-400">Exhaustive Syntax Reference</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># ShipForge Production Continuous Integration Workflow</span>
+<span class="text-slate-500"># File Location: .github/workflows/ci-pipeline.yml</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># 'name': The human-readable title displayed in GitHub's Actions UI and pull request check badges.</span>
+<span class="text-slate-500"># Optional, but mandatory in professional projects to distinguish between multiple workflows.</span>
+<span class="text-purple-400">name</span>: <span class="text-amber-300">ShipForge CI Verification Pipeline</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># EVENT TRIGGERS (on:)</span>
+<span class="text-slate-500"># Specifies which repository events instantiate this workflow.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">on</span>:
+  <span class="text-slate-500"># 1. Trigger on direct git pushes to primary and maintenance branches</span>
+  <span class="text-purple-400">push</span>:
+    <span class="text-purple-400">branches</span>:
+      - <span class="text-amber-300">main</span>              <span class="text-slate-500"># Target the primary release branch</span>
+      - <span class="text-amber-300">'releases/**'</span>     <span class="text-slate-500"># Pattern matching: catches branches like 'releases/v1.0'</span>
+    <span class="text-slate-500"># 'paths-ignore': Optimizes runner minutes by skipping runs when only non-code files change.</span>
+    <span class="text-slate-500"># Alternatives: 'paths:' to explicitly INCLUDE specific files (e.g., 'src/**').</span>
+    <span class="text-purple-400">paths-ignore</span>:
+      - <span class="text-amber-300">'**.md'</span>
+      - <span class="text-amber-300">'docs/**'</span>
+      - <span class="text-amber-300">'.gitignore'</span>
+
+  <span class="text-slate-500"># 2. Trigger on Pull Requests targeted at the 'main' branch</span>
+  <span class="text-purple-400">pull_request</span>:
+    <span class="text-purple-400">branches</span>:
+      - <span class="text-amber-300">main</span>
+    <span class="text-slate-500"># 'types': Refines specific pull request actions that initiate the workflow.</span>
+    <span class="text-slate-500"># Default if omitted: [opened, synchronize, reopened]</span>
+    <span class="text-purple-400">types</span>:
+      - <span class="text-amber-300">opened</span>            <span class="text-slate-500"># PR is first created</span>
+      - <span class="text-amber-300">synchronize</span>       <span class="text-slate-500"># New commits are pushed to the PR's source branch</span>
+      - <span class="text-amber-300">reopened</span>          <span class="text-slate-500"># An existing closed PR is reactivated</span>
+
+  <span class="text-slate-500"># 3. Manual execution trigger via the GitHub Web UI or GitHub CLI ('gh workflow run')</span>
+  <span class="text-slate-500"># Enables operators to trigger test runs on-demand for diagnostic triage.</span>
+  <span class="text-purple-400">workflow_dispatch</span>:
+    <span class="text-purple-400">inputs</span>:
+      <span class="text-purple-400">run_security_scan</span>:
+        <span class="text-purple-400">description</span>: <span class="text-amber-300">'Execute deep AST vulnerability audit?'</span>
+        <span class="text-purple-400">required</span>: <span class="text-rose-400">false</span>
+        <span class="text-purple-400">type</span>: <span class="text-amber-300">boolean</span>
+        <span class="text-purple-400">default</span>: <span class="text-rose-400">true</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CONCURRENCY MANAGEMENT (concurrency:)</span>
+<span class="text-slate-500"># Prevents duplicate builds and conserves organizational compute budgets.</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">concurrency</span>:
+  <span class="text-slate-500"># 'group': Dynamically groups runs by workflow name and branch reference.</span>
+  <span class="text-purple-400">group</span>: <span class="text-amber-300">${{ github.workflow }}-${{ github.ref }}</span>
+  <span class="text-slate-500"># 'cancel-in-progress': If a developer pushes 3 commits rapidly, immediately terminate</span>
+  <span class="text-slate-500"># the older in-flight builds and run only the latest commit!</span>
+  <span class="text-slate-500"># Alternatives: 'false' (queues all builds sequentially; mandatory for continuous deploy pipelines)</span>
+  <span class="text-purple-400">cancel-in-progress</span>: <span class="text-rose-400">true</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># SECURITY &amp; LEAST PRIVILEGE (permissions:)</span>
+<span class="text-slate-500"># Hardens the automatically provisioned GITHUB_TOKEN against token exfiltration.</span>
+<span class="text-slate-500"># Dangerous Anti-Pattern: 'permissions: write-all' (grants broad attack surface)</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">permissions</span>:
+  <span class="text-purple-400">contents</span>: <span class="text-amber-300">read</span>          <span class="text-slate-500"># Allows reading repository source code for checkout</span>
+  <span class="text-purple-400">pull-requests</span>: <span class="text-amber-300">write</span>    <span class="text-slate-500"># Allows posting test coverage annotations to the PR</span>
+  <span class="text-purple-400">checks</span>: <span class="text-amber-300">write</span>           <span class="text-slate-500"># Allows publishing GitHub check run results</span>
+
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># JOBS EXECUTION PIPELINE (jobs:)</span>
+<span class="text-slate-500"># Units of work executing on independent, isolated runner instances.</span>
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-purple-400">jobs</span>:
+
+  <span class="text-slate-500"># ----------------------------------------------------------------------------</span>
+  <span class="text-slate-500"># JOB 1: Static Code Quality, Style Linting &amp; Security Auditing</span>
+  <span class="text-slate-500"># ----------------------------------------------------------------------------</span>
+  <span class="text-purple-400">quality-gate</span>:
+    <span class="text-purple-400">name</span>: <span class="text-amber-300">Code Quality &amp; Security Audits</span>
+    <span class="text-slate-500"># 'runs-on': Specifies the OS container for the runner virtual machine.</span>
+    <span class="text-slate-500"># Alternatives: 'ubuntu-22.04', 'windows-latest', 'macos-latest', or self-hosted tags: ['self-hosted', 'linux', 'arm64']</span>
+    <span class="text-purple-400">runs-on</span>: <span class="text-amber-300">ubuntu-latest</span>
+    
+    <span class="text-slate-500"># 'timeout-minutes': Hard cut-off to prevent runaway processes from burning compute quotas.</span>
+    <span class="text-slate-500"># Default if omitted: 360 minutes (6 hours!). Always set explicit timeouts in production!</span>
+    <span class="text-purple-400">timeout-minutes</span>: <span class="text-sky-300">10</span>
+
+    <span class="text-slate-500"># Sequential steps executing inside the runner workspace ($GITHUB_WORKSPACE)</span>
+    <span class="text-purple-400">steps</span>:
+      <span class="text-slate-500"># Step 1.1: Clone the repository into the runner's workspace</span>
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Checkout Repository Code</span>
+        <span class="text-slate-500"># 'uses': Invokes an action module from GitHub Marketplace.</span>
+        <span class="text-slate-500"># Syntax: owner/repository@version (Pinned to major tag @v4 or commit SHA)</span>
+        <span class="text-purple-400">uses</span>: <span class="text-amber-300">actions/checkout@v4</span>
+        <span class="text-purple-400">with</span>:
+          <span class="text-slate-500"># 'fetch-depth': Number of commits to fetch.</span>
+          <span class="text-slate-500"># '0' indicates all history and tags (required for commit linters or git-filter-repo).</span>
+          <span class="text-slate-500"># Default is '1' (shallow clone, highly optimized for standard unit tests).</span>
+          <span class="text-purple-400">fetch-depth</span>: <span class="text-sky-300">0</span>
+
+      <span class="text-slate-500"># Step 1.2: Initialize Python Runtime with Built-in Dependency Caching</span>
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Set Up Python 3.12 Runtime</span>
+        <span class="text-purple-400">uses</span>: <span class="text-amber-300">actions/setup-python@v5</span>
+        <span class="text-purple-400">with</span>:
+          <span class="text-purple-400">python-version</span>: <span class="text-amber-300">'3.12'</span>
+          <span class="text-slate-500"># 'cache': Automatically caches pip dependencies based on requirements.txt or pyproject.toml.</span>
+          <span class="text-slate-500"># Eliminates multi-minute download penalties across workflow runs!</span>
+          <span class="text-slate-500"># Alternatives: 'pip', 'poetry', 'pipenv'</span>
+          <span class="text-purple-400">cache</span>: <span class="text-amber-300">'pip'</span>
+
+      <span class="text-slate-500"># Step 1.3: Install Tooling Dependencies via Terminal Command</span>
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Install Static Analysis Tooling</span>
+        <span class="text-slate-500"># 'run': Executes shell commands in the runner's default shell (bash on Linux).</span>
+        <span class="text-purple-400">run</span>: <span class="text-amber-300">|
+          python -m pip install --upgrade pip
+          pip install flake8 black bandit</span>
+
+      <span class="text-slate-500"># Step 1.4: Verify Code Formatting Compliance</span>
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Verify Code Formatting (Black)</span>
+        <span class="text-purple-400">run</span>: <span class="text-amber-300">|
+          black --check src/ tests/</span>
+
+      <span class="text-slate-500"># Step 1.5: Static AST Security Vulnerability Audit</span>
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Execute Security AST Vulnerability Scan (Bandit)</span>
+        <span class="text-slate-500"># Conditional: Runs if not explicitly disabled via manual workflow_dispatch input</span>
+        <span class="text-purple-400">if</span>: <span class="text-amber-300">${{ github.event.inputs.run_security_scan != 'false' }}</span>
+        <span class="text-purple-400">run</span>: <span class="text-amber-300">|
+          bandit -r src/ -ll</span>
+
+  <span class="text-slate-500"># ----------------------------------------------------------------------------</span>
+  <span class="text-slate-500"># JOB 2: Automated Unit Testing &amp; Coverage Reporting</span>
+  <span class="text-slate-500"># ----------------------------------------------------------------------------</span>
+  <span class="text-purple-400">unit-testing</span>:
+    <span class="text-purple-400">name</span>: <span class="text-amber-300">Execute PyTest Battery</span>
+    <span class="text-slate-500"># 'needs': Enforces sequential execution. This job waits for 'quality-gate' to succeed!</span>
+    <span class="text-slate-500"># If quality-gate fails, unit-testing is skipped immediately, saving runner minutes.</span>
+    <span class="text-purple-400">needs</span>: [<span class="text-amber-300">quality-gate</span>]
+    <span class="text-purple-400">runs-on</span>: <span class="text-amber-300">ubuntu-latest</span>
+    <span class="text-purple-400">timeout-minutes</span>: <span class="text-sky-300">10</span>
+
+    <span class="text-purple-400">steps</span>:
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Checkout Repository Code</span>
+        <span class="text-purple-400">uses</span>: <span class="text-amber-300">actions/checkout@v4</span>
+
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Set Up Python Runtime</span>
+        <span class="text-purple-400">uses</span>: <span class="text-amber-300">actions/setup-python@v5</span>
+        <span class="text-purple-400">with</span>:
+          <span class="text-purple-400">python-version</span>: <span class="text-amber-300">'3.12'</span>
+          <span class="text-purple-400">cache</span>: <span class="text-amber-300">'pip'</span>
+
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Install Dependencies</span>
+        <span class="text-purple-400">run</span>: <span class="text-amber-300">|
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov</span>
+
+      - <span class="text-purple-400">name</span>: <span class="text-amber-300">Run PyTest Battery with Coverage</span>
+        <span class="text-slate-500"># 'env': Injects environment variables scoped exclusively to this step.</span>
+        <span class="text-purple-400">env</span>:
+          <span class="text-purple-400">ENVIRONMENT</span>: <span class="text-amber-300">test</span>
+        <span class="text-purple-400">run</span>: <span class="text-amber-300">|
+          pytest tests/ --cov=shipforge --cov-report=term-missing</span></pre>
+            </div>
+        </section>
+
+        <!-- 4. Beginner Pitfalls & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Unpinned Actions (@main Anti-Pattern)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">uses: actions/checkout@main</code> in workflow files.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes outages &amp; security risks:</strong> Targeting mutable branch names like <code class="font-mono">@main</code> means any breaking change or compromised release made by the upstream action author will execute automatically in your production build. Always pin to major version tags (<code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">@v4</code>) or immutable commit SHAs!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Permissive GITHUB_TOKEN Privileges</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Relying on GitHub's default repository permission settings or setting <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">permissions: write-all</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this is a critical security vulnerability:</strong> If an arbitrary dependency or malicious pull request executes in your CI runner, it can access the environment's <code class="font-mono">GITHUB_TOKEN</code> to overwrite branch refs, delete tags, or publish rogue releases. Always define explicit, minimal <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">permissions:</code> blocks!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Local Emulation &amp; Monitoring Workflows with GitHub CLI</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to test workflow syntax locally without pushing to GitHub, and monitor live CI executions from your terminal:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Local Test with act -->
+                <div>
+                    <span class="text-slate-500"># 1. Run GitHub Actions locally using Docker with the open-source 'act' engine:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        # Emulate a pull_request event trigger locally:<br>
+                        act pull_request
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Spins up local Docker containers simulating the ubuntu-latest runner and executes steps.
+                    </span>
+                </div>
+
+                <!-- Step 2: Query CI Runs via GitHub CLI -->
+                <div>
+                    <span class="text-slate-500"># 2. Monitor live GitHub Actions pipeline runs directly from the terminal:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        gh run list --workflow="ci-pipeline.yml"<br>
+                        # Watch the active in-flight run in real-time:<br>
+                        gh run watch
+                    </div>
+                </div>
+
+                <!-- Step 3: Trigger Manual Dispatch -->
+                <div>
+                    <span class="text-slate-500"># 3. Trigger manual workflow execution with custom inputs:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        gh workflow run ci-pipeline.yml -f run_security_scan=true
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Enterprise CI/CD Pipelines: Matrix Builds, Secrets, Caching &amp; Artifacts</h4>
+                <p class="text-xs text-slate-500 font-sans">Scaling automated pipelines: Multi-OS and multi-version testing with <code class="font-mono">strategy.matrix</code>, cryptographic dependency caching with <code class="font-mono">hashFiles()</code>, multi-job artifact passing, and production deployment environments.</p>
+            </div>
+            <a href="Chapter 07 - Enterprise CI/CD Pipelines - Matrix Builds, Secrets, Caching and Artifacts.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

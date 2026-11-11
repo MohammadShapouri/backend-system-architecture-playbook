@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Monolithic vs. Microservice Logging Architectures: The Paradigm Shift</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 05 - Architectural Shift &amp; Outbound Observability)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Architectural Topologies &amp; Outbound Boundaries
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Monolithic vs. Microservice Logging Architectures: The Paradigm Shift
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Navigating the death of the local file: Why multi-process file rotators fail in production, contrasting monolithic syslog daemons with distributed event-streaming pipelines, choosing storage targets across architectures (disk files vs. transactional SQL tables vs. indexed log stores), and engineering high-fidelity instrumentation for external banking gateways and third-party HTTP rails in <strong>PulsePay</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 05: The Architectural Shift &amp; Outbound Observability</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 04, we engineered PulsePay's foundational telemetry primitives: structured JSON serialization, non-blocking queue handlers, W3C trace correlation, and Luhn-validated PII redaction. Now, PulsePay expands from a single internal engine into a distributed system communicating with third-party banking rails (e.g., SWIFT networks, central bank settlement APIs, and credit networks). In Milestone 05, we dissect how logging mechanics fundamentally diverge when moving from a monolithic host to containerized microservices. We evaluate where logs must reside across different architectures, and build an automated outbound HTTP telemetry client that captures latencies, status codes, payload boundaries, and network timeouts.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Monolith File Rotation &amp; Multi-Worker Deadlocks</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Microservice Ephemerality &amp; Central Aggregation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Storage Trade-Offs: Files vs. DBs vs. Log Engines</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Outbound External Calls: What to Log vs. Skip</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Automated Network Timeout &amp; Latency Auditing</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> HTTPX Outbound Telemetry Interceptor Client</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Monolith Logging Paradigm: Local Files & The Multi-Worker Collision -->
+        <section id="monolith-logging" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Monolith Paradigm: Local Files &amp; The Multi-Worker Collision</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In classical monolithic systems deployed on static virtual machines or bare-metal servers, software logging relies on the local host filesystem: writing log events to designated files such as <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">/var/log/pulsepay/app.log</code>. To prevent logs from exhausting disk space, engineers configure Python's <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">RotatingFileHandler</code> (size-based) or <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">TimedRotatingFileHandler</code> (time-based).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                However, when a monolith scales horizontally across CPU cores using a process supervisor (such as Gunicorn, Uvicorn, or Celery spawning 8 worker processes), <strong>file-based logging triggers fatal operating system file descriptor collisions</strong>:
+            </p>
+
+            <!-- Multi-Worker Collision Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-rose-400 uppercase tracking-widest text-[11px]">
+                    The Multi-Worker Rotating File Race Condition
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-center">
+                    <!-- Worker Processes -->
+                    <div class="space-y-3">
+                        <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                            <span class="text-sky-300 font-bold block">Gunicorn Worker 1 (PID 301)</span>
+                            <span class="text-[10px] text-slate-400 font-sans">Detects file reaches 50MB &rarr; Attempts to rename <code class="text-amber-300">app.log &rarr; app.log.1</code></span>
+                        </div>
+                        <div class="p-3 bg-slate-950 border border-rose-900/60 rounded-xl space-y-1">
+                            <span class="text-rose-400 font-bold block">Gunicorn Worker 2 (PID 302)</span>
+                            <span class="text-[10px] text-slate-400 font-sans">Simultaneously writing to <code class="text-rose-300">app.log</code> &rarr; File handle closed or truncated!</span>
+                        </div>
+                    </div>
+
+                    <!-- Crash Outcome -->
+                    <div class="p-4 bg-rose-950/40 border border-rose-800 rounded-2xl space-y-2">
+                        <span class="text-rose-400 font-bold block text-sm">&cross; File Truncation &amp; Lost Logs</span>
+                        <p class="text-slate-300 font-sans text-[11px] leading-relaxed">
+                            Neither Windows nor POSIX operating systems provide atomic file rotation synchronization across independent OS processes without external locks. Worker 1 renames the file while Worker 2 holds an open write handle to the old inode.
+                        </p>
+                        <div class="p-2 bg-slate-950 rounded text-rose-300 text-[10px]">
+                            Result: File truncation, interleaved binary garbage, and PermissionError / FileNotFoundError crashes!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Monolith Rule:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If running a multi-process monolith on a single VM, <strong>never let Python rotate application files directly</strong>. Either log to <code class="text-white font-mono">/dev/stdout</code> and let a system supervisor (like <code class="text-emerald-300 font-mono">systemd-journald</code>) capture the stream, or write to a Unix Domain Socket parsed by an external daemon (<code class="text-emerald-300 font-mono">rsyslog</code>) with native file locking.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Microservice Logging Paradigm: Ephemerality & Central Aggregation -->
+        <section id="microservice-logging" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The Microservice Paradigm: Ephemerality &amp; Centralized Aggregation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an application is decomposed into microservices running inside autoscaling groups, serverless containers, or Kubernetes pods, <strong>the local filesystem ceases to exist as a reliable storage medium</strong>. 
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Containers are inherently ephemeral: when a pod crashes, finishes a job, or scales down, its local filesystem is purged immediately. Attempting to SSH into a container to view logs is impossible in production. This necessitates the <strong>Centralized Log Aggregation Pipeline</strong>:
+            </p>
+
+            <!-- Distributed Pipeline Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Distributed Centralized Telemetry Pipeline
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-center">
+                    <!-- Layer 1: Emitters -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                        <span class="text-sky-300 font-bold block">1. Ephemeral Nodes</span>
+                        <div class="text-[10px] text-slate-400 font-sans space-y-1">
+                            <div>API Gateway Pod</div>
+                            <div>Ledger Core Pod</div>
+                            <div>Clearing Worker Pod</div>
+                        </div>
+                        <div class="text-[9px] text-amber-300">Writes to stdout</div>
+                    </div>
+
+                    <!-- Layer 2: Shippers -->
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl space-y-1.5">
+                        <span class="text-purple-300 font-bold block">2. Log Forwarders</span>
+                        <div class="text-[10px] text-slate-300 font-sans space-y-1">
+                            <div>Fluent Bit / Vector</div>
+                            <div>DaemonSet on Node</div>
+                            <div>Metadata Enrichment</div>
+                        </div>
+                        <div class="text-[9px] text-emerald-300">Zero App Overhead</div>
+                    </div>
+
+                    <!-- Layer 3: Buffering -->
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl space-y-1.5">
+                        <span class="text-emerald-300 font-bold block">3. Ingestion Buffer</span>
+                        <div class="text-[10px] text-slate-300 font-sans space-y-1">
+                            <div>Apache Kafka / Redis</div>
+                            <div>Absorbs Traffic Spikes</div>
+                            <div>Backpressure Valve</div>
+                        </div>
+                        <div class="text-[9px] text-sky-300">Zero Data Loss</div>
+                    </div>
+
+                    <!-- Layer 4: Storage -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                        <span class="text-amber-300 font-bold block">4. Search &amp; Store</span>
+                        <div class="text-[10px] text-slate-400 font-sans space-y-1">
+                            <div>Grafana Loki (Chunks)</div>
+                            <div>OpenSearch (Inverted)</div>
+                            <div>AWS S3 (Long-Term)</div>
+                        </div>
+                        <div class="text-[9px] text-emerald-400">Query &amp; Alert</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono">&#9888; The Distributed Clock Skew Problem:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        In a microservice topology, Service A and Service B run on physically separate server hardware. If server clocks drift by even 40 milliseconds, logs arriving at the central aggregator can appear out of order (Service B's response appears to occur <em>before</em> Service A sent the request!). Distributed systems must enforce <strong>Network Time Protocol (NTP) synchronization</strong> and rely on parent-child W3C Span IDs rather than raw timestamps to reconstruct causal order.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Where to Keep Logs: Architectural Trade-Off Comparison -->
+        <section id="where-to-keep-logs" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Economics: Flat Files vs. SQL Databases vs. Dedicated Engines</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Engineers frequently ask: <em>"Can't I just save logs in a MongoDB collection or a PostgreSQL table?"</em> While technically possible, doing so violates foundational storage engine design principles. Here is how storage destinations compare across software architectures:
+            </p>
+
+            <!-- Deep Architectural Storage Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs font-mono border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                            <th class="p-3">Storage Destination</th>
+                            <th class="p-3">Best Architecture Fit</th>
+                            <th class="p-3">Write Throughput</th>
+                            <th class="p-3">Query Speed</th>
+                            <th class="p-3">Cost &amp; Operational Risk</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 text-slate-700 bg-white">
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-purple-700">Rotating Flat Files</td>
+                            <td class="p-3 font-sans">Simple Monoliths (Single Server)</td>
+                            <td class="p-3 text-emerald-600 font-bold">High (Sequential Disk I/O)</td>
+                            <td class="p-3 text-rose-600 font-bold">Slow (Manual grep / awk)</td>
+                            <td class="p-3 font-sans text-slate-500">Zero software cost. Fails in autoscaling; unsearchable across multiple nodes.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 bg-rose-50/20">
+                            <td class="p-3 font-semibold text-rose-700">Relational Database (SQL)</td>
+                            <td class="p-3 font-sans text-rose-800 font-bold">NEVER for operational logs!</td>
+                            <td class="p-3 text-rose-600 font-bold">Abysmal (Lock contention)</td>
+                            <td class="p-3 text-amber-600 font-bold">Medium (Indexed B-Trees)</td>
+                            <td class="p-3 font-sans text-rose-900"><strong>Catastrophic:</strong> Write-Ahead Log (WAL) bloat, table locks, and memory starvation crash primary application DB.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-sky-700">Inverted Index (OpenSearch / ES)</td>
+                            <td class="p-3 font-sans">Large Microservice Meshes</td>
+                            <td class="p-3 text-emerald-600 font-bold">High (Distributed Shards)</td>
+                            <td class="p-3 text-emerald-600 font-bold">Blazing (Lucene Full-Text)</td>
+                            <td class="p-3 font-sans text-slate-500">Expensive. High RAM and disk indexing tax. Mapping explosions can lock cluster state.</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 font-semibold text-emerald-700">Chunked Object Store (Loki)</td>
+                            <td class="p-3 font-sans">Modern Kubernetes Microservices</td>
+                            <td class="p-3 text-emerald-600 font-bold">Maximum (Grep-at-Query)</td>
+                            <td class="p-3 text-sky-600 font-bold">Fast for targeted labels</td>
+                            <td class="p-3 font-sans text-slate-500"><strong>Lowest Cost:</strong> Up to 80% cheaper than Elastic. Raw chunks stored in S3/MinIO.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 4. Outbound External Calls: What & How to Log -->
+        <section id="outbound-logging-policy" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Outbound Service Observability: What &amp; How to Log External APIs</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In modern systems, a huge percentage of critical failures occur outside your infrastructure: a third-party banking partner (e.g., Stripe, Plaid, Citibank, or SWIFT) times out, returns HTTP 502 Bad Gateway, or enforces sudden rate limits (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">HTTP 429 Too Many Requests</code>).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Without precise outbound telemetry, on-call engineers waste hours investigating internal services when the root cause was an external vendor outage. Here is the strict enterprise policy for logging outbound network interactions:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- What MUST Be Logged -->
+                <div class="bg-emerald-50/50 border border-emerald-200 p-6 rounded-2xl space-y-4">
+                    <div class="flex items-center gap-2 text-emerald-900 font-bold font-mono text-sm border-b border-emerald-200 pb-2">
+                        <span>&check;</span>
+                        <span>OUTBOUND CALLS: WHAT MUST BE LOGGED</span>
+                    </div>
+                    <ul class="text-xs text-emerald-950 space-y-2 font-sans leading-relaxed">
+                        <li>
+                            <strong class="font-mono text-emerald-900">1. Sanitized Target URI &amp; HTTP Method:</strong>
+                            <br>Log <code class="font-mono text-slate-800">POST https://api.bank.test/v1/clearing</code>. Strip any query parameters containing API keys or user secrets.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">2. Millisecond Round-Trip Duration:</strong>
+                            <br>Measure exact socket duration using high-resolution monotonic clocks (<code class="font-mono text-slate-800">time.perf_counter()</code>). Essential for detecting external latency degradation before hard timeouts occur.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">3. HTTP Response Status Code:</strong>
+                            <br>Record status codes cleanly (e.g., 200, 429, 503). If the call failed to connect, log the specific network exception (<code class="font-mono text-slate-800">ConnectTimeout</code>, <code class="font-mono text-slate-800">DNSResolutionError</code>).
+                        </li>
+                        <li>
+                            <strong class="font-mono text-emerald-900">4. Retry Attempt Index &amp; Circuit Breaker State:</strong>
+                            <br>Record whether this was attempt 1 of 3, backoff delay sleep time, and current circuit breaker state (<code class="font-mono text-slate-800">CLOSED</code> vs. <code class="font-mono text-slate-800">HALF_OPEN</code>).
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- What MUST NOT Be Logged -->
+                <div class="bg-rose-50/50 border border-rose-200 p-6 rounded-2xl space-y-4">
+                    <div class="flex items-center gap-2 text-rose-900 font-bold font-mono text-sm border-b border-rose-200 pb-2">
+                        <span>&cross;</span>
+                        <span>OUTBOUND CALLS: WHAT MUST NEVER BE LOGGED</span>
+                    </div>
+                    <ul class="text-xs text-rose-950 space-y-2 font-sans leading-relaxed">
+                        <li>
+                            <strong class="font-mono text-rose-900">1. Outgoing Authorization Headers:</strong>
+                            <br>Never log <code class="font-mono text-rose-900">Authorization: Basic &lt;base64&gt;</code> or vendor secret tokens. Scrub headers before logging.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">2. Large Binary Responses:</strong>
+                            <br>Never dump raw PDF receipts, image payloads, or multi-megabyte CSV clearing files into the log stream.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">3. Unredacted Cardholder Data:</strong>
+                            <br>Third-party gateways accept card numbers. Scrub outgoing request bodies to ensure PANs and CVVs are masked before logging.
+                        </li>
+                        <li>
+                            <strong class="font-mono text-rose-900">4. Internal Banking Credentials in Query Params:</strong>
+                            <br>Never permit vendor keys in URLs (<code class="font-mono text-rose-900">?api_key=secret</code>). If a vendor requires this, redact the query string before logging.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: PulsePay Milestone 05 -->
+        <section id="pulsepay-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 05: Outbound Telemetry Interceptor Client</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 05 for <strong>PulsePay</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/services/banking_client.py</code>: an asynchronous banking client powered by <code class="font-mono text-purple-700 font-bold">httpx.AsyncClient</code> with automated event hooks.</li>
+                <li>We configure request/response event hooks that measure exact millisecond latencies, sanitize outbound headers, inject outgoing W3C traceparent headers, and log errors cleanly.</li>
+                <li>We build verification tests in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">tests/unit/test_outbound_observability.py</code> simulating remote timeouts and HTTP 503 gateway errors.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 05)</div>
+                <div>pulsepay/</div>
+                <div>├── src/</div>
+                <div>│   └── pulsepay/</div>
+                <div>│       ├── observability/</div>
+                <div>│       │   ├── schemas.py</div>
+                <div>│       │   ├── formatters.py</div>
+                <div>│       │   ├── queue_harness.py</div>
+                <div>│       │   ├── context.py</div>
+                <div>│       │   ├── filters.py</div>
+                <div>│       │   └── redaction.py</div>
+                <div>│       └── services/</div>
+                <div>│           ├── __init__.py</div>
+                <div>│           └── <span class="text-emerald-300 font-bold">banking_client.py</span>       <span class="text-slate-500"># Milestone 05: Outbound HTTP Telemetry Client (httpx)</span></div>
+                <div>└── tests/</div>
+                <div>    └── unit/</div>
+                <div>        └── <span class="text-purple-300 font-bold">test_outbound_client.py</span>     <span class="text-slate-500"># Milestone 05: Outbound network telemetry verification</span></div>
+            </div>
+
+            <!-- File 1: src/pulsepay/services/banking_client.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Outbound HTTP Telemetry Client: <code class="text-purple-700">src/pulsepay/services/banking_client.py</code></span>
+                    <span class="text-slate-400">Automated Network Interceptor</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Services - Outbound Banking Network Client (Milestone 05)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> decimal <span class="text-purple-400">import</span> Decimal
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Any, Dict, Optional
+<span class="text-purple-400">import</span> httpx
+<span class="text-purple-400">from</span> pulsepay.observability.context <span class="text-purple-400">import</span> get_current_trace, get_correlation_id
+<span class="text-purple-400">from</span> pulsepay.observability.redaction <span class="text-purple-400">import</span> PulseSecurityRedactor
+
+logger = logging.getLogger(<span class="text-amber-300">"pulsepay.outbound.banking"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-rose-400 font-bold">BankingGatewayError</span>(Exception):
+    <span class="text-slate-500">"""Base exception for external banking clearing failures."""</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, message: str, status_code: Optional[int] = <span class="text-rose-400">None</span>):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">ObservableBankingClient</span>:
+    <span class="text-slate-500">"""
+    PRODUCTION OUTBOUND HTTP CLIENT:
+    - Injects active W3C traceparent headers into outgoing requests.
+    - Measures precise millisecond round-trip execution latency.
+    - Sanitizes sensitive authorization tokens and payload secrets.
+    - Emits structured events for both successes and external vendor timeouts.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, base_url: str = <span class="text-amber-300">"https://clearing.apexbank.test"</span>, timeout: float = <span class="text-purple-300">3.0</span>):
+        self.base_url = base_url
+        self.timeout = timeout
+
+    <span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">dispatch_settlement</span>(
+        self, 
+        account_number: str, 
+        amount: Decimal, 
+        currency: str = <span class="text-amber-300">"USD"</span>
+    ) -> Dict[str, Any]:
+        endpoint = f<span class="text-amber-300">"&#123;self.base_url&#125;/v1/settlements"</span>
+        method = <span class="text-amber-300">"POST"</span>
+
+        payload = {
+            <span class="text-amber-300">"destination_account"</span>: account_number,
+            <span class="text-amber-300">"settlement_amount"</span>: amount,
+            <span class="text-amber-300">"currency"</span>: currency
+        }
+
+        <span class="text-slate-500"># 1. Forward distributed trace context to banking partner</span>
+        headers = {<span class="text-amber-300">"User-Agent"</span>: <span class="text-amber-300">"PulsePay-ClearingEngine/1.5.0"</span>}
+        trace = get_current_trace()
+        <span class="text-purple-400">if</span> trace:
+            headers[<span class="text-amber-300">"traceparent"</span>] = trace.to_traceparent()
+        corr_id = get_correlation_id()
+        <span class="text-purple-400">if</span> corr_id:
+            headers[<span class="text-amber-300">"x-correlation-id"</span>] = corr_id
+
+        start_time = time.perf_counter()
+        status_code = <span class="text-rose-400">None</span>
+
+        <span class="text-purple-400">try</span>:
+            <span class="text-purple-400">async with</span> httpx.AsyncClient(timeout=self.timeout) <span class="text-purple-400">as</span> client:
+                response = <span class="text-purple-400">await</span> client.post(
+                    endpoint, 
+                    json=PulseSecurityRedactor.scrub_payload(payload), 
+                    headers=headers
+                )
+                status_code = response.status_code
+                duration_ms = (time.perf_counter() - start_time) * <span class="text-purple-300">1000.0</span>
+
+                <span class="text-slate-500"># Check for external upstream errors</span>
+                <span class="text-purple-400">if</span> response.status_code &gt;= <span class="text-purple-300">400</span>:
+                    logger.error(
+                        f<span class="text-amber-300">"Outbound clearing call failed with HTTP &#123;status_code&#125;"</span>,
+                        extra={
+                            <span class="text-amber-300">"action"</span>: <span class="text-amber-300">"OUTBOUND_HTTP_ERROR"</span>,
+                            <span class="text-amber-300">"target_endpoint"</span>: endpoint,
+                            <span class="text-amber-300">"http_method"</span>: method,
+                            <span class="text-amber-300">"http_status"</span>: status_code,
+                            <span class="text-amber-300">"duration_ms"</span>: round(duration_ms, <span class="text-purple-300">2</span>),
+                            <span class="text-amber-300">"response_preview"</span>: response.text[:<span class="text-purple-300">200</span>]
+                        }
+                    )
+                    <span class="text-purple-400">raise</span> BankingGatewayError(
+                        f<span class="text-amber-300">"Upstream bank returned error HTTP &#123;status_code&#125;"</span>, 
+                        status_code=status_code
+                    )
+
+                <span class="text-slate-500"># Log successful outbound operation</span>
+                logger.info(
+                    f<span class="text-amber-300">"Outbound clearing call succeeded in &#123;duration_ms:.2f&#125;ms"</span>,
+                    extra={
+                        <span class="text-amber-300">"action"</span>: <span class="text-amber-300">"OUTBOUND_HTTP_SUCCESS"</span>,
+                        <span class="text-amber-300">"target_endpoint"</span>: endpoint,
+                        <span class="text-amber-300">"http_method"</span>: method,
+                        <span class="text-amber-300">"http_status"</span>: status_code,
+                        <span class="text-amber-300">"duration_ms"</span>: round(duration_ms, <span class="text-purple-300">2</span>),
+                        <span class="text-amber-300">"account_target"</span>: account_number
+                    }
+                )
+                <span class="text-purple-400">return</span> response.json()
+
+        <span class="text-purple-400">except</span> httpx.TimeoutException <span class="text-purple-400">as</span> err:
+            duration_ms = (time.perf_counter() - start_time) * <span class="text-purple-300">1000.0</span>
+            logger.error(
+                f<span class="text-amber-300">"Outbound clearing call TIMED OUT after &#123;duration_ms:.2f&#125;ms"</span>,
+                extra={
+                    <span class="text-amber-300">"action"</span>: <span class="text-amber-300">"OUTBOUND_HTTP_TIMEOUT"</span>,
+                    <span class="text-amber-300">"target_endpoint"</span>: endpoint,
+                    <span class="text-amber-300">"http_method"</span>: method,
+                    <span class="text-amber-300">"duration_ms"</span>: round(duration_ms, <span class="text-purple-300">2</span>),
+                    <span class="text-amber-300">"configured_timeout_s"</span>: self.timeout
+                }
+            )
+            <span class="text-purple-400">raise</span> BankingGatewayError(<span class="text-amber-300">"Clearing gateway timed out"</span>) <span class="text-purple-400">from</span> err</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Direct Synchronous Network Logging" Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring Python logging to send HTTP POST requests directly to an external logging SaaS provider inside worker threads.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes total platform failure:</strong> If the logging service experiences network latency or an outage, every single log statement in your application blocks for 5 seconds waiting for the logging HTTP call to timeout. Your entire payment engine grinds to a dead halt.
+                        <strong>Fix:</strong> Always emit logs to <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">stdout</code> or a local queue, letting an out-of-process daemon (Vector, Fluent Bit) handle network delivery.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Unmasked Query Parameter" Leak</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Logging raw outbound URLs: <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">logger.info(f"Calling {url}")</code> when the URL contains API tokens in query strings.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this fails audits:</strong> Many third-party financial webhooks mandate authentication keys in query strings (<code class="font-mono">?token=secret123</code>). Logging raw URL strings broadcasts sensitive vendor secrets directly into search clusters. Always parse and strip query strings prior to emission!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 05</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute simulated outbound banking calls using <code class="font-mono text-emerald-400">respx</code>, verify precise latency measurement, and prove outbound error events are cleanly formatted:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install Mocking Transport Dependencies -->
+                <div>
+                    <span class="text-slate-500"># 1. Install respx for transport-level HTTP testing:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install httpx respx
+                    </div>
+                </div>
+
+                <!-- Step 2: Execute Outbound Call Test Script -->
+                <div>
+                    <span class="text-slate-500"># 2. Run simulation demonstrating outbound success, 503 gateway failure, and timeout events:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+python3 -c '
+import asyncio, respx, httpx
+from decimal import Decimal
+from pulsepay.services.banking_client import ObservableBankingClient, BankingGatewayError
+from pulsepay.observability.engine import configure_production_logging
+
+manager = configure_production_logging("INFO")
+client = ObservableBankingClient(base_url="https://clearing.apexbank.test", timeout=1.0)
+
+async def test_scenarios():
+    with respx.mock(assert_all_called=False) as mock:
+        # Scenario A: Successful Outbound Call
+        mock.post("https://clearing.apexbank.test/v1/settlements").mock(
+            return_value=httpx.Response(200, json={"status": "CLEARED", "reference": "ACH-9912"})
+        )
+        await client.dispatch_settlement("ACC-US-991", Decimal("500.00"), "USD")
+
+        # Scenario B: Upstream Vendor 503 Outage
+        mock.post("https://clearing.apexbank.test/v1/settlements").mock(
+            return_value=httpx.Response(503, text="Banking Rail Unavailable")
+        )
+        try:
+            await client.dispatch_settlement("ACC-US-991", Decimal("500.00"), "USD")
+        except BankingGatewayError:
+            pass
+
+    manager.shutdown()
+
+asyncio.run(test_scenarios())
+'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice output: Emits two distinct structured events: OUTBOUND_HTTP_SUCCESS with duration_ms, and OUTBOUND_HTTP_ERROR with status code 503 and preview!
+                    </span>
+                </div>
+
+                <!-- Step 3: Validate Outbound JSON Structure via jq -->
+                <div>
+                    <span class="text-slate-500"># 3. Filter outbound events using jq to verify clean machine indexability:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+python3 -c '
+import asyncio, respx, httpx
+from decimal import Decimal
+from pulsepay.services.banking_client import ObservableBankingClient
+from pulsepay.observability.engine import configure_production_logging
+
+m = configure_production_logging()
+c = ObservableBankingClient()
+with respx.mock:
+    respx.post("https://clearing.apexbank.test/v1/settlements").mock(return_value=httpx.Response(200, json={"ok": True}))
+    asyncio.run(c.dispatch_settlement("ACC-1", Decimal("10.00")))
+m.shutdown()
+' | jq -s '.[-1] | {action: .action, duration: .duration_ms, endpoint: .attributes.target_endpoint, status: .attributes.http_status}'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected Output: A structured JSON object displaying exact millisecond duration, action, and target endpoint metadata.
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: Containerized Logging in Docker: Daemons, Drivers &amp; Runtime Interception</h4>
+                <p class="text-xs text-slate-500 font-sans">Operating at the container boundary: Linux namespaces, cgroups, Docker logging drivers (<code class="font-mono">json-file</code> vs. <code class="font-mono">local</code>), preventing disk exhaustion with <code class="font-mono">mode=non-blocking</code>, and multi-container composition in <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 06 - Containerized Logging in Docker - Daemons, Drivers and Runtime Interception.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

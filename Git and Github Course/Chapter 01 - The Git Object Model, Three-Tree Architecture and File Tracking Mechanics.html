@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 01: The Git Object Model, Three-Tree Architecture &amp; File Tracking Mechanics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 01 - Core Object Model &amp; Tracking Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 01 &bull; Distributed DAG Internals &amp; State Transitions
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                The Git Object Model, Three-Tree Architecture &amp; File Tracking Mechanics
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Deconstructing Git from first principles: Understanding Git as a content-addressable directed acyclic graph (DAG), navigating the three core state trees (<code class="font-mono text-emerald-400">Working Directory</code>, <code class="font-mono text-emerald-400">Index/Staging</code>, and <code class="font-mono text-emerald-400">HEAD</code>), executing untracking surgery with <code class="font-mono text-emerald-400">git rm --cached</code>, mastering <code class="font-mono text-emerald-400">.gitignore</code> precedence, and laying the initial foundation for <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">Introducing "ShipForge" Milestone 01</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Across this series, we build and maintain <strong>ShipForge</strong>: an enterprise-grade microservice orchestration backend. In Milestone 01, we lay the operational and architectural groundwork. We bypass high-level hand-waving and inspect what Git actually writes to disk inside the <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">.git</code> database when you add, stage, commit, and untrack files.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 01 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 4 Git Object Primitives (<code class="text-purple-300">blob</code>, <code class="text-purple-300">tree</code>, <code class="text-purple-300">commit</code>, <code class="text-purple-300">tag</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Three-Tree Lifecycle Mechanics</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Cache Untracking with <code class="text-purple-300">git rm --cached</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Comprehensive <code class="text-purple-300">.gitignore</code> Precedence Rules</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Low-Level Plumbing Inspection (<code class="text-purple-300">cat-file</code>, <code class="text-purple-300">ls-files</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Initializing the Production ShipForge Skeleton</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Git: Content-Addressable Object Store -->
+        <section id="git-cs-object-model" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Git as a Content-Addressable Object Store</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                Most developers view Git as a system that records "file deltas" or diffs over time (the model used by legacy VCS systems like CVS or SVN). <strong>Git does not store diffs.</strong> Git is fundamentally a simple <strong>content-addressable key-value datastore</strong> with a version control user interface layered on top.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When you hand content to Git, it hashes the payload using SHA-1 (or SHA-256 in newer configurations), prepends a header containing the object type and size in bytes, compresses it via Zlib, and writes it directly to disk under <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">.git/objects/</code>. The 40-character hexadecimal hash serves as the immutable key:
+            </p>
+
+            <div class="bg-slate-950 p-4 rounded-xl font-mono text-xs text-slate-300 border border-slate-800 space-y-1">
+                <div class="text-emerald-400 font-bold">// Cryptographic Header Construction:</div>
+                <div class="text-slate-400">header = f"{object_type} {content_length_in_bytes}\0"</div>
+                <div class="text-slate-400">store_hash = sha1(header + raw_content).hexdigest()</div>
+                <div class="text-sky-300">Disk Path: .git/objects/{store_hash[0:2]}/{store_hash[2:40]}</div>
+            </div>
+
+            <!-- The 4 Core Primitives Grid -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs mt-6">
+                <!-- Blob -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">blob</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Data Unit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Binary Large Object. Stores raw file contents only. <strong>A blob stores zero metadata</strong>: no filename, no directory path, and no POSIX execution permissions. Identical file contents across different folders share the exact same blob SHA.
+                    </p>
+                </div>
+
+                <!-- Tree -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">tree</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Directory</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Represents a directory snapshot. Maps filenames, directory modes (e.g. <code class="font-mono text-[10px] bg-slate-100 px-1 py-0.5 rounded">100644</code> standard, <code class="font-mono text-[10px] bg-slate-100 px-1 py-0.5 rounded">100755</code> executable), and links them to their associated blob hashes or child sub-tree hashes.
+                    </p>
+                </div>
+
+                <!-- Commit -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">commit</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">State Node</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        An immutable snapshot metadata wrapper. Holds a pointer to the root <code class="text-purple-600 font-bold">tree</code> object, an array of parent commit SHAs (forming the DAG), author and committer timestamps, and the semantic commit log message.
+                    </p>
+                </div>
+
+                <!-- Tag -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-amber-600 text-sm">tag</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Annotated Pin</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        An annotated tag object. Explicitly points directly to a specific commit SHA, storing an optional GPG signature, tagger identity, timestamp, and release notes. (Distinct from lightweight reference tags).
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The Three Trees Architecture -->
+        <section id="three-trees-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: The Three-Tree State Lifecycle</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To master Git operations without memorizing arbitrary recipes, you must visualize Git's internal state machine. Git manages content using three distinct physical and virtual staging structures called <strong>The Three Trees</strong>:
+            </p>
+
+            <!-- Three Trees Comparison Table (Pure HTML/CSS) -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse bg-white rounded-2xl border border-slate-200 shadow-sm font-sans text-xs">
+                    <thead>
+                        <tr class="bg-slate-900 text-white font-mono text-[11px]">
+                            <th class="p-4 rounded-tl-2xl">Tree Dimension</th>
+                            <th class="p-4">Physical Location</th>
+                            <th class="p-4">Underlying Data Representation</th>
+                            <th class="p-4 rounded-tr-2xl">Role in System Lifecycle</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700">
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-sky-700 bg-sky-50/50">1. Working Directory</td>
+                            <td class="p-4 font-mono text-slate-600">Local OS Filesystem</td>
+                            <td class="p-4">Actual files, symlinks, and directories unpackaged on disk.</td>
+                            <td class="p-4">Where you author, modify, and test application source code. Untracked and uncommitted changes live here.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-purple-700 bg-purple-50/50">2. Staging Area (Index)</td>
+                            <td class="p-4 font-mono text-slate-600">.git/index (Binary file)</td>
+                            <td class="p-4">A sorted binary cache listing file paths, permission modes, and SHA-1 hashes of staged blobs.</td>
+                            <td class="p-4">The proposed next commit snapshot. When you run <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">git commit</code>, Git reads the Index to build trees, not the working disk!</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-emerald-700 bg-emerald-50/50">3. HEAD Commit Tree</td>
+                            <td class="p-4 font-mono text-slate-600">.git/objects/ &amp; .git/refs/</td>
+                            <td class="p-4">An immutable tree object referenced by the commit currently pointed to by the <code class="font-mono text-emerald-700">HEAD</code> reference.</td>
+                            <td class="p-4">The permanent historical snapshot of the branch you have checked out. The parent base of future commits.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Visual Diagram: State Transitions Across the Three Trees -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Three-Tree State Transition Pipeline</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">Mapping Exact CLI Operations to Tree Transitions</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Tree 1 -->
+                    <div class="p-4 bg-slate-950 border border-sky-800/80 rounded-2xl space-y-2">
+                        <span class="text-sky-400 font-bold text-sm block">Working Directory</span>
+                        <p class="text-[10px] text-slate-400 font-sans">Physical files on your disk</p>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-slate-300">
+                            Modified / Untracked
+                        </div>
+                    </div>
+
+                    <!-- Tree 2 -->
+                    <div class="p-4 bg-slate-950 border border-purple-800/80 rounded-2xl space-y-2">
+                        <span class="text-purple-400 font-bold text-sm block">Staging Area (Index)</span>
+                        <p class="text-[10px] text-slate-400 font-sans">Binary Cache: <code class="text-purple-300">.git/index</code></p>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-purple-300">
+                            Blobs generated &bull; Staged
+                        </div>
+                    </div>
+
+                    <!-- Tree 3 -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800/80 rounded-2xl space-y-2">
+                        <span class="text-emerald-400 font-bold text-sm block">HEAD Commit</span>
+                        <p class="text-[10px] text-slate-400 font-sans">Object Database: <code class="text-emerald-300">.git/objects</code></p>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-emerald-300">
+                            Permanent Snapshot
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Command Connectors -->
+                <div class="space-y-2 text-[11px]">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2">
+                        <div class="text-sky-300 font-bold">Working Directory &rarr; Staging Area:</div>
+                        <div class="text-emerald-400 bg-slate-900 px-2 py-1 rounded">git add &lt;file&gt; / git add -p</div>
+                        <div class="text-[10px] text-slate-400 font-sans">Hashes content, writes blob to .git/objects, updates index.</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2">
+                        <div class="text-purple-300 font-bold">Staging Area &rarr; HEAD Commit:</div>
+                        <div class="text-emerald-400 bg-slate-900 px-2 py-1 rounded">git commit -m "..."</div>
+                        <div class="text-[10px] text-slate-400 font-sans">Writes root tree, constructs commit node, updates branch ref.</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2">
+                        <div class="text-rose-300 font-bold">Unstaging (Index &rarr; Working Directory):</div>
+                        <div class="text-amber-400 bg-slate-900 px-2 py-1 rounded">git restore --staged &lt;file&gt;</div>
+                        <div class="text-[10px] text-slate-400 font-sans">Copies HEAD version of file into Index without touching disk.</div>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2">
+                        <div class="text-rose-400 font-bold">Discarding Disk Changes (HEAD &rarr; Working Directory):</div>
+                        <div class="text-rose-400 bg-slate-900 px-2 py-1 rounded">git restore &lt;file&gt;</div>
+                        <div class="text-[10px] text-slate-400 font-sans">Overwrites working file on disk with the staged/HEAD version. Destructive!</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Visual Architecture: DAG Object Graph -->
+        <section id="visual-dag" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Visual Architecture: The Internal DAG Object Graph</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When you make a commit in Git, how do the objects interlink? Below is the exact topological graph generated when a commit containing a source file and an assets directory is committed:
+            </p>
+
+            <!-- Graph Topology Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-400 uppercase tracking-widest text-[11px]">
+                    Internal Object Representation of a Git Snapshot
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-center gap-6">
+                    <!-- Commit Box -->
+                    <div class="w-full md:w-56 p-4 bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-emerald-400 font-bold">COMMIT</span>
+                            <span class="text-[9px] bg-emerald-900 text-emerald-200 px-1.5 py-0.5 rounded">9a4f21</span>
+                        </div>
+                        <div class="text-[10px] text-slate-300 font-sans space-y-0.5">
+                            <div><strong>tree:</strong> <span class="font-mono text-purple-300">d82a17</span></div>
+                            <div><strong>parent:</strong> <span class="font-mono text-slate-400">4b19c0</span></div>
+                            <div><strong>author:</strong> Alice &lt;alice@dev&gt;</div>
+                            <div class="text-emerald-300 mt-1">"feat: init shipforge"</div>
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold text-xl">&rarr;</div>
+
+                    <!-- Root Tree Box -->
+                    <div class="w-full md:w-64 p-4 bg-purple-950/80 border-2 border-purple-500 rounded-2xl space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-purple-300 font-bold">TREE (Root /)</span>
+                            <span class="text-[9px] bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded">d82a17</span>
+                        </div>
+                        <div class="text-[10px] text-slate-300 font-sans space-y-1">
+                            <div class="border-b border-purple-900/60 pb-1">
+                                <span class="font-mono text-slate-400">100644</span> README.md<br>
+                                &bull; blob: <span class="font-mono text-sky-300">e69de2</span>
+                            </div>
+                            <div>
+                                <span class="font-mono text-slate-400">040000</span> src/<br>
+                                &bull; tree: <span class="font-mono text-purple-300">a3f910</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-sky-400 font-bold text-xl">&rarr;</div>
+
+                    <!-- Subtree & Blobs -->
+                    <div class="w-full md:w-60 space-y-3">
+                        <!-- Sub Tree -->
+                        <div class="p-3 bg-purple-950/40 border border-purple-600 rounded-xl space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-purple-300 font-bold text-[11px]">TREE (src/)</span>
+                                <span class="text-[9px] bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded">a3f910</span>
+                            </div>
+                            <div class="text-[10px] text-slate-300">
+                                <span class="font-mono text-slate-400">100644</span> main.py<br>
+                                &bull; blob: <span class="font-mono text-sky-300">710892</span>
+                            </div>
+                        </div>
+
+                        <!-- Blobs -->
+                        <div class="p-2.5 bg-sky-950/60 border border-sky-600 rounded-xl space-y-1">
+                            <div class="text-sky-300 font-bold text-[10px]">BLOB (710892)</div>
+                            <div class="text-[10px] text-slate-400 font-sans italic">print("ShipForge Engine v1")</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">Immutable Content Deduplication:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        If a commit modifies only <code class="font-mono text-slate-300">README.md</code>, a new blob is generated for the README and a new root tree is written. However, the root tree reuses the exact same pointer SHA (<code class="font-mono text-purple-300">a3f910</code>) for <code class="font-mono text-slate-300">src/</code>! Git never duplicates unchanged files across snapshots.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. File Tracking, Cache Surgery & .gitignore Mechanics -->
+        <section id="tracking-and-cache" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">File Tracking Mechanics: Cache Surgery, Untracking &amp; .gitignore</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In Git's vocabulary, a file is either <strong>Tracked</strong> or <strong>Untracked</strong>:
+            </p>
+            <ul class="list-disc pl-6 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Tracked:</strong> The file path is physically indexed in the Staging Area (<code class="font-mono text-xs text-slate-800">.git/index</code>). It was either part of the last commit snapshot or has been staged using <code class="font-mono text-xs">git add</code>.</li>
+                <li><strong>Untracked:</strong> The file physically exists in the Working Directory, but is entirely absent from the Index and has never been committed.</li>
+            </ul>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch mt-6">
+                <!-- Untracking Surgery -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-rose-700 text-sm">Stopping Tracking: git rm --cached</span>
+                        <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">Cache Surgery</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        What happens when a developer accidentally commits a sensitive config file, like <code class="font-mono text-slate-800">config/secrets.json</code>, and wants Git to forget it <strong>without deleting the local file from their development machine</strong>?
+                    </p>
+                    <div class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div># WRONG: Deletes file from working disk!</div>
+                        <div class="text-rose-400">git rm config/secrets.json</div>
+                        <div class="mt-2 text-emerald-400"># CORRECT: Removes from Index ONLY, preserves disk!</div>
+                        <div class="text-emerald-300">git rm --cached config/secrets.json</div>
+                        <div class="text-emerald-300">git rm -r --cached build/  # Recursive for directories</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <code class="font-mono text-slate-800 font-bold">--cached</code> strips the path from <code class="font-mono text-purple-700">.git/index</code> while leaving the file on the physical filesystem untouched. The file immediately transitions to <em>Untracked</em> status.
+                    </p>
+                </div>
+
+                <!-- .gitignore Rules -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-sky-700 text-sm">.gitignore Precedence &amp; Syntax</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono font-bold">Filtering Rules</span>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        <code class="font-mono text-slate-800">.gitignore</code> instructs Git never to stage or display matching untracked files in <code class="font-mono text-slate-800">git status</code>.
+                    </p>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div># 1. Ignore all .log files anywhere:</div>
+                        <div>*.log</div>
+                        <div># 2. Negation: DO NOT ignore critical.log:</div>
+                        <div class="text-emerald-400">!critical.log</div>
+                        <div># 3. Leading slash: Anchor to root directory only:</div>
+                        <div>/dist/</div>
+                        <div># 4. Trailing slash: Match directories ONLY:</div>
+                        <div>build/</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>Golden Rule:</strong> <code class="font-mono text-slate-800">.gitignore</code> operates <strong>only on Untracked files</strong>! If a file is already in the repository index, adding it to <code class="font-mono text-slate-800">.gitignore</code> does nothing until you untrack it with <code class="font-mono text-slate-800">git rm --cached</code>!
+                    </p>
+                </div>
+            </div>
+
+            <!-- The .gitkeep pattern -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans text-xs">
+                <span class="font-mono font-bold text-slate-900 block text-sm">The .gitkeep Convention</span>
+                <p class="text-slate-600 leading-relaxed">
+                    Because Git tracks content via blobs and trees, <strong>Git is fundamentally incapable of tracking an empty directory</strong>. A directory only exists in Git if it contains at least one leaf blob.
+                </p>
+                <p class="text-slate-600 leading-relaxed">
+                    To force Git to track an empty folder (such as an empty <code class="font-mono text-slate-800">logs/</code> or <code class="font-mono text-slate-800">storage/uploads/</code> directory), teams place an empty file named <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">.gitkeep</code> inside it. While <code class="font-mono text-slate-800">.gitkeep</code> is not a formal Git feature, it creates a blob that anchors the parent tree into the commit graph.
+                </p>
+            </div>
+        </section>
+
+        <!-- 5. Production Implementation: ShipForge Milestone 01 -->
+        <section id="shipforge-milestone-01" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ShipForge Milestone 01: Repository Architecture &amp; Index Initialization</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 01 for <strong>ShipForge</strong>: initializing the repository, configuring a hardened <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">.gitignore</code>, setting up directory anchors, and testing cache untracking.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Initial ShipForge Hierarchy (Milestone 01)</div>
+                <div>shipforge/</div>
+                <div>├── .git/                           <span class="text-slate-500"># Internal object database &amp; index</span></div>
+                <div>├── <span class="text-emerald-300 font-bold">.gitignore</span>                     <span class="text-slate-500"># Production filter definitions</span></div>
+                <div>├── README.md                      <span class="text-slate-500"># Project architectural manifesto</span></div>
+                <div>├── src/</div>
+                <div>│   └── shipforge/</div>
+                <div>│       ├── __init__.py</div>
+                <div>│       └── core/</div>
+                <div>│           └── __init__.py</div>
+                <div>└── var/</div>
+                <div>    └── logs/</div>
+                <div>        └── <span class="text-purple-300 font-bold">.gitkeep</span>                   <span class="text-slate-500"># Empty directory anchor</span></div>
+            </div>
+
+            <!-- File: .gitignore -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Filter: <code class="text-purple-700">.gitignore</code></span>
+                    <span class="text-slate-400">ShipForge Security &amp; Build Filters</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># ShipForge Production .gitignore Configuration</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># Byte-compiled / optimized / DLL files</span>
+__pycache__/
+*.py[cod]
+*$py.class
+
+<span class="text-slate-500"># C extensions &amp; build artifacts</span>
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+<span class="text-slate-500"># Virtual environments</span>
+.venv/
+venv/
+ENV/
+env/
+
+<span class="text-slate-500"># IDE &amp; Editor settings</span>
+.idea/
+.vscode/
+*.swp
+*.swo
+
+<span class="text-slate-500"># SECRETS, CREDENTIALS &amp; LOCAL CONFIG (CRITICAL DEFENSE)</span>
+*.env
+*.env.*
+!*.env.example
+secrets.json
+*.pem
+*.key
+
+<span class="text-slate-500"># Operating system metadata</span>
+.DS_Store
+Thumbs.db
+
+<span class="text-slate-500"># Allow tracking of specific empty storage paths</span>
+!var/logs/.gitkeep</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Ignored After Commit" Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Adding a secret file like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">.env</code> to <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">.gitignore</code> *after* it has already been committed to the repository.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes data leaks:</strong> <code class="font-mono">.gitignore</code> instructs Git to ignore <em>untracked</em> files. If the file is already tracked in the index, Git ignores the rule and continues tracking future changes! You must explicitly execute <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">git rm --cached .env</code> to eject it from the index.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The Blind "git add ." Blast</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Routinely typing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git add .</code> or <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git commit -a</code> without inspecting the staging index.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes broken builds:</strong> It accidentally sweeps temporary logs, local database sqlite files, OS metadata (<code class="font-mono">.DS_Store</code>), and half-edited debug code into the commit history. Senior engineers stage selectively using <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">git add -p</code> (patch mode) to audit every single chunk before staging.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating ShipForge Milestone 01</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to initialize the ShipForge repository, inspect the internal object model using plumbing commands, and perform cache untracking:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Init Repo -->
+                <div>
+                    <span class="text-slate-500"># 1. Initialize ShipForge repository and examine pristine .git directory:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        mkdir shipforge &amp;&amp; cd shipforge<br>
+                        git init<br>
+                        ls -la .git/
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe the creation of HEAD, config, description, hooks/, and empty objects/ and refs/ directories.
+                    </span>
+                </div>
+
+                <!-- Step 2: Stage and Inspect Low-Level Objects -->
+                <div>
+                    <span class="text-slate-500"># 2. Author a file and inspect how Git generates raw blobs before committing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        echo "ShipForge Microservice Core" &gt; README.md<br>
+                        git add README.md<br>
+                        # Query the Staging Index to view the generated blob SHA:<br>
+                        git ls-files --stage
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output displays mode 100644, a 40-character SHA-1 hash, and README.md.
+                    </span>
+                </div>
+
+                <!-- Step 3: Low-Level Plumbing Inspection -->
+                <div>
+                    <span class="text-slate-500"># 3. Interrogate the object database directly using plumbing commands:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        BLOB_SHA=$(git ls-files -s README.md | awk '{print $2}')<br>
+                        git cat-file -t $BLOB_SHA  # Prints object type: "blob"<br>
+                        git cat-file -p $BLOB_SHA  # Prints raw payload content!
+                    </div>
+                </div>
+
+                <!-- Step 4: Accidental File Untracking -->
+                <div>
+                    <span class="text-slate-500"># 4. Simulate committing a secret and performing cache surgery:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        echo "API_KEY=secret_live_99" &gt; .env<br>
+                        git add .env<br>
+                        git commit -m "chore: accidental secret addition"<br>
+                        <br>
+                        # Eject from index without deleting from disk:<br>
+                        git rm --cached .env<br>
+                        echo ".env" &gt;&gt; .gitignore<br>
+                        git commit -m "chore: untrack and ignore local env"
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Verifies that .env remains on your disk, but is safely purged from the active tree and ignored!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 02 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 02: Semantic Commits, Branch Topologies &amp; Remote Synchronization</h4>
+                <p class="text-xs text-slate-500 font-sans">Mastering Conventional Commits, branch pointers under <code class="font-mono">.git/refs/heads/</code>, detached HEAD states, upstream tracking with <code class="font-mono">-u</code>, and fast-forward vs 3-way merges.</p>
+            </div>
+            <a href="Chapter 02 - Semantic Commits, Branch Topologies and Remote Synchronization.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 02 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

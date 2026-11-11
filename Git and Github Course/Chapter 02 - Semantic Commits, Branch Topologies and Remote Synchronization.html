@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 02: Semantic Commits, Branch Topologies &amp; Remote Synchronization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 02 - Semantic Commits &amp; Branch Topology Engine)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 02 &bull; Git Graphs, Semantic Governance &amp; Remotes
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Semantic Commits, Branch Topologies &amp; Remote Synchronization
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Institutionalizing commit hygiene and branch graph architecture: The Conventional Commits 1.0 specification, the 50/72 formatting rule, branch pointers under <code class="font-mono text-emerald-400">.git/refs/heads/</code>, recovering from the detached HEAD state, upstream tracking mechanics (<code class="font-mono text-emerald-400">git push -u</code>), and comparing Fast-Forward, 3-Way, and Rebase integrations in <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">ShipForge Milestone 02: Branch Topologies &amp; Semantic Commits</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 01, we established ShipForge's initial repository structure and mastered the low-level object store. In Milestone 02, we transition from individual file tracking to team-scale collaborative topologies: implementing standardized <strong>Conventional Commits</strong>, decoupling Git's modern switch commands from historical legacy commands, establishing upstream tracking branches to GitHub, and diagramming how git merge and rebase operations alter the DAG.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 02 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Conventional Commits 1.0 &amp; SemVer Rules</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 50/72 Formatting Rule &amp; Atomic Boundaries</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Branch Pointers in <code class="text-purple-300">.git/refs/heads/</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Detached HEAD Diagnostics &amp; Recovery</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Upstream Tracking (<code class="text-purple-300">git push -u origin</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Fast-Forward vs. 3-Way Merge vs. Rebase DAGs</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Conventional Commits Specification & The 50/72 Rule -->
+        <section id="semantic-commits" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Conventional Commits 1.0 Specification</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In high-velocity engineering teams, the Git history is not merely a backup log—it is an executable auditing interface and the primary input for automated semantic release pipelines. Unstructured commit messages (such as <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded">"fix bug"</code>, <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded">"WIP"</code>, or <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1 py-0.5 rounded">"updates"</code>) obscure causality, degrade <code class="font-mono text-xs">git blame</code> investigations, and render automated changelog generation impossible.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Production projects enforce the <strong>Conventional Commits 1.0.0</strong> specification, directly binding commit messages to <strong>Semantic Versioning (SemVer)</strong> rules:
+            </p>
+
+            <!-- Conventional Commits Schema Visual -->
+            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 text-white font-mono text-xs space-y-3 shadow-xl">
+                <div class="text-emerald-400 font-bold border-b border-slate-800 pb-2">// Formal Syntax Structure</div>
+                <div class="text-slate-200 leading-relaxed">
+                    <span class="text-purple-400 font-bold">&lt;type&gt;</span><span class="text-amber-300 font-bold">[optional scope]</span><span class="text-rose-400 font-bold">[!]</span>: <span class="text-sky-300 font-bold">&lt;description (imperative mood, lowercase, no period)&gt;</span><br><br>
+                    <span class="text-slate-400">[optional multi-line body wrapped at 72 columns explaining what and why]</span><br><br>
+                    <span class="text-slate-400">[optional footer(s) containing breaking changes or issue tracker references]</span>
+                </div>
+            </div>
+
+            <!-- Commit Taxonomy Grid -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs mt-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">feat</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">SemVer: MINOR</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Introduces a new user-facing or API capability into the codebase. Triggers a minor version bump (e.g., <code class="font-mono text-slate-800">1.2.0 &rarr; 1.3.0</code>).
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">fix</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">SemVer: PATCH</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Patches an identified bug or malfunction without modifying external interface contracts. Triggers a patch version bump (e.g., <code class="font-mono text-slate-800">1.2.0 &rarr; 1.2.1</code>).
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-600 text-sm">BREAKING CHANGE</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">SemVer: MAJOR</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Denoted by a <code class="font-mono text-rose-600 font-bold">!</code> after the type/scope or an explicit <code class="font-mono text-rose-600">BREAKING CHANGE:</code> footer. Triggers a major version bump (e.g., <code class="font-mono text-slate-800">1.2.0 &rarr; 2.0.0</code>).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Standard Secondary Types Table -->
+            <div class="overflow-x-auto mt-4">
+                <table class="w-full text-left border-collapse bg-white rounded-2xl border border-slate-200 shadow-sm font-sans text-xs">
+                    <thead>
+                        <tr class="bg-slate-900 text-white font-mono text-[11px]">
+                            <th class="p-3 rounded-tl-2xl">Type Prefix</th>
+                            <th class="p-3">Semantic Purpose</th>
+                            <th class="p-3 rounded-tr-2xl">Production Context Example</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700">
+                        <tr>
+                            <td class="p-3 font-mono font-bold text-purple-700">refactor</td>
+                            <td class="p-3">Code modifications that neither fix bugs nor add new features.</td>
+                            <td class="p-3 font-mono text-slate-500">refactor(auth): extract token decoding into standalone class</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono font-bold text-purple-700">perf</td>
+                            <td class="p-3">A code change specifically implemented to improve computational or network performance.</td>
+                            <td class="p-3 font-mono text-slate-500">perf(crypto): cache public key parsing in application lifespan</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono font-bold text-purple-700">chore</td>
+                            <td class="p-3">Routine maintenance tasks, auxiliary tooling updates, or dependency version bumps.</td>
+                            <td class="p-3 font-mono text-slate-500">chore(deps): update cryptography to 42.0.5</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono font-bold text-purple-700">ci</td>
+                            <td class="p-3">Changes to continuous integration configurations, GitHub Actions workflows, or scripts.</td>
+                            <td class="p-3 font-mono text-slate-500">ci(actions): add matrix runner for python 3.12</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono font-bold text-purple-700">docs</td>
+                            <td class="p-3">Documentation-only updates (markdown files, docstrings, architectural diagrams).</td>
+                            <td class="p-3 font-mono text-slate-500">docs(readme): add microservice verification runbook</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- The 50/72 Formatting Rule -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono text-xs mt-4">
+                <span class="font-bold text-slate-900 block text-sm">The 50/72 Rule and Atomic Commit Hygiene</span>
+                <p class="font-sans text-slate-600 text-xs leading-relaxed">
+                    Developed during the early days of UNIX and the Linux kernel mailing list, the <strong>50/72 Rule</strong> ensures commit messages integrate cleanly across CLI terminal pagers, GUI log inspectors, and GitHub interfaces without awkward word-wrapping:
+                </p>
+                <div class="grid md:grid-cols-2 gap-4 mt-2">
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-sky-700 block">1. The 50-Character Subject Line</strong>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            Keep the first line under 50 characters (max 72). Written in the <em>imperative mood</em> ("add", not "added" or "adds"). Think of it as completing the sentence: <em>"If applied, this commit will..."</em>
+                        </p>
+                    </div>
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <strong class="text-purple-700 block">2. The 72-Column Body &amp; Blank Line</strong>
+                        <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                            Separate the subject line from the body with exactly one blank line. Hard-wrap body paragraphs at 72 characters. The body must explain <strong>what</strong> problem existed and <strong>why</strong> you solved it this way, not <em>how</em> (the code diff shows the how).
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Branch Topologies, Pointers & The Detached HEAD State -->
+        <section id="branch-topologies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Branch Pointers &amp; The Detached HEAD State</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In many legacy version control systems, creating a branch requires copying the entire codebase into a separate physical directory on disk—an expensive, slow operation. In Git, <strong>a branch is not a container of files; it is merely a lightweight, movable pointer to an individual commit SHA</strong>.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Physical Branch Representation -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="font-mono font-bold text-sky-700 text-sm block">1. The Physical Reality of a Branch</span>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        A local branch is physically stored as an ordinary 41-byte plain-text file located inside <code class="font-mono text-slate-800">.git/refs/heads/&lt;branch-name&gt;</code>. It contains nothing more than the 40-character hexadecimal commit hash it currently points to, followed by a newline:
+                    </p>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>$ cat .git/refs/heads/main</div>
+                        <div class="text-emerald-400">9a4f21087cf2e457e841d636b04e67a73a388b1f</div>
+                        <div class="mt-2 text-slate-400">$ cat .git/HEAD</div>
+                        <div class="text-purple-300">ref: refs/heads/main  # HEAD points to the branch!</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        Because a branch is merely a 41-byte text reference, creating, moving, or deleting branches in Git takes approximately <strong>0.001 milliseconds</strong>, completely independent of the size of the repository.
+                    </p>
+                </div>
+
+                <!-- Detached HEAD -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="font-mono font-bold text-rose-700 text-sm block">2. Demystifying the Detached HEAD State</span>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Under normal operations, the special pointer file <code class="font-mono text-slate-800">.git/HEAD</code> references a branch name (symbolic ref). But if you check out a specific commit hash directly via <code class="font-mono text-rose-700">git checkout &lt;commit-hash&gt;</code>, HEAD points directly to the commit SHA, not to any branch!
+                    </p>
+                    <div class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>$ git checkout 9a4f21</div>
+                        <div>You are in 'detached HEAD' state.</div>
+                        <div class="mt-1 text-slate-400">$ cat .git/HEAD</div>
+                        <div class="text-rose-400">9a4f21087cf2e457e841d636b04e67a73a388b1f</div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-sans">
+                        <strong>The Hazard:</strong> If you make commits while in a detached HEAD state, those commits have no named branch pointer holding them. When you switch back to <code class="font-mono text-slate-800">main</code>, those new commits become orphaned and will be permanently erased by Git's garbage collector (<code class="font-mono text-slate-800">git gc</code>)!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Modern Switch vs Legacy Checkout Callout -->
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-2 font-mono text-xs">
+                <span class="text-emerald-900 font-bold block text-sm">Git Architectural Modernization: "git switch" vs "git checkout"</span>
+                <p class="font-sans text-slate-700 text-xs leading-relaxed">
+                    Historically, <code class="font-mono text-purple-700 font-bold">git checkout</code> was overloaded with two completely unrelated responsibilities: switching branches (navigating the DAG) and discarding working directory changes (overwriting files on disk). To eliminate catastrophic file losses caused by syntax confusion, Git v2.23+ decoupled these operations into two specialized commands:
+                </p>
+                <div class="grid md:grid-cols-2 gap-4 mt-2">
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl">
+                        <strong class="text-white block font-sans text-xs mb-1">Branch Navigation: git switch</strong>
+                        git switch &lt;branch&gt;          # Switch branches<br>
+                        git switch -c &lt;new-branch&gt;   # Create and switch
+                    </div>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl">
+                        <strong class="text-white block font-sans text-xs mb-1">File Restoration: git restore</strong>
+                        git restore &lt;file&gt;           # Discard local edits<br>
+                        git restore --staged &lt;file&gt;  # Unstage file
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Remote Tracking Mechanics & Push Topology -->
+        <section id="remote-synchronization" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Remote Synchronization: Tracking Branches &amp; Upstream Topologies</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When working with remote hosts like GitHub, Git coordinates synchronization across three distinct spatial planes: the <strong>Local Branch</strong>, the <strong>Remote Tracking Branch</strong>, and the <strong>Remote Repository Branch</strong>.
+            </p>
+
+            <!-- Upstream Tracking Architecture Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Three Spatial Planes of Remote Git Tracking</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">How Local State Synchronizes with Central Remotes</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <!-- Plane 1 -->
+                    <div class="p-4 bg-slate-950 border border-sky-800/80 rounded-2xl space-y-2">
+                        <span class="text-sky-400 font-bold text-sm block">1. Local Active Branch</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Pointer: <code class="text-sky-300">refs/heads/main</code></div>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-slate-300">
+                            Where your local commits are appended immediately upon execution.
+                        </div>
+                    </div>
+
+                    <!-- Plane 2 -->
+                    <div class="p-4 bg-slate-950 border border-purple-800/80 rounded-2xl space-y-2">
+                        <span class="text-purple-400 font-bold text-sm block">2. Remote-Tracking Branch</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Pointer: <code class="text-purple-300">refs/remotes/origin/main</code></div>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-purple-300">
+                            Local cache of where the remote was during the last network sync!
+                        </div>
+                    </div>
+
+                    <!-- Plane 3 -->
+                    <div class="p-4 bg-slate-950 border border-emerald-800/80 rounded-2xl space-y-2">
+                        <span class="text-emerald-400 font-bold text-sm block">3. Remote Server (GitHub)</span>
+                        <div class="text-[10px] text-slate-400 font-sans">Repository: <code class="text-emerald-300">origin/main</code></div>
+                        <div class="bg-slate-900 p-2 rounded text-[11px] text-emerald-300">
+                            The authoritative upstream hosted on GitHub's cloud servers.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs">The Role of the "-u" (--set-upstream) Flag:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        When you run <code class="text-emerald-300 font-mono">git push -u origin main</code> for the first time, Git creates an explicit configuration link in <code class="text-purple-300 font-mono">.git/config</code> mapping your local <code class="text-sky-300 font-mono">main</code> branch to track <code class="text-purple-300 font-mono">origin/main</code>. This mapping is what enables concise commands like <code class="text-slate-200 font-mono">git pull</code> and <code class="text-slate-200 font-mono">git push</code> without specifying the remote name or branch target on every future invocation!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Visual Architecture: Fast-Forward vs 3-Way Merge vs Rebase -->
+        <section id="merge-topologies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Visual Architecture: Fast-Forward, 3-Way Merge &amp; Rebase DAGs</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When integrating a completed feature branch back into the main line of development, Git provides three distinct topological strategies. Choosing the appropriate strategy dictates the auditability and linearity of your team's Git history:
+            </p>
+
+            <!-- 3 Topology Cards (Pure HTML/CSS) -->
+            <div class="space-y-6 font-mono text-xs">
+                <!-- Strategy 1: Fast-Forward Merge -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-700 text-sm">Strategy 1: Fast-Forward Merge (Linear Advancement)</span>
+                        <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Default when no divergence</span>
+                    </div>
+                    <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                        Occurs when the target branch has received <strong>zero new commits</strong> since the feature branch diverged. Git simply rolls the target branch pointer forward to point to the latest feature commit. No merge commit is created.
+                    </p>
+                    <div class="bg-slate-950 p-4 rounded-xl text-sky-300 space-y-1">
+                        <div>Before: [Commit A] &rarr; [Commit B (main)] &rarr; [Commit C (feature)]</div>
+                        <div class="text-emerald-400 font-bold">After:  [Commit A] &rarr; [Commit B] &rarr; [Commit C (main, feature)]</div>
+                    </div>
+                </div>
+
+                <!-- Strategy 2: True 3-Way Merge -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-700 text-sm">Strategy 2: True 3-Way Merge (git merge --no-ff)</span>
+                        <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">Non-Linear / Preserves Context</span>
+                    </div>
+                    <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                        Occurs when both branches have diverged with independent commits. Git evaluates three snapshots: the common ancestor commit, the tip of <code class="font-mono text-slate-800">main</code>, and the tip of <code class="font-mono text-slate-800">feature</code>. It reconciles the diffs and synthesizes a <strong>Merge Commit</strong> containing <em>two parent pointers</em>.
+                    </p>
+                    <div class="bg-slate-950 p-4 rounded-xl text-purple-300 space-y-1">
+                        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Commit C (main)] &rarr; \</div>
+                        <div>[Common Base] &rarr; [Commit D (feature)] &rarr; [Merge Commit M (main, 2 parents)]</div>
+                    </div>
+                </div>
+
+                <!-- Strategy 3: Rebase -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-700 text-sm">Strategy 3: Linear Rebase (git rebase)</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Rewrites History for Clean Linearity</span>
+                    </div>
+                    <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                        Rather than creating an intersecting merge commit, <code class="font-mono text-slate-800">git rebase main</code> lifts your feature commits off their original base and sequentially replays them directly onto the tip of <code class="font-mono text-slate-800">main</code>. This creates brand-new commits with new SHAs, preserving a pristine, linear Git history.
+                    </p>
+                    <div class="bg-slate-950 p-4 rounded-xl text-emerald-300 space-y-1">
+                        <div>Original: [Base A] &rarr; [Commit B (main)]</div>
+                        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\&rarr; [Commit C (feature)]</div>
+                        <div class="text-emerald-400 font-bold">Rebased:  [Base A] &rarr; [Commit B (main)] &rarr; [Commit C' (feature rewritten)]</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Production Implementation: ShipForge Milestone 02 -->
+        <section id="shipforge-milestone-02" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ShipForge Milestone 02: Branch Topologies &amp; Feature Development</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now advance the <strong>ShipForge</strong> repository: constructing our feature branching topology, configuring Git commit message templates to institutionalize the Conventional Commits specification, authoring atomic features, and pushing to remote tracking targets.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated ShipForge Hierarchy (Milestone 02)</div>
+                <div>shipforge/</div>
+                <div>├── .git/</div>
+                <div>│   ├── config                          <span class="text-slate-500"># Configured with remote upstream &amp; commit template</span></div>
+                <div>│   └── refs/heads/</div>
+                <div>│       ├── main                        <span class="text-slate-500"># Primary production branch pointer</span></div>
+                <div>│       └── <span class="text-emerald-300 font-bold">feature/auth-service</span>        <span class="text-slate-500"># Milestone 02 Feature Branch pointer</span></div>
+                <div>├── <span class="text-purple-300 font-bold">.gitmessage</span>                            <span class="text-slate-500"># Team Conventional Commits standard template</span></div>
+                <div>├── .gitignore</div>
+                <div>├── README.md</div>
+                <div>└── src/</div>
+                <div>    └── shipforge/</div>
+                <div>        ├── __init__.py</div>
+                <div>        └── <span class="text-emerald-300 font-bold">auth.py</span>                        <span class="text-slate-500"># Added: New Authentication Service module</span></div>
+            </div>
+
+            <!-- File: .gitmessage -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Commit Standard Template: <code class="text-purple-700">.gitmessage</code></span>
+                    <span class="text-slate-400">Institutional Commit Linter Scaffold</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># --- 50-character subject line in imperative mood: &lt;type&gt;(&lt;scope&gt;): &lt;subject&gt; ---</span>
+
+<span class="text-slate-500"># --- Blank line required between subject and body ---</span>
+
+<span class="text-slate-500"># --- 72-character wrapped body text: Explain WHAT changed and WHY (not how) ---</span>
+
+<span class="text-slate-500"># --- Footer: Issue tracker references or BREAKING CHANGE declarations ---</span>
+<span class="text-slate-500"># Example:</span>
+<span class="text-slate-500"># feat(auth): implement rsa token issuance service</span>
+<span class="text-slate-500">#</span>
+<span class="text-slate-500"># Provides an asymmetric keypair signing pipeline for ShipForge operators.</span>
+<span class="text-slate-500"># Decouples token signing from database read replicas to eliminate latency.</span>
+<span class="text-slate-500">#</span>
+<span class="text-slate-500"># Closes: #42</span></pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Blind Pulling via "git pull" (Merge Bubbles)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Running standard <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git pull</code> when your local branch and the remote branch have diverged.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this pollutes the repository:</strong> By default, Git runs a fetch followed by a non-fast-forward merge, creating useless <code class="font-mono">"Merge branch 'main' of github.com..."</code> merge commits scattered across your history. Configure your repository to use fast-forward only: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">git config --global pull.ff only</code> or rebase: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">git pull --rebase</code>!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Rebasing Public Shared Branches</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Executing <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">git rebase</code> on public, shared branches like <code class="font-mono">main</code> or active release branches.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>The Golden Rule of Rebasing:</strong> Never rebase commits that exist outside of your private local environment. Because rebasing rewrites commit SHA hashes, rebasing a public branch forces every other teammate's repository out of synchronization, causing duplicate commits and merge loops across the team.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating ShipForge Milestone 02</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Execute these terminal commands inside the ShipForge workspace to configure commit templates, create feature branches, author semantic commits, and verify branch pointers:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Configure Commit Template -->
+                <div>
+                    <span class="text-slate-500"># 1. Install the team Conventional Commit template into local git config:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        git config commit.template .gitmessage
+                    </div>
+                </div>
+
+                <!-- Step 2: Create Feature Branch -->
+                <div>
+                    <span class="text-slate-500"># 2. Create and switch to a feature branch using the modern switch command:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        git switch -c feature/auth-service<br>
+                        # Verify the pointer was created in refs/heads/:<br>
+                        ls -la .git/refs/heads/
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice that .git/refs/heads/feature/auth-service now exists as a 41-byte text reference.
+                    </span>
+                </div>
+
+                <!-- Step 3: Implement Feature and Commit Semantically -->
+                <div>
+                    <span class="text-slate-500"># 3. Author source code and commit using Conventional Commit standards:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        echo 'def authenticate(): return True' &gt; src/shipforge/auth.py<br>
+                        git add src/shipforge/auth.py<br>
+                        git commit -m "feat(auth): implement token authentication service" \
+                                   -m "Introduces the primary authentication handler for ShipForge microservice gateways."
+                    </div>
+                </div>
+
+                <!-- Step 4: Upstream Tracking Push Simulation -->
+                <div>
+                    <span class="text-slate-500"># 4. Push branch and establish upstream tracking target:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        git push -u origin feature/auth-service<br>
+                        # Inspect the upstream relationship in .git/config:<br>
+                        git config --get branch.feature/auth-service.remote<br>
+                        git config --get branch.feature/auth-service.merge
+                    </div>
+                </div>
+
+                <!-- Step 5: Formatted DAG Visualization -->
+                <div>
+                    <span class="text-slate-500"># 5. Render the DAG graph in high-fidelity color:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        git log --graph --oneline --decorate --all
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 03 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 03: Stash Internals, History Surgery &amp; The Safety Net: git stash and git reflog</h4>
+                <p class="text-xs text-slate-500 font-sans">Handling emergency context switches with <code class="font-mono">git stash</code>, navigating the commit time machine with <code class="font-mono">git reflog</code>, and resurrecting lost commits after accidental hard resets.</p>
+            </div>
+            <a href="Chapter 03 - Stash Internals, History Surgery and The Safety Net - git stash and git reflog.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 03 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

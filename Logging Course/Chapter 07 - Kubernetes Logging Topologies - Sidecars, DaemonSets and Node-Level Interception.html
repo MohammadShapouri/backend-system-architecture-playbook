@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 07: Kubernetes Logging Topologies: Sidecars, DaemonSets &amp; Node-Level Interception</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 07 - Kubernetes Topologies &amp; DaemonSet Interception)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 07 &bull; Kubernetes Topologies &amp; Node-Level Telemetry
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Kubernetes Logging Topologies: Sidecars, DaemonSets &amp; Node-Level Interception
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating telemetry across the cloud-native cluster fabric: How the Container Runtime Interface (CRI) manages <code class="font-mono text-emerald-400">/var/log/pods/</code> directories, the mechanics of <code class="font-mono text-emerald-400">kubectl logs</code>, evaluating the 3 Kubernetes logging topologies (DaemonSet vs. Sidecar Streamer vs. Direct Push), preventing <code class="font-mono text-emerald-400">DiskPressure</code> pod eviction storms, and deploying <strong>PulsePay</strong> to a Kubernetes cluster with automated Fluent Bit metadata enrichment.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 07: Kubernetes Cluster Telemetry Mesh</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 06, we packaged PulsePay into an unbuffered, rootless Docker container and tuned host-level non-blocking logging options. In Milestone 07, we graduate from single-node Docker engines to multi-node <strong>Kubernetes cluster orchestration</strong>. Pods scale up, schedule across worker nodes, and terminate dynamically. We implement a node-level <strong>DaemonSet</strong> that scrapes container runtime logs directly from the Linux host filesystem, enriches every event with Kubernetes pod metadata (namespace, pod UID, container name), and deploy a streaming sidecar pattern to modernize an unalterable legacy bank clearing binary.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 07 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> CRI Container Log Paths (<code class="text-purple-300">/var/log/pods/</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Under the Hood of <code class="text-purple-300">kubectl logs</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 3 Topologies: DaemonSet vs. Sidecar vs. Direct</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Kubelet Log Limits &amp; Eviction Prevention</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> PulsePay Primary API Deployment Manifest</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Production Fluent Bit DaemonSet with K8s Metadata</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Streaming Sidecar Pattern for Legacy Clearing</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Kubernetes Logging Architecture from First Principles -->
+        <section id="k8s-logging-architecture" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Container Runtime Interface (CRI) Logging Pipeline</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When an application inside a Kubernetes Pod writes bytes to <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">sys.stdout</code>, Kubernetes itself does not read the socket. Instead, the underlying <strong>Container Runtime Interface (CRI)</strong>—such as <code class="font-mono text-xs text-purple-700 font-bold">containerd</code> or <code class="font-mono text-xs text-purple-700 font-bold">CRI-O</code>—intercepts the stream and writes formatted text files to the Linux worker node host filesystem.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The CRI structures all pod output on the host node according to a deterministic directory hierarchy:
+            </p>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 text-center">
+                /var/log/pods/&lt;namespace&gt;_&lt;pod_name&gt;_&lt;pod_uid&gt;/&lt;container_name&gt;/&lt;restart_count&gt;.log
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                For legacy tooling backwards-compatibility, the runtime creates corresponding symlinks inside <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">/var/log/containers/</code> pointing to the canonical <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">/var/log/pods/</code> files:
+            </p>
+
+            <!-- CRI Log Path Decomposition & kubectl logs Flow (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Kubernetes Node Logging &amp; kubectl logs Dataflow
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Layer 1: Container Process -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. PulsePay Pod</span>
+                        <span class="text-[10px] text-slate-400 font-sans">App writes JSON string to stdout (FD 1)</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; CRI intercepts &rarr;</div>
+
+                    <!-- Layer 2: containerd on Node -->
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. containerd CRI</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Appends timestamp &amp; stream tag to /var/log/pods/...</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; Kubelet serves &rarr;</div>
+
+                    <!-- Layer 3: Kubelet / kubectl -->
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Kubelet (Port 10250)</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">Streams raw file contents to API Server &amp; kubectl</span>
+                    </div>
+                </div>
+
+                <!-- CRI File Format Spec -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs">The Raw CRI Log Line Format on Node Disk:</strong>
+                    <div class="bg-slate-900 p-2.5 rounded font-mono text-[10px] text-sky-300 border border-slate-800 overflow-x-auto">
+                        2026-11-10T04:12:01.890123456Z stdout F {"level":"INFO","action":"PAYMENT_SETTLE","amount":"50.0000"}
+                    </div>
+                    <p class="text-slate-400 leading-relaxed text-[10px]">
+                        The CRI prefixes every raw stdout line with three tokens: <strong>[RFC3339 Timestamp]</strong>, <strong>[Stream: stdout|stderr]</strong>, and <strong>[Log Tag: F=Full line, P=Partial line if &gt; 16KB]</strong>. Node log forwarders (Fluent Bit/Vector) must parse and strip this CRI prefix before processing your application's JSON payload.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. The 3 Kubernetes Logging Topologies Compared -->
+        <section id="k8s-topologies" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Architectural Topologies: DaemonSet vs. Sidecar vs. Direct Push</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                How should logs travel from pods to your central telemetry cluster? Kubernetes supports three architectural patterns, each with distinct resource, security, and operational trade-offs:
+            </p>
+
+            <!-- 3 Topologies Grid -->
+            <div class="grid md:grid-cols-3 gap-6 font-mono text-xs">
+                <!-- Topology 1: DaemonSet -->
+                <div class="bg-white p-6 rounded-2xl border border-emerald-300 shadow-sm space-y-3 flex flex-col justify-between ring-1 ring-emerald-300">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-emerald-700 text-sm">1. Node DaemonSet</span>
+                            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Senior Choice</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            Runs exactly <strong>one logging agent pod per worker node</strong> (e.g. Fluent Bit or Vector). Mounts the host node's <code class="font-mono">/var/log/pods/</code> directory directly via a <code class="font-mono">hostPath</code> volume.
+                            <br><br>
+                            <strong>Why it wins:</strong> Minimal resource overhead (1 forwarder serves 50 pods on the node); zero application invasion; pod crashes never affect the logging daemon.
+                        </p>
+                    </div>
+                    <div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                        Maximum Efficiency &bull; Lowest CPU &amp; RAM
+                    </div>
+                </div>
+
+                <!-- Topology 2: Streaming Sidecar -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <span class="font-bold text-sky-700 text-sm">2. Streaming Sidecar</span>
+                            <span class="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">Legacy Migration</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            Used when an unalterable legacy third-party binary writes logs strictly to an internal disk file (<code class="font-mono">/var/log/app.log</code>).
+                            <br><br>
+                            A secondary sidecar container shares an <code class="font-mono">emptyDir</code> volume with the app and runs <code class="font-mono">tail -n+1 -F /var/log/app.log</code>, streaming it into the sidecar's stdout!
+                        </p>
+                    </div>
+                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px]">
+                        Doubles Container Count &bull; File-bridge only
+                    </div>
+                </div>
+
+                <!-- Topology 3: Direct Push -->
+                <div class="bg-white p-6 rounded-2xl border border-rose-200 shadow-sm space-y-3 flex flex-col justify-between bg-rose-50/20">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-rose-100 pb-2">
+                            <span class="font-bold text-rose-700 text-sm">3. Direct-from-App Push</span>
+                            <span class="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">Anti-Pattern</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 font-sans mt-3 leading-relaxed">
+                            Application pods open direct HTTP or gRPC network sockets to an external Elasticsearch or Loki cluster, bypassing stdout and node disk completely.
+                            <br><br>
+                            <strong>The Danger:</strong> If the logging cluster slows down, network threads inside every pod block. Bypasses <code class="font-mono">kubectl logs</code> entirely!
+                        </p>
+                    </div>
+                    <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200 text-rose-800 text-[10px] font-bold">
+                        Network Fragile &bull; Breaks kubectl logs
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Kubelet Log Management & The DiskPressure Eviction Hazard -->
+        <section id="kubelet-evictions" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Kubelet Disk Governance &amp; Preventing <code>DiskPressure</code> Eviction Storms</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                In Kubernetes worker nodes, container logs stored under <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">/var/log/pods/</code> reside on the worker node's root filesystem (or dedicated root disk mount).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                If an application enters an infinite error loop and floods standard output, what prevents the node disk from reaching 100% capacity? The **Kubelet** daemon manages container log rotation through parameters configured in <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">/var/lib/kubelet/config.yaml</code>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Kubelet Configuration -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <span class="text-xs font-mono font-bold text-purple-700 uppercase tracking-widest block">Node Configuration</span>
+                    <h3 class="text-base font-bold text-slate-900">Kubelet Log Rotation Settings</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                        Configured in the cluster node Kubelet specification:
+                    </p>
+                    <pre class="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># In /var/lib/kubelet/config.yaml:</span>
+<span class="text-sky-300">containerLogMaxSize</span>: <span class="text-amber-300">"10Mi"</span>
+<span class="text-sky-300">containerLogMaxFiles</span>: <span class="text-purple-300">5</span></pre>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        The Kubelet checks file sizes periodically. When a container log reaches 10MB, the Kubelet compresses and rotates it, keeping a maximum of 5 historical files (50MB cap per container).
+                    </p>
+                </div>
+
+                <!-- Eviction Hazard -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <span class="text-xs font-mono font-bold text-rose-800 uppercase tracking-widest block">The Cluster Outage Trap</span>
+                    <h3 class="text-base font-bold text-rose-950">The DiskPressure Eviction Cascade</h3>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        If Kubelet log limits are misconfigured or unmanaged, the root disk breaches the Kubelet eviction threshold (default: 85% disk usage).
+                    </p>
+                    <div class="p-2.5 bg-rose-100 rounded-lg text-rose-950 font-mono text-[10px]">
+                        Disk &gt; 85% &rarr; Node sets Condition: DiskPressure &rarr; Kubelet starts evicting Pods &rarr; PulsePay payments drop across the entire cluster!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Termination Log Callout -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <span class="font-mono font-bold text-slate-900 text-sm">Emergency Diagnostics: /dev/termination-log</span>
+                <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                    When a container crashes before the logging agent can scrape its output (e.g. fatal segmentation fault, invalid environment variable, or startup panic), Kubernetes inspects the container's <code class="font-mono text-purple-700">terminationMessagePath</code> (default: <code class="font-mono text-slate-800">/dev/termination-log</code>). By writing critical failure reasons directly to this file, the error message is preserved in <code class="font-mono text-slate-800">kubectl describe pod</code> even if all container logs are wiped!
+                </p>
+            </div>
+        </section>
+
+        <!-- 4. Project Implementation: PulsePay Milestone 07 -->
+        <section id="pulsepay-milestone-07" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 07: Kubernetes Deployments &amp; DaemonSet Architecture</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 07 for <strong>PulsePay</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We write <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">k8s/pulsepay-api-deployment.yaml</code>: deploying PulsePay's payment API with resource boundaries, probes, and termination log hooks.</li>
+                <li>We configure <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">k8s/fluentbit-daemonset.yaml</code>: an enterprise node-level Fluent Bit DaemonSet that mounts <code class="font-mono text-slate-800">/var/log/pods/</code>, strips CRI timestamps, enriches logs with Kubernetes API metadata, and outputs structured streams.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">k8s/legacy-clearing-sidecar.yaml</code>: demonstrating the Streaming Sidecar pattern for a legacy batch clearing engine that writes strictly to local files.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 07)</div>
+                <div>pulsepay/</div>
+                <div>├── Dockerfile</div>
+                <div>├── docker-compose.yml</div>
+                <div>├── <span class="text-emerald-300 font-bold">k8s/</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">pulsepay-api-deployment.yaml</span>   <span class="text-slate-500"># Milestone 07: PulsePay Primary API Deployment</span></div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">fluentbit-daemonset.yaml</span>        <span class="text-slate-500"># Milestone 07: Production Node Logging DaemonSet</span></div>
+                <div>│   └── <span class="text-purple-300 font-bold">legacy-clearing-sidecar.yaml</span>    <span class="text-slate-500"># Milestone 07: Streaming Sidecar Pattern for Legacy Files</span></div>
+                <div>└── src/</div>
+            </div>
+
+            <!-- File 1: k8s/pulsepay-api-deployment.yaml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. PulsePay API Deployment: <code class="text-purple-700">k8s/pulsepay-api-deployment.yaml</code></span>
+                    <span class="text-slate-400">Kubernetes Workload Manifest</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Kubernetes - Core API Deployment Manifest (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">apiVersion</span>: apps/v1
+<span class="text-purple-400">kind</span>: Deployment
+<span class="text-purple-400">metadata</span>:
+  <span class="text-sky-300">name</span>: pulsepay-api
+  <span class="text-sky-300">namespace</span>: pulsepay-production
+  <span class="text-sky-300">labels</span>:
+    <span class="text-sky-300">app.kubernetes.io/name</span>: pulsepay
+    <span class="text-sky-300">app.kubernetes.io/component</span>: payment-gateway
+    <span class="text-sky-300">app.kubernetes.io/tier</span>: backend
+<span class="text-purple-400">spec</span>:
+  <span class="text-sky-300">replicas</span>: <span class="text-purple-300">3</span>
+  <span class="text-sky-300">selector</span>:
+    <span class="text-sky-300">matchLabels</span>:
+      <span class="text-sky-300">app.kubernetes.io/name</span>: pulsepay
+  <span class="text-purple-400">template</span>:
+    <span class="text-sky-300">metadata</span>:
+      <span class="text-sky-300">labels</span>:
+        <span class="text-sky-300">app.kubernetes.io/name</span>: pulsepay
+      <span class="text-sky-300">annotations</span>:
+        <span class="text-slate-500"># Telemetry annotation parsed by Fluent Bit / Vector</span>
+        <span class="text-sky-300">pulsepay.io/log-format</span>: <span class="text-amber-300">"ndjson"</span>
+        <span class="text-sky-300">pulsepay.io/pii-scrubbed</span>: <span class="text-amber-300">"true"</span>
+    <span class="text-purple-400">spec</span>:
+      <span class="text-sky-300">terminationGracePeriodSeconds</span>: <span class="text-purple-300">30</span>
+      <span class="text-purple-400">containers</span>:
+        - <span class="text-sky-300">name</span>: pulsepay-api
+          <span class="text-sky-300">image</span>: pulsepay:1.7.0
+          <span class="text-sky-300">imagePullPolicy</span>: IfNotPresent
+          <span class="text-sky-300">env</span>:
+            - <span class="text-sky-300">name</span>: PYTHONUNBUFFERED
+              <span class="text-sky-300">value</span>: <span class="text-amber-300">"1"</span>
+            - <span class="text-sky-300">name</span>: PULSEPAY_ENV
+              <span class="text-sky-300">value</span>: <span class="text-amber-300">"production"</span>
+          <span class="text-sky-300">ports</span>:
+            - <span class="text-sky-300">containerPort</span>: <span class="text-purple-300">8000</span>
+          <span class="text-sky-300">resources</span>:
+            <span class="text-sky-300">requests</span>:
+              <span class="text-sky-300">cpu</span>: <span class="text-amber-300">"250m"</span>
+              <span class="text-sky-300">memory</span>: <span class="text-amber-300">"256Mi"</span>
+            <span class="text-sky-300">limits</span>:
+              <span class="text-sky-300">cpu</span>: <span class="text-amber-300">"1000m"</span>
+              <span class="text-sky-300">memory</span>: <span class="text-amber-300">"512Mi"</span>
+          <span class="text-sky-300">livenessProbe</span>:
+            <span class="text-sky-300">httpGet</span>:
+              <span class="text-sky-300">path</span>: /healthz
+              <span class="text-sky-300">port</span>: <span class="text-purple-300">8000</span>
+            <span class="text-sky-300">initialDelaySeconds</span>: <span class="text-purple-300">5</span>
+            <span class="text-sky-300">periodSeconds</span>: <span class="text-purple-300">10</span>
+          <span class="text-slate-500"># Captures panic errors if container crashes on startup</span>
+          <span class="text-sky-300">terminationMessagePath</span>: /dev/termination-log
+          <span class="text-sky-300">terminationMessagePolicy</span>: FallbackToLogsOnError</pre>
+            </div>
+
+            <!-- File 2: k8s/fluentbit-daemonset.yaml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Production Fluent Bit DaemonSet: <code class="text-purple-700">k8s/fluentbit-daemonset.yaml</code></span>
+                    <span class="text-slate-400">Node-Level Telemetry Forwarder</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Kubernetes - Fluent Bit Node-Level DaemonSet (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">apiVersion</span>: v1
+<span class="text-purple-400">kind</span>: ConfigMap
+<span class="text-purple-400">metadata</span>:
+  <span class="text-sky-300">name</span>: fluent-bit-config
+  <span class="text-sky-300">namespace</span>: kube-system
+<span class="text-purple-400">data</span>:
+  <span class="text-sky-300">fluent-bit.conf</span>: |
+    [SERVICE]
+        Flush         1
+        Log_Level     info
+        Daemon        off
+        Parsers_File  parsers.conf
+
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*.log
+        Parser            docker
+        DB                /var/log/flb_kube.db
+        Mem_Buf_Limit     50MB
+        Skip_Long_Lines   On
+        Refresh_Interval  5
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+
+    [OUTPUT]
+        Name   stdout
+        Match  kube.*
+---
+<span class="text-purple-400">apiVersion</span>: apps/v1
+<span class="text-purple-400">kind</span>: DaemonSet
+<span class="text-purple-400">metadata</span>:
+  <span class="text-sky-300">name</span>: fluent-bit
+  <span class="text-sky-300">namespace</span>: kube-system
+<span class="text-purple-400">spec</span>:
+  <span class="text-sky-300">selector</span>:
+    <span class="text-sky-300">matchLabels</span>:
+      <span class="text-sky-300">k8s-app</span>: fluent-bit-logging
+  <span class="text-purple-400">template</span>:
+    <span class="text-sky-300">metadata</span>:
+      <span class="text-sky-300">labels</span>:
+        <span class="text-sky-300">k8s-app</span>: fluent-bit-logging
+    <span class="text-purple-400">spec</span>:
+      <span class="text-sky-300">tolerations</span>:
+        - <span class="text-sky-300">key</span>: node-role.kubernetes.io/master
+          <span class="text-sky-300">operator</span>: Exists
+          <span class="text-sky-300">effect</span>: NoSchedule
+      <span class="text-purple-400">containers</span>:
+        - <span class="text-sky-300">name</span>: fluent-bit
+          <span class="text-sky-300">image</span>: fluent/fluent-bit:2.2
+          <span class="text-sky-300">volumeMounts</span>:
+            - <span class="text-sky-300">name</span>: varlog
+              <span class="text-sky-300">mountPath</span>: /var/log
+            - <span class="text-sky-300">name</span>: varlibdockercontainers
+              <span class="text-sky-300">mountPath</span>: /var/lib/docker/containers
+              <span class="text-sky-300">readOnly</span>: <span class="text-rose-400">true</span>
+            - <span class="text-sky-300">name</span>: config
+              <span class="text-sky-300">mountPath</span>: /fluent-bit/etc/
+      <span class="text-purple-400">volumes</span>:
+        - <span class="text-sky-300">name</span>: varlog
+          <span class="text-sky-300">hostPath</span>:
+            <span class="text-sky-300">path</span>: /var/log
+        - <span class="text-sky-300">name</span>: varlibdockercontainers
+          <span class="text-sky-300">hostPath</span>:
+            <span class="text-sky-300">path</span>: /var/lib/docker/containers
+        - <span class="text-sky-300">name</span>: config
+          <span class="text-sky-300">configMap</span>:
+            <span class="text-sky-300">name</span>: fluent-bit-config</pre>
+            </div>
+
+            <!-- File 3: k8s/legacy-clearing-sidecar.yaml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Streaming Sidecar Pattern: <code class="text-purple-700">k8s/legacy-clearing-sidecar.yaml</code></span>
+                    <span class="text-slate-400">File-to-Stdout Streaming Bridge</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Kubernetes - Streaming Sidecar Pattern for Legacy Files (Milestone 07)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">apiVersion</span>: v1
+<span class="text-purple-400">kind</span>: Pod
+<span class="text-purple-400">metadata</span>:
+  <span class="text-sky-300">name</span>: pulsepay-legacy-clearing
+  <span class="text-sky-300">namespace</span>: pulsepay-production
+<span class="text-purple-400">spec</span>:
+  <span class="text-purple-400">containers</span>:
+    <span class="text-slate-500"># Container 1: The Legacy Binary that ONLY writes to an internal log file</span>
+    - <span class="text-sky-300">name</span>: legacy-bank-clearing-app
+      <span class="text-sky-300">image</span>: busybox:1.36
+      <span class="text-sky-300">args</span>:
+        - /bin/sh
+        - -c
+        - &gt;
+          while true; do
+            echo "{\"timestamp\":\"$$(date -u +%FT%TZ)\",\"action\":\"ACH_SETTLE_BATCH\",\"records\":120}" &gt;&gt; /var/log/legacy/clearing.log;
+            sleep 5;
+          done
+      <span class="text-sky-300">volumeMounts</span>:
+        - <span class="text-sky-300">name</span>: shared-log-volume
+          <span class="text-sky-300">mountPath</span>: /var/log/legacy
+
+    <span class="text-slate-500"># Container 2: THE STREAMING SIDECAR (Tails the shared file to container stdout!)</span>
+    - <span class="text-sky-300">name</span>: clearing-stream-sidecar
+      <span class="text-sky-300">image</span>: busybox:1.36
+      <span class="text-sky-300">args</span>: [<span class="text-amber-300">"/bin/sh"</span>, <span class="text-amber-300">"-c"</span>, <span class="text-amber-300">"tail -n+1 -F /var/log/legacy/clearing.log"</span>]
+      <span class="text-sky-300">volumeMounts</span>:
+        - <span class="text-sky-300">name</span>: shared-log-volume
+          <span class="text-sky-300">mountPath</span>: /var/log/legacy
+
+  <span class="text-slate-500"># Shared in-memory or ephemeral disk volume linking both containers</span>
+  <span class="text-purple-400">volumes</span>:
+    - <span class="text-sky-300">name</span>: shared-log-volume
+      <span class="text-sky-300">emptyDir</span>: {}</pre>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Kubelet Node Eviction Storm" Disaster</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Failing to configure Kubelet <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">containerLogMaxSize</code> on worker nodes.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes clusters:</strong> When an unrotated container spews gigabytes of error logs, the node filesystem reaches 85% capacity. The Kubelet immediately sets the <code class="font-mono">DiskPressure</code> taint and starts preemptively evicting pods across the node, causing an availability cascade.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "High-Cardinality Pod Label" etcd Bloat</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Injecting transactional dynamic data (like <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">transaction_id</code> or <code class="font-mono text-rose-900">user_email</code>) into Kubernetes Pod labels.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys control planes:</strong> Kubernetes stores all Pod metadata in etcd. High-cardinality labels balloon etcd database sizes, degrade the Kubernetes API server, and slow down kube-scheduler reconciliation loops. Dynamic transaction context belongs inside the log payload, <strong>never</strong> in Kubernetes Pod labels!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 07</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to deploy PulsePay to a local Kubernetes cluster (Kind or Minikube), verify the Fluent Bit DaemonSet interception, and prove streaming sidecar execution:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Deploy Namespace and Workloads -->
+                <div>
+                    <span class="text-slate-500"># 1. Create dedicated production namespace and deploy workloads:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        kubectl create namespace pulsepay-production<br>
+                        kubectl apply -f k8s/pulsepay-api-deployment.yaml<br>
+                        kubectl apply -f k8s/legacy-clearing-sidecar.yaml
+                    </div>
+                </div>
+
+                <!-- Step 2: Verify Pods and Sidecar Streaming -->
+                <div>
+                    <span class="text-slate-500"># 2. Verify that the streaming sidecar container tails the legacy clearing log:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        kubectl logs -n pulsepay-production pulsepay-legacy-clearing -c clearing-stream-sidecar -f
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe output: The legacy file events stream continuously to container stdout, now ready for DaemonSet scraping!
+                    </span>
+                </div>
+
+                <!-- Step 3: Inspect Node Filesystem Paths -->
+                <div>
+                    <span class="text-slate-500"># 3. Inspect raw CRI log files directly on the worker node filesystem:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        kubectl exec -it -n kube-system ds/fluent-bit -- ls -l /var/log/containers/ | grep pulsepay
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Notice symlinks: Confirms node forwarders scrape directly from host files without interacting with the application process!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 08 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 08: Distributed Log Ingestion &amp; Storage: Vector, Fluent Bit, Loki and OpenSearch</h4>
+                <p class="text-xs text-slate-500 font-sans">The storage and ingestion tier: Aggregation pipelines, parsing multi-line stack traces, index-free chunk storage (Grafana Loki &amp; MinIO) vs. inverted index clusters (OpenSearch), and LogQL mastery in <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 08 - Distributed Log Ingestion and Storage - Vector, Fluent Bit, Loki and OpenSearch.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 08 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

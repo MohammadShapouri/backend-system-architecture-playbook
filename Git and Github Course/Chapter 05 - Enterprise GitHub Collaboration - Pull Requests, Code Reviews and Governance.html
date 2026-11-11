@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 05: Enterprise GitHub Collaboration: Pull Requests, Code Reviews &amp; Governance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 05 - Team Governance &amp; PR Review Pipeline)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 05 &bull; Distributed Collaboration &amp; Repository Governance
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Enterprise GitHub Collaboration: Pull Requests, Code Reviews &amp; Governance
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Scaling collaboration across engineering teams: Deconstructing the Pull Request lifecycle, drafting high-context PR specifications with <code class="font-mono text-emerald-400">PULL_REQUEST_TEMPLATE.md</code>, executing in-line code reviews with GitHub Suggestions, establishing zero-trust branch rulesets and protection gates, and automating reviewer routing using <code class="font-mono text-emerald-400">CODEOWNERS</code> in <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">ShipForge Milestone 05: Pull Request Engineering &amp; Team Governance</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 04, we mastered the local Git engine, history rewrites, and secret sanitization. In Milestone 05, we transition from individual mechanics to distributed organization. We build the gatekeeping mechanisms that protect the production branch of <strong>ShipForge</strong>: requiring multi-person code approvals, eliminating stale approvals on new pushes, configuring automated reviewer assignment via directory ownership, and operating pull requests directly through the GitHub CLI.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 05 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Pull Request Engineering Lifecycle</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Standardized <code class="text-purple-300">PULL_REQUEST_TEMPLATE.md</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> In-line Suggested Changes (<code class="text-purple-300">```suggestion</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Branch Rulesets &amp; Protection Gates</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Directory Review Routing with <code class="text-purple-300">CODEOWNERS</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Terminal PR Workflows with GitHub CLI (<code class="text-purple-300">gh</code>)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Pull Request Engineering Lifecycle -->
+        <section id="pr-lifecycle" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Pull Request Engineering Lifecycle</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A <strong>Pull Request (PR)</strong> is not a native Git command; it is an architectural collaboration mechanism popularized by GitHub. Under the hood, a pull request is a request to pull a specific commit range from a source branch (either within the same repository or from a fork) and merge it into a target base branch (such as <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">main</code>).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In professional engineering organizations, a Pull Request serves three distinct functions:
+            </p>
+
+            <!-- Three Pillars of a PR Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-3 gap-4 font-mono text-xs">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">1. Architectural Gate</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Verification</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Blocks unverified code from reaching production. Requires CI automated tests, static security linters, and semantic checks to pass before merging is physically permitted.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">2. Peer Review Forum</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Mentorship</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Provides a structured diff interface where senior engineers review design patterns, challenge assumptions, catch race conditions, and leave executable code suggestions.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">3. Historical Audit Trail</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Compliance</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Permanently links the business rationale, issue tracker tickets (e.g., <code class="font-mono text-slate-800">Fixes #104</code>), test evidence, and approval signatures directly to the merged commit.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Draft PRs Deep Dive -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3 font-mono text-xs mt-4">
+                <span class="font-bold text-slate-900 block text-sm">The Power of Draft Pull Requests</span>
+                <p class="font-sans text-slate-600 text-xs leading-relaxed">
+                    Opening a PR early as a <strong>Draft PR</strong> signals to your team: <em>"This work is in progress; do not perform formal review yet."</em> Draft PRs provide major advantages:
+                </p>
+                <ul class="font-sans text-slate-600 text-xs list-disc pl-5 space-y-1">
+                    <li><strong>Early CI Feedback:</strong> Automated test suites, linters, and container build checks run on your feature branch before formal review begins.</li>
+                    <li><strong>Accidental Merge Prevention:</strong> The GitHub UI disables the "Merge" button entirely until the author explicitly marks the PR as "Ready for review".</li>
+                    <li><strong>Zero Notification Spam:</strong> Teammates listed in CODEOWNERS are not pinged or requested for review while the PR remains in Draft state.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 2. Code Review Mechanics & Suggested Changes -->
+        <section id="review-mechanics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Under the Hood: Review States &amp; One-Click Suggestions</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                GitHub distinguishes between three explicit review submission outcomes:
+            </p>
+            <ul class="list-disc pl-6 text-sm text-slate-700 space-y-1 font-sans">
+                <li><strong>Comment:</strong> Submits neutral feedback or questions without explicitly approving or blocking the pull request.</li>
+                <li><strong>Approve:</strong> Formally signs off on the code diff. Counts toward the repository's minimum required approval quota.</li>
+                <li><strong>Request Changes:</strong> Hard blocks the pull request from being merged. The author cannot merge until the reviewer approves the updated diff or an administrator overrides the block.</li>
+            </ul>
+
+            <!-- Suggested Changes Code Block -->
+            <div class="space-y-3 mt-6">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">Interactive Review Technique: Executable Code Suggestions</span>
+                    <span class="text-purple-600 font-bold">```suggestion Markdown Block</span>
+                </div>
+                <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-2">
+                    <p class="text-slate-400 font-sans text-xs">
+                        Instead of writing a comment like: <em>"Please add a fallback default and handle None"</em>, senior reviewers write an actionable diff using GitHub's suggestion syntax:
+                    </p>
+                    <pre class="text-emerald-300">
+```suggestion
+def get_auth_token(headers: dict[str, str]) -> str:
+    auth_header = headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise AuthenticationRequiredError("Missing or malformed Authorization header")
+    return auth_header.removeprefix("Bearer ").strip()
+```</pre>
+                    <div class="text-slate-400 text-[11px] font-sans pt-1 border-t border-slate-800">
+                        The PR author can click <strong>"Commit suggestion"</strong> directly within GitHub's interface to apply the diff as a commit immediately!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Branch Governance: Protection Rules, Rulesets & CODEOWNERS -->
+        <section id="governance-and-codeowners" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Branch Governance: Rulesets &amp; Automated CODEOWNERS Routing</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                By default, a freshly initialized Git repository allows anyone with write permissions to run <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700 font-bold">git push --force origin main</code>, potentially obliterating the entire production commit tree.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Production repositories lock down their core branches using <strong>GitHub Branch Protection Rules</strong> or modern <strong>GitHub Rulesets</strong>:
+            </p>
+
+            <!-- Ruleset Policy Grid (Pure HTML/CSS) -->
+            <div class="grid md:grid-cols-2 gap-4 font-mono text-xs">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-sky-700 font-bold block text-sm">Require a Pull Request Before Merging</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Direct pushes to protected branches (<code class="font-mono text-slate-800">main</code>, <code class="font-mono text-slate-800">releases/*</code>) are rejected outright. All changes must arrive via a pull request.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-purple-700 font-bold block text-sm">Dismiss Stale Approvals on New Commits</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        If a reviewer approves a PR and the author subsequently pushes new commits, all existing approvals are automatically revoked. Code cannot sneak into production uninspected.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-emerald-700 font-bold block text-sm">Require Status Checks to Pass (CI Gates)</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Designated CI jobs (unit tests, coverage thresholds, security linters) must report a green checkmark before the merge button becomes active.
+                    </p>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <span class="text-rose-700 font-bold block text-sm">Require Linear History</span>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Enforces that all pull requests are integrated using <strong>Squash and Merge</strong> or <strong>Rebase and Merge</strong>, blocking messy merge bubbles from entering the main branch.
+                    </p>
+                </div>
+            </div>
+
+            <!-- CODEOWNERS Deep Dive -->
+            <div class="space-y-3 mt-4">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">Automated Reviewer Routing: <code class="text-purple-700">.github/CODEOWNERS</code></span>
+                    <span class="text-slate-400">Ownership Definition</span>
+                </div>
+                <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                    <p class="text-slate-400 font-sans text-xs">
+                        When a pull request touches specific files, GitHub evaluates <code class="font-mono text-emerald-300">.github/CODEOWNERS</code> and automatically requests reviews from the assigned teams or tech leads:
+                    </p>
+                    <pre class="text-sky-300">
+<span class="text-slate-500"># Global default owner for everything in repository:</span>
+*                   @shipforge-core-team
+
+<span class="text-slate-500"># Security &amp; Auth modules require review from Security Leads:</span>
+/src/shipforge/auth.py       @secops-lead @alice
+/src/shipforge/tokens.py     @secops-lead
+
+<span class="text-slate-500"># CI/CD and GitHub Actions pipelines require DevOps approval:</span>
+/.github/workflows/          @devops-leads
+
+<span class="text-slate-500"># Database migrations require Database Architect approval:</span>
+/migrations/                 @db-architects</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Visual Architecture: PR Lifecycle & Merge Strategies -->
+        <section id="visual-pr-pipeline" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Visual Architecture: The Pull Request Gate &amp; Merge Strategies</h2>
+            </div>
+
+            <!-- PR Lifecycle Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase tracking-widest text-emerald-400">The Pull Request Verification Pipeline</span>
+                    <p class="text-slate-400 text-xs mt-1 font-sans">The Sequential Gates Guarding the Production Branch</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1 -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Author PR</span>
+                        <span class="text-[10px] text-slate-400 font-sans">Draft PR &bull; Links issues &bull; CODEOWNERS assigned</span>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; triggers CI &rarr;</div>
+
+                    <!-- Step 2 -->
+                    <div class="p-3 bg-purple-950/80 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Automated Gates</span>
+                        <span class="text-[10px] text-purple-200 font-sans">Actions: Tests pass &bull; Linters green &bull; Zero secrets</span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; human review &rarr;</div>
+
+                    <!-- Step 3 -->
+                    <div class="p-3 bg-emerald-950/80 border border-emerald-500 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Peer Approval</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">2+ Approvals &bull; Threads resolved &bull; Merge unlocked</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Merge Strategies Compared Table -->
+            <div class="overflow-x-auto mt-6">
+                <table class="w-full text-left border-collapse bg-white rounded-2xl border border-slate-200 shadow-sm font-sans text-xs">
+                    <thead>
+                        <tr class="bg-slate-900 text-white font-mono text-[11px]">
+                            <th class="p-4 rounded-tl-2xl">Merge Strategy</th>
+                            <th class="p-4">DAG Topology Result</th>
+                            <th class="p-4">Commit Preservation</th>
+                            <th class="p-4 rounded-tr-2xl">Recommended Production Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700">
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-sky-700 bg-sky-50/50">Create a merge commit (merge --no-ff)</td>
+                            <td class="p-4">Non-linear; creates a 2-parent merge commit on the target branch.</td>
+                            <td class="p-4">Preserves 100% of individual feature commits in original form.</td>
+                            <td class="p-4">Large enterprise releases, multi-team integration branches, compliance tracking.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-emerald-700 bg-emerald-50/50">Squash and merge</td>
+                            <td class="p-4">Strictly linear; combines all PR commits into a single commit on <code class="font-mono text-slate-800">main</code>.</td>
+                            <td class="p-4">Melds all commits; discards individual granular feature commits.</td>
+                            <td class="p-4"><strong>Industry Standard for PRs:</strong> Keeps <code class="font-mono">main</code> pristine, clean, and easily bisectable.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-4 font-mono font-bold text-purple-700 bg-purple-50/50">Rebase and merge</td>
+                            <td class="p-4">Strictly linear; replays each commit sequentially onto <code class="font-mono text-slate-800">main</code> without a merge commit.</td>
+                            <td class="p-4">Preserves individual commits, but rewrites all commit SHAs.</td>
+                            <td class="p-4">Teams with rigorous Conventional Commit discipline on every single commit.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 5. Production Implementation: ShipForge Milestone 05 -->
+        <section id="shipforge-milestone-05" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ShipForge Milestone 05: Pull Request Engineering &amp; Templates</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now assemble Milestone 05 for <strong>ShipForge</strong>: establishing standard issue linking and review templates in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">.github/PULL_REQUEST_TEMPLATE.md</code> and defining organizational ownership in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">.github/CODEOWNERS</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated ShipForge Hierarchy (Milestone 05)</div>
+                <div>shipforge/</div>
+                <div>├── .github/</div>
+                <div>│   ├── <span class="text-emerald-300 font-bold">PULL_REQUEST_TEMPLATE.md</span>    <span class="text-slate-500"># Institutional review checklist template</span></div>
+                <div>│   └── <span class="text-emerald-300 font-bold">CODEOWNERS</span>                  <span class="text-slate-500"># Automated reviewer routing definition</span></div>
+                <div>├── src/</div>
+                <div>│   └── shipforge/</div>
+                <div>│       ├── auth.py</div>
+                <div>│       └── tokens.py</div>
+                <div>└── tests/</div>
+            </div>
+
+            <!-- File: PULL_REQUEST_TEMPLATE.md -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production PR Template: <code class="text-purple-700">.github/PULL_REQUEST_TEMPLATE.md</code></span>
+                    <span class="text-slate-400">Standardized Review Scaffold</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-emerald-400">## Summary of Changes</span>
+&lt;!-- Describe what problem this PR solves and why this approach was chosen --&gt;
+
+<span class="text-emerald-400">## Issue Reference</span>
+Closes #&lt;!-- issue number --&gt;
+
+<span class="text-emerald-400">## Type of Change</span>
+- [ ] <span class="text-sky-300">feat</span>: New non-breaking user/API capability
+- [ ] <span class="text-sky-300">fix</span>: Non-breaking bug fix
+- [ ] <span class="text-rose-400">BREAKING CHANGE</span>: Backwards-incompatible interface modification
+- [ ] <span class="text-sky-300">perf / refactor</span>: Performance or structural optimization
+- [ ] <span class="text-sky-300">ci / chore</span>: CI/CD or internal maintenance update
+
+<span class="text-emerald-400">## Architectural Checklist</span>
+- [ ] Code strictly follows Conventional Commits formatting rules
+- [ ] Unit test coverage added or updated for new code paths
+- [ ] Zero secrets, private keys, or credentials committed (verified via git grep)
+- [ ] Public interface documentation and README updated where appropriate
+
+<span class="text-emerald-400">## Test Evidence</span>
+```bash
+# Terminal output showing passing test suites:
+pytest tests/ -v
+```</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Mega-PR" Anti-Pattern (>800 LOC)</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Submitting pull requests that modify 30 files and span more than 800 lines of code across multiple unrelated subsystems.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys code quality:</strong> Cognitive fatigue causes reviewers to glance through massive PRs and give superficial "looks good to me" approvals. Bugs inevitably slip through. Keep PRs under <strong>300 lines of changes</strong> whenever possible!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Merging with Unresolved Review Threads</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Hitting the merge button while review discussions, questions, or change requests remain open and unresolved.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes technical debt:</strong> Unresolved threads represent unaddressed technical concerns or unvalidated assumptions. Configure your branch protection rules to enforce: <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">Require conversation resolution before merging</code>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Operating Pull Requests via GitHub CLI (gh)</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Professional engineers don't switch to a web browser to manage PRs—they execute the review lifecycle directly from the terminal using GitHub CLI (<code class="font-mono text-emerald-400">gh</code>):
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Create Draft PR -->
+                <div>
+                    <span class="text-slate-500"># 1. Push branch and open an interactive Draft Pull Request from terminal:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        gh pr create --draft --title "feat(tokens): add asymmetric token issuing pipeline" \
+                                     --body "Closes #104. Implements RS256 token signing and verification."
+                    </div>
+                </div>
+
+                <!-- Step 2: Checkout PR for Local Testing -->
+                <div>
+                    <span class="text-slate-500"># 2. Check out a teammate's PR locally for testing and execution:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        gh pr checkout 42
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Automatically configures local tracking branch to the PR's remote state.
+                    </span>
+                </div>
+
+                <!-- Step 3: Review and Merge -->
+                <div>
+                    <span class="text-slate-500"># 3. Submit formal code review and squash-merge when checks pass:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        # Approve the PR:<br>
+                        gh pr review 42 --approve --body "Architectural patterns look clean. Test coverage verified."<br><br>
+                        # Execute a clean Squash-and-Merge:<br>
+                        gh pr merge 42 --squash --delete-branch
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 06 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 06: GitHub Actions Foundations: Workflow Architecture &amp; Complete YAML Specification</h4>
+                <p class="text-xs text-slate-500 font-sans">Automating the verification gate: Deconstructing workflows, jobs, steps, runners, event triggers, and mastering every single line of production GitHub Actions YAML syntax.</p>
+            </div>
+            <a href="Chapter 06 - GitHub Actions Foundations - Workflow Architecture and Complete YAML Specification.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 06 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

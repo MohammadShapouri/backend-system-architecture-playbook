@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 06: Containerized Logging in Docker: Daemons, Drivers &amp; Runtime Interception</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 06 - Container Runtime Interception &amp; Docker Drivers)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 06 &bull; Container Runtimes &amp; Host Isolation
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Containerized Logging in Docker: Daemons, Drivers &amp; Runtime Interception
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Operating across the container boundary: How Linux kernel namespaces and cgroups multiplex process file descriptors, deconstructing Docker logging drivers (<code class="font-mono text-emerald-400">json-file</code> vs. <code class="font-mono text-emerald-400">local</code>), preventing application lockups with <code class="font-mono text-emerald-400">mode=non-blocking</code> ring buffers, avoiding host root disk exhaustion, and containerizing the <strong>PulsePay</strong> payment engine with hardened Docker Compose orchestration.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 06: Containerized Runtime Interception</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 05, PulsePay ran as an instrumented Python process on local hosts, emitting structured JSON events and tracing outbound banking HTTP calls. In Milestone 06, we transition PulsePay into an enterprise containerized architecture. Containers do not own filesystems or syslog daemons; they run in isolated kernel namespaces where standard streams (<code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">stdout</code> / <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">stderr</code>) are intercepted by the container runtime. We configure Docker daemon log drivers, tune non-blocking ring buffers to prevent container lockups under high transaction throughput, and build a production-grade multi-container compose topology.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 06 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Linux Container Stream Interception (pty/pipe)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Docker Logging Drivers: <code class="text-purple-300">json-file</code> vs. <code class="text-purple-300">local</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Host Disk Exhaustion Defense (<code class="text-purple-300">max-size</code> / <code class="text-purple-300">max-file</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Mutex Freeze: <code class="text-purple-300">mode=blocking</code> vs. <code class="text-purple-300">non-blocking</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Stage Rootless <code class="text-purple-300">Dockerfile</code> for PulsePay</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Hardened <code class="text-purple-300">docker-compose.yml</code> Orchestration</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Linux Container Logging Boundary: How Docker Intercepts Streams -->
+        <section id="linux-container-boundary" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Container Stream Interception Boundary</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A container is not a virtual machine; it is a standard Linux process isolated by **Kernel Namespaces** (PID, Mount, Network, IPC, UTS, User) and constrained by **Control Groups (cgroups)**. When your application process (PID 1 inside the container) executes, how do its logs reach the host filesystem or the <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">docker logs</code> command?
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When the container runtime (e.g. <code class="font-mono text-xs text-purple-700 font-bold">runc</code> / <code class="font-mono text-xs text-purple-700 font-bold">containerd</code>) spawns the containerized process, it does not attach it to a real hardware TTY terminal. Instead, it creates **unidirectional UNIX pipes** or **pseudo-terminals (`pty`)** mapped directly to the container's standard file descriptors: File Descriptor 1 (<code class="font-mono text-xs">stdout</code>) and File Descriptor 2 (<code class="font-mono text-xs">stderr</code>).
+            </p>
+
+            <!-- Stream Interception Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Linux Kernel Container Logging Interception Mechanism
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 items-center">
+                    <!-- Inside Container -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-center">
+                        <span class="text-sky-300 font-bold block text-sm">Container Namespace (PID 1)</span>
+                        <div class="text-[10px] bg-slate-900 p-2 rounded text-slate-300 space-y-1 font-sans">
+                            <div>PulsePay Payment Worker</div>
+                            <div class="text-emerald-400 font-mono">sys.stdout.write(json_bytes)</div>
+                            <div>FD 1 (Standard Output)</div>
+                        </div>
+                        <div class="text-[9px] text-slate-400">Isolated cgroup boundary</div>
+                    </div>
+
+                    <!-- Kernel Pipe / containerd-shim -->
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-2xl text-center space-y-2">
+                        <span class="text-purple-300 font-bold block text-sm">Kernel Pipe &amp; containerd-shim</span>
+                        <div class="text-[10px] bg-slate-900 p-2 rounded text-purple-200 font-sans space-y-1">
+                            <div>FIFO Pipe Buffer (64KB)</div>
+                            <div>containerd-shim intercepts read()</div>
+                            <div>Multiplexes stdout &amp; stderr</div>
+                        </div>
+                        <div class="text-[9px] text-purple-300 font-bold">&larr; Kernel boundary &rarr;</div>
+                    </div>
+
+                    <!-- Host Docker Engine -->
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-center">
+                        <span class="text-emerald-300 font-bold block text-sm">Host Docker Daemon (dockerd)</span>
+                        <div class="text-[10px] bg-slate-900 p-2 rounded text-emerald-200 font-sans space-y-1">
+                            <div>Logging Driver Pipeline</div>
+                            <div>Applies log-opts rotation</div>
+                            <div>Writes to /var/lib/docker/...</div>
+                        </div>
+                        <div class="text-[9px] text-emerald-400">&check; docker logs output</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-amber-400 font-mono">&#9888; The Python Unbuffered Stream Requirement:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        By default, CPython detects if file descriptor 1 is connected to an interactive terminal. When running inside a container without a pseudo-TTY, Python switches to <strong>block buffering (typically 4KB–8KB buffers)</strong>. Log lines are held in memory and not flushed to the container pipe until the buffer fills up or the process exits! Containerized Python applications must set <code class="text-emerald-300 font-mono">ENV PYTHONUNBUFFERED=1</code> in the Dockerfile to guarantee immediate log delivery.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Docker Logging Drivers In-Depth: json-file vs. local vs. remote -->
+        <section id="docker-logging-drivers" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Docker Logging Drivers: Architecture, Formats &amp; Rotation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When the Docker daemon reads stdout/stderr from the container pipe, its active **logging driver** dictates where those bytes are persisted. Selecting the wrong driver can exhaust host disk space or crash container processes during high-volume spikes.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Driver 1: json-file -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-800 text-sm">1. json-file Driver</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold">Legacy Default</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Serializes each container line into an envelope JSON document stored on the host at:
+                        <code class="text-slate-800 font-mono text-[10px] block mt-1 bg-slate-100 p-1 rounded">/var/lib/docker/containers/&lt;id&gt;/&lt;id&gt;-json.log</code>
+                    </p>
+                    <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-emerald-700 font-mono">&check; Pros:</strong> Universally compatible; readable by <code class="font-mono">docker logs</code>.</div>
+                        <div><strong class="text-rose-700 font-mono">&cross; Fatal Flaw:</strong> By default, has <strong>zero file size limits</strong>! A single noisy container will write unconstrained JSON until the host VM fills 100% of its disk, crashing the host.</div>
+                    </div>
+                </div>
+
+                <!-- Driver 2: local -->
+                <div class="bg-white p-6 rounded-2xl border border-emerald-300 shadow-sm space-y-3 ring-1 ring-emerald-300">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-800 text-sm">2. local Driver</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Senior Choice</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        Stores container logs in an optimized, binary, compressed format with internal rotation enabled by default on the host filesystem.
+                    </p>
+                    <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 space-y-1 font-sans text-[11px]">
+                        <div><strong class="text-emerald-700 font-mono">&check; Advantages:</strong> Automatically rotates files (default: 5 files of 20MB); uses transparent zstd compression; protects host disk from runaway exhaustion. Fully compatible with <code class="font-mono">docker logs</code>.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global Daemon Configuration Box -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="font-mono font-bold text-slate-900 text-sm">Host-Wide Protection: /etc/docker/daemon.json</span>
+                    <span class="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-mono font-bold">Production Standard</span>
+                </div>
+                <p class="text-xs text-slate-600 font-sans leading-relaxed">
+                    Senior infrastructure engineers never rely on developers configuring log rotation in individual <code class="font-mono">docker run</code> commands. You enforce strict, global limits across the entire Docker daemon:
+                </p>
+                <pre class="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800">
+{
+  <span class="text-sky-300">"log-driver"</span>: <span class="text-amber-300">"json-file"</span>,
+  <span class="text-sky-300">"log-opts"</span>: {
+    <span class="text-sky-300">"max-size"</span>: <span class="text-amber-300">"50m"</span>,
+    <span class="text-sky-300">"max-file"</span>: <span class="text-amber-300">"5"</span>,
+    <span class="text-sky-300">"compress"</span>: <span class="text-amber-300">"true"</span>
+  }
+}</pre>
+                <p class="text-[11px] text-slate-500 font-sans">
+                    With this configuration, Docker guarantees no single container can ever consume more than 250MB (5 &times; 50MB) of host storage. Rotated logs are compressed automatically in the background.
+                </p>
+            </div>
+        </section>
+
+        <!-- 3. Blocking vs. Non-Blocking Mode: Preventing Container Lockups -->
+        <section id="blocking-vs-non-blocking" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Concurrency Hazards: <code>mode=blocking</code> vs. <code>mode=non-blocking</code></h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                A subtle but catastrophic failure mode in containerized systems occurs when Docker is configured to ship logs to an external daemon or search cluster (e.g. using <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">syslog</code>, <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">fluentd</code>, or <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">awslogs</code>).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                By default, Docker logging operates in **blocking mode** (<code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-rose-700 font-bold">mode=blocking</code>). If the logging driver is unable to deliver logs (due to host disk saturation, network latency, or an external aggregator outage), the logging pipeline backpressures directly into the container's UNIX pipe buffer.
+            </p>
+
+            <!-- Blocking vs Non-Blocking Grid -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- mode=blocking -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <span class="text-xs font-mono font-bold text-rose-800 uppercase tracking-widest block">The Default Trap</span>
+                    <h3 class="text-base font-bold text-rose-950">1. mode=blocking (Backpressure Cascade)</h3>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        The 64KB kernel FIFO pipe fills up. The next time the container's application thread calls <code class="font-mono">sys.stdout.write()</code>, the operating system kernel <strong>suspends the thread on the write() system call</strong>.
+                    </p>
+                    <div class="p-2.5 bg-rose-100 rounded-lg text-rose-950 font-mono text-[10px]">
+                        Upstream log collector slow &rarr; Container write() blocks &rarr; Payment processing freezes &rarr; Customer HTTP requests timeout!
+                    </div>
+                </div>
+
+                <!-- mode=non-blocking -->
+                <div class="bg-emerald-50 border-l-4 border-emerald-500 p-6 rounded-r-2xl space-y-3">
+                    <span class="text-xs font-mono font-bold text-emerald-800 uppercase tracking-widest block">Enterprise Standard</span>
+                    <h3 class="text-base font-bold text-emerald-950">2. mode=non-blocking (Ring Buffer)</h3>
+                    <p class="text-xs text-emerald-900 leading-relaxed font-sans">
+                        Docker places an intermediate in-memory ring buffer (default: <code class="font-mono font-bold">max-buffer-size=4m</code>) between the container's stdout pipe and the logging driver.
+                    </p>
+                    <p class="text-xs text-emerald-900 leading-relaxed font-sans">
+                        If the logging driver stalls, the ring buffer absorbs the burst. If the buffer fills completely, <strong>Docker drops older logs to keep the application running</strong>. A dropped log is regrettable; a frozen financial clearing transaction is unacceptable.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. The Overlay2 Storage Trap: Why Logging to Files Inside Containers Destroys Performance -->
+        <section id="overlay2-trap" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Storage Internals: The <code>overlay2</code> File Logging Anti-Pattern</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Developers transitioning from legacy monolithic VMs frequently configure Python's <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">RotatingFileHandler</code> to write log files *inside* the running container (e.g. to <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">/app/logs/pulsepay.log</code>). In container runtimes, this causes severe performance degradation due to the architecture of Docker's storage driver:
+            </p>
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-base font-bold text-slate-900 font-mono">The Copy-on-Write (CoW) Overhead of overlay2</h3>
+                <p class="text-xs text-slate-600 leading-relaxed font-sans">
+                    Docker containers use the <code class="font-mono text-purple-700 font-bold">overlay2</code> storage driver, stacking read-only image layers under a thin, read-write container layer. Every time an application appends bytes to an internal container file, the kernel must execute copy-on-write lookups across storage layers:
+                </p>
+                <div class="grid md:grid-cols-3 gap-3 font-mono text-xs text-center">
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-800 font-bold block">1. I/O Degradation</span>
+                        <p class="text-[10px] text-slate-600 font-sans">Writing to the writable container layer imposes severe I/O penalties compared to host disk sequential writes.</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-800 font-bold block">2. Image Bloat</span>
+                        <p class="text-[10px] text-slate-600 font-sans">Internal log files swell container layer sizes, complicating container migration and snapshotting.</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                        <span class="text-slate-800 font-bold block">3. Instant Data Loss</span>
+                        <p class="text-[10px] text-slate-600 font-sans">When the container terminates, its writable layer is deleted. All internal logs vanish forever.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Project Implementation: PulsePay Milestone 06 -->
+        <section id="pulsepay-milestone-06" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 06: Hardened Dockerfile &amp; Compose Orchestration</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 06 for <strong>PulsePay</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We author a production, multi-stage, rootless <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">Dockerfile</code> enforcing unbuffered stream delivery.</li>
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">docker-compose.yml</code>: orchestrating PulsePay API, Redis, and a simulated banking gateway with explicit non-blocking logging limits.</li>
+                <li>We configure container health checks and logging limits ensuring containers never exhaust host disk space.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 06)</div>
+                <div>pulsepay/</div>
+                <div>├── <span class="text-emerald-300 font-bold">Dockerfile</span>                     <span class="text-slate-500"># Milestone 06: Hardened Multi-Stage Container Image</span></div>
+                <div>├── <span class="text-emerald-300 font-bold">docker-compose.yml</span>             <span class="text-slate-500"># Milestone 06: Non-Blocking Logging Orchestration</span></div>
+                <div>├── src/</div>
+                <div>│   └── pulsepay/</div>
+                <div>│       ├── observability/</div>
+                <div>│       ├── services/</div>
+                <div>│       └── web/</div>
+                <div>└── tests/</div>
+            </div>
+
+            <!-- File 1: Dockerfile -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Production Multi-Stage Dockerfile: <code class="text-purple-700">Dockerfile</code></span>
+                    <span class="text-slate-400">Unbuffered Stream Container</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Container Build - Multi-Stage Rootless Dockerfile (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># Stage 1: Build Dependencies</span>
+<span class="text-purple-400">FROM</span> python:3.11-slim <span class="text-purple-400">AS</span> builder
+
+<span class="text-purple-400">WORKDIR</span> /build
+<span class="text-purple-400">RUN</span> apt-get update &amp;&amp; apt-get install -y --no-install-recommends gcc &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+<span class="text-purple-400">COPY</span> pyproject.toml .
+<span class="text-purple-400">RUN</span> pip install --no-cache-dir --user fastapi uvicorn httpx pydantic
+
+<span class="text-slate-500"># Stage 2: Hardened Runtime Container</span>
+<span class="text-purple-400">FROM</span> python:3.11-slim <span class="text-purple-400">AS</span> runtime
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># CRITICAL TELEMETRY SETTINGS:</span>
+<span class="text-slate-500"># 1. PYTHONUNBUFFERED=1 forces Python to flush stdout immediately to the pipe!</span>
+<span class="text-slate-500"># 2. PYTHONDONTWRITEBYTECODE=1 prevents stale .pyc clutter</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-purple-400">ENV</span> PYTHONUNBUFFERED=<span class="text-purple-300">1</span> \
+    PYTHONDONTWRITEBYTECODE=<span class="text-purple-300">1</span> \
+    PULSEPAY_ENV=<span class="text-amber-300">"production"</span> \
+    PATH=<span class="text-amber-300">"/home/pulsepay/.local/bin:$PATH"</span>
+
+<span class="text-slate-500"># Create non-root unprivileged service user</span>
+<span class="text-purple-400">RUN</span> groupadd -g <span class="text-purple-300">1001</span> pulsepay &amp;&amp; \
+    useradd -u <span class="text-purple-300">1001</span> -g pulsepay -s /bin/bash -m pulsepay
+
+<span class="text-purple-400">WORKDIR</span> /app
+<span class="text-purple-400">COPY</span> --from=builder /root/.local /home/pulsepay/.local
+<span class="text-purple-400">COPY</span> --chown=pulsepay:pulsepay src/ /app/src/
+
+<span class="text-purple-400">USER</span> pulsepay
+
+<span class="text-slate-500"># Expose HTTP port</span>
+<span class="text-purple-400">EXPOSE</span> <span class="text-purple-300">8000</span>
+
+<span class="text-slate-500"># Boot Uvicorn with structured JSON output piped directly to stdout</span>
+<span class="text-purple-400">CMD</span> [<span class="text-amber-300">"uvicorn"</span>, <span class="text-amber-300">"src.pulsepay.web.app:app"</span>, <span class="text-amber-300">"--host"</span>, <span class="text-amber-300">"0.0.0.0"</span>, <span class="text-amber-300">"--port"</span>, <span class="text-amber-300">"8000"</span>, <span class="text-amber-300">"--no-access-log"</span>]</pre>
+            </div>
+
+            <!-- File 2: docker-compose.yml -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Non-Blocking Compose Topology: <code class="text-purple-700">docker-compose.yml</code></span>
+                    <span class="text-slate-400">Production Logging Limits</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Container Orchestration - Hardened Logging Limits (Milestone 06)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">version</span>: <span class="text-amber-300">'3.8'</span>
+
+<span class="text-purple-400">services</span>:
+  <span class="text-sky-300 font-bold">pulsepay-api</span>:
+    <span class="text-purple-400">build</span>:
+      <span class="text-purple-400">context</span>: .
+      <span class="text-purple-400">dockerfile</span>: Dockerfile
+    <span class="text-purple-400">container_name</span>: pulsepay-api
+    <span class="text-purple-400">ports</span>:
+      - <span class="text-amber-300">"8000:8000"</span>
+    <span class="text-purple-400">environment</span>:
+      - PULSEPAY_ENV=production
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-slate-500"># PRODUCTION LOGGING CONFIGURATION:</span>
+    <span class="text-slate-500"># - mode: non-blocking prevents container lockups during logging backpressure!</span>
+    <span class="text-slate-500"># - max-size &amp; max-file prevent host VM disk exhaustion!</span>
+    <span class="text-slate-500"># --------------------------------------------------------------------------</span>
+    <span class="text-purple-400">logging</span>:
+      <span class="text-purple-400">driver</span>: <span class="text-amber-300">"json-file"</span>
+      <span class="text-purple-400">options</span>:
+        <span class="text-sky-300">mode</span>: <span class="text-amber-300">"non-blocking"</span>
+        <span class="text-sky-300">max-buffer-size</span>: <span class="text-amber-300">"4m"</span>
+        <span class="text-sky-300">max-size</span>: <span class="text-amber-300">"25m"</span>
+        <span class="text-sky-300">max-file</span>: <span class="text-amber-300">"3"</span>
+        <span class="text-sky-300">compress</span>: <span class="text-amber-300">"true"</span>
+    <span class="text-purple-400">restart</span>: unless-stopped</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Silent Container Freeze" Anti-Pattern</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring Docker to log to an external syslog or Fluentd collector using default <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">mode=blocking</code>.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes major production outages:</strong> If the central logging collector restarts or experiences a network partition, Docker's 64KB kernel pipe buffer fills up within seconds. Your application's <code class="font-mono">write()</code> system calls block, freezing all payment processing.
+                        <strong>Fix:</strong> Always configure <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">mode=non-blocking</code> with <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">max-buffer-size</code>!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Overlay2 Root Disk Exhaustion" Bomb</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Writing log files directly to <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">/var/log/app.log</code> inside the container's writable layer.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this kills hosts:</strong> The writable layer of a container lives on the host's root filesystem (<code class="font-mono">/var/lib/docker/overlay2</code>). Writing unmanaged files inside the container bypasses Docker's <code class="font-mono">max-size</code> rotation limits entirely, eventually consuming 100% of the host disk space.
+                        <strong>Fix:</strong> Never write logs to files inside containers. Stream exclusively to <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">stdout</code>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 06</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to build the PulsePay production container, verify non-blocking driver configuration, and test log rotation limits:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Build Docker Container -->
+                <div>
+                    <span class="text-slate-500"># 1. Build PulsePay multi-stage production image:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        docker build -t pulsepay:latest .
+                    </div>
+                </div>
+
+                <!-- Step 2: Boot Compose with Non-Blocking Limits -->
+                <div>
+                    <span class="text-slate-500"># 2. Boot PulsePay service under Docker Compose:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        docker compose up -d
+                    </div>
+                </div>
+
+                <!-- Step 3: Inspect Logging Driver Configuration -->
+                <div>
+                    <span class="text-slate-500"># 3. Verify that Docker applied the non-blocking mode and file limits:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        docker inspect pulsepay-api --format '{{json .HostConfig.LogConfig}}' | jq .
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected Output: Confirms <code class="text-emerald-400 font-mono">mode: "non-blocking"</code>, <code class="text-emerald-400 font-mono">max-size: "25m"</code>, and <code class="text-emerald-400 font-mono">max-file: "3"</code>!
+                    </span>
+                </div>
+
+                <!-- Step 4: Stream Structured JSON Logs -->
+                <div>
+                    <span class="text-slate-500"># 4. Stream real container logs through jq:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        docker logs -f pulsepay-api | jq '{timestamp: .timestamp, action: .action, message: .message}'
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 07 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 07: Kubernetes Logging Topologies: Sidecars, DaemonSets &amp; Node-Level Interception</h4>
+                <p class="text-xs text-slate-500 font-sans">Scaling from single Docker hosts to the container mesh: Container Runtime Interface (CRI) pod log paths (<code class="font-mono">/var/log/pods/</code>), DaemonSets with Fluent Bit/Vector, avoiding Kubelet node evictions, and multi-tenant namespace isolation in <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 07 - Kubernetes Logging Topologies - Sidecars, DaemonSets and Node-Level Interception.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 07 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

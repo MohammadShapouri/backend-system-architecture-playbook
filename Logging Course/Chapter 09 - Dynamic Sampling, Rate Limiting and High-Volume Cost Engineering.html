@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 09: Dynamic Sampling, Rate Limiting &amp; High-Volume Cost Engineering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 09 - Rate Limiting, Dynamic Leases &amp; Cost Control)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 09 &bull; Cost Engineering &amp; High-Volume Telemetry
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Dynamic Sampling, Rate Limiting &amp; High-Volume Cost Engineering
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Surviving the production traffic tsunami without catastrophic cloud invoices: Calculating the true economics of log ingestion, filtering out high-frequency Kubernetes probe noise, suppressing cascading error storms with the Token Bucket algorithm, implementing zero-downtime dynamic runtime log level leases in FastAPI, mastering tail-based sampling, and protecting the financial clearing pipeline of <strong>PulsePay</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 09: Financial Telemetry Cost Optimization</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapter 08, we provisioned an end-to-end distributed ingestion pipeline using Vector and Grafana Loki. However, as PulsePay's payment gateway scales to 10,000 transactions per second, unmanaged telemetry generation becomes an existential financial threat. A minor logging loop or a flood of Kubernetes health probes can rack up tens of thousands of dollars in surprise cloud logging invoices overnight. In Milestone 09, we build protective circuit breakers into our logging engine: suppressing repetitive database error storms using an in-memory <strong>Token Bucket Rate Limiter</strong>, dropping 100% of useless health checks at the collector edge, and building an authenticated <strong>Dynamic Log Level Manager</strong> in FastAPI that enables surgical, time-limited debug sessions without restarting pods.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 09 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The Economics of Logging: Calculating Ingestion Bills</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> High-Frequency Noise Pruning (K8s Probe Drops)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Token Bucket Rate Limiting for Error Cascades</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Zero-Downtime Dynamic Log Level Toggles</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Auto-Expiring Debug Leases &amp; Tenant Targeting</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Head-Based vs. Tail-Based Sampling Paradigms</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Economics of Logging at Enterprise Scale -->
+        <section id="economics-of-logging" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Economics &amp; Mathematics of Log Ingestion</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                In production cloud environments (AWS CloudWatch, Datadog, Splunk, Sumo Logic), telemetry is not free. Cloud providers and SaaS vendors charge customers primarily by **data volume ingested and indexed** (typically ranging from <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-bold">$0.50 to $2.50+ per Gigabyte</code>).
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                When systems scale, logging costs grow linearly with request volume unless strict cost-engineering controls are implemented. Consider the real math behind PulsePay's payment settlement tier:
+            </p>
+
+            <!-- Mathematical Cost Model Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    PulsePay High-Throughput Log Cost Projection
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-center">
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-sky-300 font-bold block">Transaction Volume</span>
+                        <div class="text-lg font-extrabold text-white">2,000 tx/sec</div>
+                        <span class="text-[10px] text-slate-400 font-sans">Peak clearing hours</span>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-purple-300 font-bold block">Log Density</span>
+                        <div class="text-lg font-extrabold text-white">4 logs / tx</div>
+                        <span class="text-[10px] text-slate-400 font-sans">Avg. payload: 800 bytes</span>
+                    </div>
+
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <span class="text-amber-300 font-bold block">Daily Ingestion</span>
+                        <div class="text-lg font-extrabold text-white">~550 GB / day</div>
+                        <span class="text-[10px] text-slate-400 font-sans">16.5 Terabytes / month</span>
+                    </div>
+
+                    <div class="p-3 bg-rose-950/40 border border-rose-800 rounded-xl space-y-1">
+                        <span class="text-rose-400 font-bold block">Monthly SaaS Invoice</span>
+                        <div class="text-lg font-extrabold text-rose-300">$16,500 / mo</div>
+                        <span class="text-[10px] text-rose-400 font-sans font-bold">Just for raw log ingestion!</span>
+                    </div>
+                </div>
+
+                <!-- Probe Math Box -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-2 font-sans">
+                    <strong class="text-amber-400 font-mono text-xs">&#9888; The "Blind Health Check" Invoice Spike:</strong>
+                    <p class="text-slate-400 leading-relaxed text-[11px]">
+                        Suppose PulsePay runs 10 microservices, each with 5 pod replicas. Kubernetes issues both a liveness and readiness probe every 5 seconds. 
+                        That equals <code class="text-white font-mono">10 services &times; 5 replicas &times; 2 probes &times; 12/min = 1,200 HTTP 200 logs per minute</code>. Over a month, that yields <strong>51.8 million useless lines of health check noise</strong>, costing hundreds of dollars in wasted cloud budget for data that provides zero diagnostic value!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. What to Log vs. What to Drop Under Load -->
+        <section id="signal-vs-noise" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Pruning the Stream: What to Drop vs. What to Preserve</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Cost engineering is not about blindly cutting logging across the board. If you suppress an unhandled database exception or a failed payment authorization, you blind on-call engineers. Cost engineering is about <strong>maximizing the Signal-to-Noise Ratio (SNR)</strong>:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Drop Category -->
+                <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center gap-2 text-rose-900 font-bold text-sm border-b border-rose-200 pb-2">
+                        <span>&cross;</span>
+                        <span>WHAT TO DROP / SAMPLE AGGRESSIVELY</span>
+                    </div>
+                    <ul class="text-[11px] font-sans text-rose-950 space-y-2 leading-relaxed">
+                        <li><strong>1. Internal Health &amp; Readiness Probes:</strong> Completely drop all HTTP 200 responses for <code class="font-mono text-slate-800">/healthz</code>, <code class="font-mono text-slate-800">/readyz</code>, and Prometheus <code class="font-mono text-slate-800">/metrics</code> scrapes at the collector edge.</li>
+                        <li><strong>2. Routine High-Volume 200 OK Access Logs:</strong> In high-traffic services, sample successful read queries (e.g. balance lookups) down to 1% or 5%, while preserving 100% of state-mutating writes.</li>
+                        <li><strong>3. Repetitive Polling Loops:</strong> Celery, SQS, or Kafka consumer heartbeat checks that report "zero messages found" must never emit INFO logs.</li>
+                    </ul>
+                </div>
+
+                <!-- Preserve Category -->
+                <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center gap-2 text-emerald-900 font-bold text-sm border-b border-emerald-200 pb-2">
+                        <span>&check;</span>
+                        <span>WHAT MUST ALWAYS BE PRESERVED (100%)</span>
+                    </div>
+                    <ul class="text-[11px] font-sans text-emerald-950 space-y-2 leading-relaxed">
+                        <li><strong>1. All Errors &amp; Warnings:</strong> 100% of HTTP 4xx (client errors) and 5xx (server crashes) must bypass all sampling filters and be written to disk.</li>
+                        <li><strong>2. Critical Financial State Deltas:</strong> Account balance updates, ledger transfers, and fraud approvals must never be sampled.</li>
+                        <li><strong>3. Boundary Timeouts &amp; Retries:</strong> Any request that exceeds 1,000ms latency or triggers an outbound retry must be preserved in full detail.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Dynamic Runtime Log Level Control: The Zero-Downtime Lease -->
+        <section id="dynamic-log-levels" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Zero-Downtime Governance: Dynamic Runtime Log Level Leases</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an intermittent incident strikes production, engineers often say: <em>"We need to see debug logs for merchant ACC-9921."</em> In naive architectures, the team edits a Kubernetes ConfigMap, changes the level to <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">DEBUG</code>, and restarts all pods.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Why restarting pods is a failure:</strong> Restarting clears internal in-memory caches, severs active database connection pools, drops in-flight payment websockets, and frequently makes the intermittent bug disappear! Worse, after the incident ends, engineers forget to revert the ConfigMap, leaving <code class="font-mono text-xs text-rose-700">DEBUG</code> logging running for 3 weeks and exhausting storage budgets.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The enterprise solution is the **Dynamic Log Level Lease**: an in-memory manager that temporarily elevates log levels via an administrative REST API with an automatic **Time-to-Live (TTL)** expiration:
+            </p>
+
+            <!-- Dynamic Lease Architecture Diagram (Pure HTML/CSS) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-500 uppercase tracking-widest text-[11px]">
+                    The Auto-Expiring Dynamic Debug Lease Lifecycle
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Admin API Call -->
+                    <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-purple-900 font-bold block">1. Admin API Trigger</span>
+                        <span class="text-[10px] text-purple-700 font-sans">POST /admin/log-level<br>{"level": "DEBUG", "ttl": 300, "merchant_id": "M-99"}</span>
+                    </div>
+
+                    <div class="text-emerald-600 font-bold">&rarr; activates lease &rarr;</div>
+
+                    <!-- Step 2: Active Lease -->
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-emerald-900 font-bold block">2. Surgical Debugging</span>
+                        <span class="text-[10px] text-emerald-700 font-sans">Emits DEBUG logs <strong>only</strong> for merchant M-99. All other traffic stays at INFO!</span>
+                    </div>
+
+                    <div class="text-amber-600 font-bold">&rarr; TTL expires (300s) &rarr;</div>
+
+                    <!-- Step 3: Auto-Revert -->
+                    <div class="p-3 bg-sky-50 border border-sky-200 rounded-xl w-full md:w-56 space-y-1">
+                        <span class="text-sky-900 font-bold block">3. Automatic Revert</span>
+                        <span class="text-[10px] text-sky-700 font-sans">Zero pod restarts! Logger snaps back to INFO automatically. Quota protected.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Token Bucket Rate Limiting for Cascading Error Storms -->
+        <section id="token-bucket" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cascading Error Storm Defense: The Token Bucket Rate Limiter</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When an upstream PostgreSQL database or Redis cluster goes offline, 50 concurrent payment workers will immediately begin throwing database connection exceptions. If every worker logs an error on every incoming request, the application emits <strong>50,000 identical error stack traces every second</strong>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                This triggers a **Self-Inflicted Denial of Service (DoS)**: the logging queue fills up, disk I/O saturates, the logging agent consumes 100% of host CPU formatting JSON, and the actual error message is repeated millions of times, burying other diagnostic clues.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                We implement the **Token Bucket Algorithm** directly inside a custom <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">logging.Filter</code>. Each unique error signature is allocated a bucket:
+            </p>
+
+            <!-- Token Bucket Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The In-Memory Token Bucket Error Throttling Engine
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4 text-center">
+                    <div class="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                        <span class="text-sky-300 font-bold block">1. Error Signature Hash</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            Computes hash of:<br><code class="text-emerald-300 font-mono">(logger_name, exc_type, lineno)</code>
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-purple-950/60 border border-purple-500 rounded-xl space-y-2">
+                        <span class="text-purple-300 font-bold block">2. Bucket Consumption</span>
+                        <p class="text-[10px] text-slate-300 font-sans">
+                            Capacity: 5 tokens<br>Refill: 1 token / second<br>If tokens &gt; 0 &rarr; <strong>Emit Log</strong>
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-rose-950/40 border border-rose-800 rounded-xl space-y-2">
+                        <span class="text-rose-400 font-bold block">3. Suppression Counter</span>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            If tokens == 0 &rarr; <strong>Drop Log!</strong><br>Increments counter. On refill, emits: <em>"[THROTTLED] Suppressed 4,892 identical events"</em>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Head-Based vs. Tail-Based Sampling Paradigms -->
+        <section id="sampling-paradigms" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Sampling Paradigms: Head Sampling vs. Tail-Based Sampling</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                When throughput exceeds 50,000 events/second, logging 100% of operational traces is economically impossible. Systems must sample. The choice between **Head Sampling** and **Tail-Based Sampling** determines whether you catch or miss rare bugs:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Head Sampling -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-slate-800 text-sm">Head-Based Sampling</span>
+                        <span class="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold">Fast &amp; Blind</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        The sampling decision is made <strong>at the very start of a request</strong> (e.g. randomly sampling 5% of incoming HTTP calls).
+                    </p>
+                    <div class="bg-rose-50 p-2.5 rounded-lg border border-rose-200 text-rose-900 font-sans text-[11px]">
+                        <strong>The Vulnerability:</strong> If a catastrophic payment deadlock occurs on a request that was not selected in the 5% random draw, <strong>zero logs are retained</strong>! You have zero diagnostics for the outage.
+                    </div>
+                </div>
+
+                <!-- Tail-Based Sampling -->
+                <div class="bg-white p-6 rounded-2xl border border-emerald-300 shadow-sm space-y-3 ring-1 ring-emerald-300">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-800 text-sm">Tail-Based Sampling</span>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Intelligent Retention</span>
+                    </div>
+                    <p class="font-sans text-[11px] text-slate-600 leading-relaxed">
+                        The sampling decision is deferred <strong>until the request completes</strong>. All debug events are buffered in memory during the transaction lifecycle.
+                    </p>
+                    <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 text-emerald-950 font-sans text-[11px]">
+                        <strong>The Guarantee:</strong> If the request succeeds quickly (&lt;200ms, HTTP 200), the detailed debug logs are discarded. If the request fails (HTTP 500) or breaches latency SLAs, <strong>100% of the buffered debug trail is flushed to disk!</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Project Implementation: PulsePay Milestone 09 -->
+        <section id="pulsepay-milestone-09" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 06</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">PulsePay Milestone 09: Rate Limiter &amp; Dynamic Lease Implementation</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now construct Milestone 09 for <strong>PulsePay</strong>:
+            </p>
+            <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-1 font-sans">
+                <li>We implement <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/observability/rate_limiter.py</code>: an in-memory Token Bucket filter throttling repetitive error cascades.</li>
+                <li>We engineer <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/observability/dynamic_level.py</code>: a thread-safe Dynamic Log Level Manager supporting auto-expiring debug leases and surgical merchant targeting.</li>
+                <li>We expose authenticated administrative endpoints in <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">src/pulsepay/web/admin.py</code> allowing engineers to elevate logging levels live via curl.</li>
+            </ol>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated Project Hierarchy (Milestone 09)</div>
+                <div>pulsepay/</div>
+                <div>├── src/</div>
+                <div>│   └── pulsepay/</div>
+                <div>│       ├── observability/</div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">rate_limiter.py</span>        <span class="text-slate-500"># Milestone 09: Token Bucket Error Storm Throttler</span></div>
+                <div>│       │   ├── <span class="text-emerald-300 font-bold">dynamic_level.py</span>       <span class="text-slate-500"># Milestone 09: Dynamic Lease Manager with Auto-Expiry</span></div>
+                <div>│       │   └── engine.py</div>
+                <div>│       └── web/</div>
+                <div>│           ├── <span class="text-purple-300 font-bold">admin.py</span>               <span class="text-slate-500"># Milestone 09: FastAPI Admin Log Level Endpoints</span></div>
+                <div>│           └── app.py</div>
+                <div>└── tests/</div>
+            </div>
+
+            <!-- File 1: src/pulsepay/observability/rate_limiter.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Token Bucket Error Rate Limiter: <code class="text-purple-700">src/pulsepay/observability/rate_limiter.py</code></span>
+                    <span class="text-slate-400">Cascading Storm Filter</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - Token Bucket Log Rate Limiter (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> collections <span class="text-purple-400">import</span> defaultdict
+<span class="text-purple-400">from</span> threading <span class="text-purple-400">import</span> Lock
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenBucket</span>:
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, capacity: int = <span class="text-purple-300">5</span>, refill_rate: float = <span class="text-purple-300">1.0</span>):
+        self.capacity = capacity
+        self.refill_rate = refill_rate
+        self.tokens = float(capacity)
+        self.last_update = time.monotonic()
+        self.suppressed_count = <span class="text-purple-300">0</span>
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">consume</span>(self) -> tuple[bool, int]:
+        now = time.monotonic()
+        elapsed = now - self.last_update
+        self.last_update = now
+
+        <span class="text-slate-500"># Refill tokens according to elapsed wall time</span>
+        self.tokens = min(float(self.capacity), self.tokens + elapsed * self.refill_rate)
+
+        <span class="text-purple-400">if</span> self.tokens &gt;= <span class="text-purple-300">1.0</span>:
+            self.tokens -= <span class="text-purple-300">1.0</span>
+            suppressed = self.suppressed_count
+            self.suppressed_count = <span class="text-purple-300">0</span>
+            <span class="text-purple-400">return True</span>, suppressed
+        <span class="text-purple-400">else</span>:
+            self.suppressed_count += <span class="text-purple-300">1</span>
+            <span class="text-purple-400">return False</span>, <span class="text-purple-300">0</span>
+
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">TokenBucketErrorFilter</span>(logging.Filter):
+    <span class="text-slate-500">"""
+    PRODUCTION RATE-LIMITING LOGGING FILTER:
+    Throttles repetitive ERROR statements by exception type and call site.
+    Caps repetitive errors to a maximum burst of 5, then 1 event per second.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, capacity: int = <span class="text-purple-300">5</span>, refill_rate: float = <span class="text-purple-300">1.0</span>):
+        super().__init__()
+        self.capacity = capacity
+        self.refill_rate = refill_rate
+        self._buckets = defaultdict(<span class="text-purple-400">lambda</span>: TokenBucket(capacity, refill_rate))
+        self._lock = Lock()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">filter</span>(self, record: logging.LogRecord) -> bool:
+        <span class="text-slate-500"># Only rate-limit ERROR and CRITICAL logs; pass through INFO/DEBUG unhindered</span>
+        <span class="text-purple-400">if</span> record.levelno &lt; logging.ERROR:
+            <span class="text-purple-400">return True</span>
+
+        <span class="text-slate-500"># Compute unique signature for the error call site</span>
+        signature = f<span class="text-amber-300">"&#123;record.name&#125;:&#123;record.pathname&#125;:&#123;record.lineno&#125;"</span>
+        <span class="text-purple-400">if</span> record.exc_info <span class="text-purple-400">and</span> record.exc_info[<span class="text-purple-300">0</span>]:
+            signature += f<span class="text-amber-300">":&#123;record.exc_info[0].__name__&#125;"</span>
+
+        <span class="text-purple-400">with</span> self._lock:
+            allowed, suppressed = self._buckets[signature].consume()
+
+        <span class="text-purple-400">if</span> allowed:
+            <span class="text-purple-400">if</span> suppressed &gt; <span class="text-purple-300">0</span>:
+                record.msg = f<span class="text-amber-300">"[THROTTLED: &#123;suppressed&#125; identical events suppressed] &#123;record.msg&#125;"</span>
+            <span class="text-purple-400">return True</span>
+
+        <span class="text-slate-500"># Suppress repetitive error event to protect log pipeline!</span>
+        <span class="text-purple-400">return False</span></pre>
+            </div>
+
+            <!-- File 2: src/pulsepay/observability/dynamic_level.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">2. Dynamic Log Level Manager: <code class="text-purple-700">src/pulsepay/observability/dynamic_level.py</code></span>
+                    <span class="text-slate-400">Auto-Expiring Lease Architecture</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Observability - Dynamic Log Level Manager (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">import</span> time
+<span class="text-purple-400">import</span> logging
+<span class="text-purple-400">from</span> threading <span class="text-purple-400">import</span> Lock
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DynamicLogLevelManager</span>:
+    <span class="text-slate-500">"""
+    THREAD-SAFE ZERO-DOWNTIME LOG LEVEL GOVERNOR:
+    - Temporarily elevates logger level to DEBUG without restarting pods.
+    - Enforces strict Time-to-Live (TTL): automatically snaps back to default INFO!
+    - Supports surgical tenant targeting: debugs a single merchant ID while keeping
+      all other global traffic at INFO.
+    """</span>
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">__init__</span>(self, default_level: str = <span class="text-amber-300">"INFO"</span>):
+        self.default_level = getattr(logging, default_level.upper(), logging.INFO)
+        self.active_level = self.default_level
+        self.lease_expires_at: Optional[float] = <span class="text-rose-400">None</span>
+        self.target_merchant_id: Optional[str] = <span class="text-rose-400">None</span>
+        self._lock = Lock()
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">activate_debug_lease</span>(
+        self, 
+        duration_seconds: int = <span class="text-purple-300">300</span>, 
+        merchant_id: Optional[str] = <span class="text-rose-400">None</span>
+    ) -> dict:
+        <span class="text-purple-400">with</span> self._lock:
+            self.active_level = logging.DEBUG
+            self.lease_expires_at = time.monotonic() + duration_seconds
+            self.target_merchant_id = merchant_id
+            
+            <span class="text-slate-500"># Update root logger level live</span>
+            logging.getLogger().setLevel(logging.DEBUG)
+
+            logging.getLogger(<span class="text-amber-300">"pulsepay.governance"</span>).warning(
+                f<span class="text-amber-300">"DYNAMIC DEBUG LEASE ACTIVATED for &#123;duration_seconds&#125;s (Merchant: &#123;merchant_id or 'ALL'&#125;)"</span>
+            )
+            <span class="text-purple-400">return</span> {
+                <span class="text-amber-300">"status"</span>: <span class="text-amber-300">"ACTIVE"</span>,
+                <span class="text-amber-300">"level"</span>: <span class="text-amber-300">"DEBUG"</span>,
+                <span class="text-amber-300">"ttl_seconds"</span>: duration_seconds,
+                <span class="text-amber-300">"merchant_target"</span>: merchant_id
+            }
+
+    <span class="text-purple-400">def</span> <span class="text-sky-300 font-bold">check_and_revert_expired_lease</span>(self) -> <span class="text-rose-400">None</span>:
+        <span class="text-purple-400">if</span> self.lease_expires_at <span class="text-purple-400">and</span> time.monotonic() &gt; self.lease_expires_at:
+            <span class="text-purple-400">with</span> self._lock:
+                <span class="text-purple-400">if</span> self.lease_expires_at <span class="text-purple-400">and</span> time.monotonic() &gt; self.lease_expires_at:
+                    self.active_level = self.default_level
+                    self.lease_expires_at = <span class="text-rose-400">None</span>
+                    self.target_merchant_id = <span class="text-rose-400">None</span>
+                    logging.getLogger().setLevel(self.default_level)
+                    logging.getLogger(<span class="text-amber-300">"pulsepay.governance"</span>).info(
+                        <span class="text-amber-300">"Dynamic debug lease expired. Level automatically reverted to INFO."</span>
+                    )</pre>
+            </div>
+
+            <!-- File 3: src/pulsepay/web/admin.py -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">3. Administrative Control Endpoints: <code class="text-purple-700">src/pulsepay/web/admin.py</code></span>
+                    <span class="text-slate-400">FastAPI Live Governance API</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># PulsePay Web - Admin Governance Endpoints (Milestone 09)</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-purple-400">from</span> fastapi <span class="text-purple-400">import</span> APIRouter, Depends, Header, HTTPException
+<span class="text-purple-400">from</span> pydantic <span class="text-purple-400">import</span> BaseModel, Field
+<span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> Optional
+<span class="text-purple-400">from</span> pulsepay.observability.dynamic_level <span class="text-purple-400">import</span> DynamicLogLevelManager
+
+admin_router = APIRouter(prefix=<span class="text-amber-300">"/api/v1/admin"</span>, tags=[<span class="text-amber-300">"Governance"</span>])
+governor = DynamicLogLevelManager(default_level=<span class="text-amber-300">"INFO"</span>)
+
+<span class="text-purple-400">class</span> <span class="text-emerald-400 font-bold">DebugLeaseRequest</span>(BaseModel):
+    level: str = Field(default=<span class="text-amber-300">"DEBUG"</span>, examples=[<span class="text-amber-300">"DEBUG"</span>])
+    ttl_seconds: int = Field(default=<span class="text-purple-300">300</span>, ge=<span class="text-purple-300">10</span>, le=<span class="text-purple-300">3600</span>)
+    merchant_id: Optional[str] = Field(default=<span class="text-rose-400">None</span>, examples=[<span class="text-amber-300">"MERCH-8821"</span>])
+
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">verify_admin_token</span>(authorization: str = Header(...)) -> bool:
+    <span class="text-purple-400">if</span> authorization != <span class="text-amber-300">"Bearer ADMIN_GOVERNANCE_SECRET_KEY"</span>:
+        <span class="text-purple-400">raise</span> HTTPException(status_code=<span class="text-purple-300">403</span>, detail=<span class="text-amber-300">"Unauthorized governance request"</span>)
+    <span class="text-purple-400">return True</span>
+
+<span class="text-purple-400">@admin_router.post</span>(<span class="text-amber-300">"/log-level"</span>)
+<span class="text-purple-400">async def</span> <span class="text-sky-300 font-bold">set_runtime_log_level</span>(
+    req: DebugLeaseRequest, 
+    authorized: bool = Depends(verify_admin_token)
+):
+    lease = governor.activate_debug_lease(
+        duration_seconds=req.ttl_seconds, 
+        merchant_id=req.merchant_id
+    )
+    <span class="text-purple-400">return</span> lease</pre>
+            </div>
+        </section>
+
+        <!-- 7. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Self-Inflicted Error Storm" DoS</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Logging unthrottled exceptions inside tight failure retry loops without rate limiting.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this crashes systems:</strong> When an upstream database drops out, an application retrying 1,000 times/sec emits 1,000 stack traces per second. The logging queue fills up, memory spikes, and disk I/O freezes the container, causing a complete cascading platform crash.
+                        <strong>Fix:</strong> Enforce in-memory <strong>Token Bucket Rate Limiting</strong> on repeating errors!
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Forgotten Debug Mode" Quota Trap</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Switching a production service to <code class="font-mono bg-rose-100 px-1 py-0.5 rounded text-rose-900">DEBUG</code> via environment variable and forgetting to revert it after the incident.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this triggers cloud billing shocks:</strong> Debug logging increases data volume by 20x. Running DEBUG for two weeks unmonitored will generate millions of superfluous log lines and exhaust monthly cloud logging budgets in days.
+                        <strong>Fix:</strong> Always enforce <strong>Auto-Expiring TTL Leases</strong> that snap back to INFO automatically!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating PulsePay Milestone 09</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to test Token Bucket error throttling under a 1,000-event simulated burst, and trigger a dynamic log level elevation lease via the admin API:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Benchmark Token Bucket Rate Limiter -->
+                <div>
+                    <span class="text-slate-500"># 1. Fire a burst of 1,000 identical database errors and prove throttling suppresses 99% of events:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+python3 -c '
+import logging
+from pulsepay.observability.rate_limiter import TokenBucketErrorFilter
+
+logger = logging.getLogger("pulsepay.storm")
+logger.setLevel(logging.ERROR)
+logger.addFilter(TokenBucketErrorFilter(capacity=3, refill_rate=1.0))
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(handler)
+
+# Simulate rapid storm of 1,000 identical errors
+for i in range(1000):
+    try:
+        raise ConnectionResetError("Postgres pool unreachable")
+    except Exception as e:
+        logger.error("DB connection dropped", exc_info=False)
+' | wc -l
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Expected Output: Only 3 lines emitted! (997 duplicate errors suppressed, saving network and storage!).
+                    </span>
+                </div>
+
+                <!-- Step 2: Test Dynamic TTL Lease Expiration -->
+                <div>
+                    <span class="text-slate-500"># 2. Test auto-expiring debug lease: elevates to DEBUG, sleeps, and verifies automatic revert to INFO:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+python3 -c '
+import time, logging
+from pulsepay.observability.dynamic_level import DynamicLogLevelManager
+
+gov = DynamicLogLevelManager(default_level="INFO")
+
+# Elevate level for 2 seconds
+gov.activate_debug_lease(duration_seconds=2)
+print("Immediate Level:", logging.getLevelName(gov.active_level))
+
+# Sleep past TTL expiration
+time.sleep(2.5)
+gov.check_and_revert_expired_lease()
+print("Post-Expiry Level:", logging.getLevelName(gov.active_level))
+'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Output: Confirms level transitions from DEBUG to INFO automatically after TTL expires without restarting!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 10 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 10: Production Observability, Alerting &amp; Incident Post-Mortem Engineering</h4>
+                <p class="text-xs text-slate-500 font-sans">The series finale: Turning log events into Prometheus alert metrics, running a live distributed post-mortem on an intermittent double-spend race condition, and executing the 10-Point Staff Production Logging Audit on <strong>PulsePay</strong>.</p>
+            </div>
+            <a href="Chapter 10 - Production Observability, Alerting and Incident Post-Mortem Engineering.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 10 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>

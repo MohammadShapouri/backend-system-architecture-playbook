@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 10: Production Observability, Alerting &amp; Incident Post-Mortem Engineering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Enterprise Logging &amp; Observability Engineering Series &bull; Senior Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">PulsePay (Milestone 10 - Production Observability &amp; The Staff Audit)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 10 &bull; The Final Milestone
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Production Observability, Alerting &amp; Incident Post-Mortem Engineering
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Transforming raw log streams into production operational intelligence: Deriving Prometheus metrics from log events, engineering multi-window SLO burn-rate alerts, conducting scientific distributed incident post-mortems using W3C trace correlation, and executing the 10-Point Staff Production Logging Audit on <strong>PulsePay</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Culmination Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build &bull; Culmination</span>
+                    <h2 class="text-2xl font-extrabold">PulsePay Milestone 10: Production Readiness &amp; Forensic Auditing</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        Over 9 chapters, PulsePay evolved from a simple Python event schema into an enterprise distributed financial platform with non-blocking queue offloaders, W3C distributed trace correlation, Luhn-validated PII masking, cryptographic audit chains, outbound banking interceptors, containerized Docker drivers, Kubernetes DaemonSet forwarders, Grafana Loki storage, and token bucket rate limiters. In this final milestone, we operationalize PulsePay for mission-critical cloud deployments. We derive time-series alerting metrics directly from log events, conduct an end-to-end post-mortem on an intermittent double-spend concurrency bug, and certify the entire system against the 10-Point Staff Production Logging Audit.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 10 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Log-Derived Metrics (LogQL Metric Rules)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Multi-Window SLO Burn Rate Alerting</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Scientific Incident Post-Mortem Methodology</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Live Double-Spend Race Condition Investigation</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> End-to-End Cross-Service Trace Timeline</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 10-Point Staff Production Logging Audit</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. Log-to-Metric Extraction: Deriving Prometheus Metrics from Log Streams -->
+        <section id="log-derived-metrics" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: Deriving Time-Series Metrics from Log Streams</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                A common operational trap in enterprise monitoring is writing code that emits both a log statement and a manual Prometheus counter increment for the exact same event. This duplicates instrumentation logic and risks drift between what is logged and what is monitored.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Modern observability platforms bridge this gap through **Log-Derived Metric Extraction**: log aggregation pipelines (such as Vector's metric sinks or Grafana Loki's recording rules) evaluate incoming structured log streams and dynamically synthesize real-time numerical time-series metrics:
+            </p>
+
+            <!-- Visual Flowchart: Log to Metric Extraction (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    The Log-Derived Time-Series Extraction Architecture
+                </div>
+
+                <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-center">
+                    <!-- Step 1: Log Event -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-sky-300 font-bold block">1. Structured JSON Event</span>
+                        <div class="text-[10px] bg-slate-900 p-2 rounded text-slate-300 font-sans text-left">
+                            {"action":"PAYMENT_SETTLE", "status":"504", "duration_ms":3120}
+                        </div>
+                    </div>
+
+                    <div class="text-purple-400 font-bold">&rarr; stream parser &rarr;</div>
+
+                    <!-- Step 2: Metric Synthesizer -->
+                    <div class="p-3 bg-purple-950/60 border border-purple-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-purple-300 font-bold block">2. Ingestion Metric Sink</span>
+                        <span class="text-[10px] text-purple-200 font-sans">
+                            Extracts duration_ms &rarr; Bucket<br>Increments counter: pulsepay_settlement_errors_total
+                        </span>
+                    </div>
+
+                    <div class="text-emerald-400 font-bold">&rarr; Prometheus time-series &rarr;</div>
+
+                    <!-- Step 3: Alertmanager -->
+                    <div class="p-3 bg-emerald-950/60 border border-emerald-500 rounded-xl w-full md:w-60 space-y-1">
+                        <span class="text-emerald-300 font-bold block">3. Precision Alerting</span>
+                        <span class="text-[10px] text-emerald-200 font-sans">
+                            SLO Burn Rate &gt; 14.4x<br>Fires PagerDuty incident to on-call
+                        </span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1 font-sans">
+                    <strong class="text-emerald-400 font-mono">The Operational Advantage:</strong>
+                    <p class="text-slate-400 leading-relaxed">
+                        By deriving metrics from logs at the ingestion layer, your application code remains clean and decoupled. If product requirements mandate tracking a new business metric (such as settlements over $100,000 USD), you simply write a new query in Loki or Vector <em>without touching or redeploying application code!</em>
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Designing Actionable Production Alerts vs. The Boy Who Cried Wolf -->
+        <section id="actionable-alerting" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Alerting Best Practices: Symptoms vs. The "Boy Who Cried Wolf"</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                The most toxic anti-pattern in on-call engineering is configuring alerting rules that fire on every single error log:
+                <code class="font-mono text-xs bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded font-bold">count(level="ERROR") > 0</code>.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                In distributed systems, transient network glitches, client-side input errors, and momentary database lock retries occur constantly. If an on-call engineer receives 30 PagerDuty alerts every night for self-healing errors, they experience **Alert Fatigue**. Within weeks, the team instinctively silences alarms—and sleeps straight through a real multi-million-dollar database corruption outage!
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 font-mono text-xs">
+                <!-- Bad Alerting -->
+                <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center gap-2 text-rose-900 font-bold text-sm border-b border-rose-200 pb-2">
+                        <span>&#10060;</span>
+                        <span>THE NAIVE CAUSE-BASED ALERT</span>
+                    </div>
+                    <pre class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># Terrible Rule: Alerts on single log error</span>
+- alert: LogErrorEncountered
+  expr: rate({app="pulsepay"} |= "ERROR" [1m]) &gt; 0</pre>
+                    <p class="text-[11px] font-sans text-rose-950 leading-relaxed">
+                        <strong>Why it fails:</strong> Fires when an invalid user types an expired credit card. Fires when a bot scans an invalid endpoint. On-call engineers receive 50 wake-up alerts per week for non-incidents.
+                    </p>
+                </div>
+
+                <!-- Senior Symptom Alerting -->
+                <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center gap-2 text-emerald-900 font-bold text-sm border-b border-emerald-200 pb-2">
+                        <span>&check;</span>
+                        <span>THE SENIOR SYMPTOM &amp; SLO ALERT</span>
+                    </div>
+                    <pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+<span class="text-slate-500"># Enterprise Rule: Alerts on customer impact</span>
+- alert: PaymentClearingSLOBurnRateHigh
+  expr: (
+    sum(rate({app="pulsepay"} | json | action="PAYMENT_SETTLE" | http_status &gt;= 500 [5m]))
+    /
+    sum(rate({app="pulsepay"} | json | action="PAYMENT_SETTLE" [5m]))
+  ) &gt; 0.01</pre>
+                    <p class="text-[11px] font-sans text-emerald-950 leading-relaxed">
+                        <strong>Why it works:</strong> Fires <em>only</em> when more than 1% of real financial clearing transactions fail over a 5-minute sustained window. Real users are impacted. Zero false alarms.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Scientific Post-Mortem Investigation: Resolving a Distributed Double-Spend Bug -->
+        <section id="incident-post-mortem" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Forensic Post-Mortem: Troubleshooting an Intermittent Double-Spend</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now walk through a real-world enterprise incident in PulsePay. At 14:10 UTC on Black Friday, automated reconciliation reports flag an intermittent anomaly: account <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">ACC-US-9912</code> was double-debited for a $500 USD transaction.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                How does a Staff Observability Engineer troubleshoot this across distributed microservices using our logging pipeline? We execute the <strong>5-Stage Forensic Investigation</strong>:
+            </p>
+
+            <!-- Forensic Timeline Visual (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-emerald-400 uppercase tracking-widest text-[11px]">
+                    PulsePay Incident Post-Mortem: Cross-Service Trace Reconstruction
+                </div>
+
+                <div class="space-y-3 max-w-3xl mx-auto">
+                    <!-- Step 1: Metric Spike -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <div class="flex justify-between text-sky-300 font-bold">
+                            <span>Step 1: Metric Anomaly Detection</span>
+                            <span class="text-slate-500">14:10:02 UTC</span>
+                        </div>
+                        <p class="text-slate-400 text-[11px] font-sans">
+                            Prometheus metric <code class="text-sky-300 font-mono">pulsepay_ledger_imbalance_detected</code> spikes to 1. On-call engineer opens Grafana dashboard.
+                        </p>
+                    </div>
+
+                    <!-- Step 2: Query Error Clusters in Loki -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <div class="flex justify-between text-purple-300 font-bold">
+                            <span>Step 2: LogQL Cluster Identification</span>
+                            <span class="text-slate-500">14:10:45 UTC</span>
+                        </div>
+                        <div class="bg-slate-900 p-2 rounded text-purple-200 text-[10px]">
+                            {app="pulsepay-api"} | json | level="ERROR" | action="PAYMENT_SETTLE"
+                        </div>
+                        <p class="text-slate-400 text-[11px] font-sans">
+                            Identifies failing transaction error: <code class="text-amber-300 font-mono">Duplicate settlement race detected on idempotency key 'IDEMP-BLK-771'</code>.
+                            <br>Extracts W3C Trace ID: <code class="text-emerald-400 font-mono">4bf92f3577b34da6a3ce929d0e0e4736</code>.
+                        </p>
+                    </div>
+
+                    <!-- Step 3: End-to-End Trace Query -->
+                    <div class="p-4 bg-emerald-950/40 border border-emerald-500/60 rounded-2xl space-y-2">
+                        <div class="flex justify-between text-emerald-300 font-bold text-sm">
+                            <span>Step 3: Unified Distributed Trace Timeline (LogQL Query)</span>
+                            <span class="text-slate-400">14:11:30 UTC</span>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded text-emerald-200 text-[10px]">
+                            {environment="production"} | json | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
+                        </div>
+
+                        <!-- The Reconstructed Forensic Timeline -->
+                        <div class="space-y-1.5 text-[10px] text-slate-300 font-mono pt-2 border-t border-slate-800">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500">14:10:01.102Z</span>
+                                <span class="text-sky-300">[API Gateway]</span>
+                                <span>POST /api/v1/payments/settle received from IP 198.51.100.4</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500">14:10:01.104Z</span>
+                                <span class="text-sky-300">[API Gateway]</span>
+                                <span class="text-amber-300">DUPLICATE TCP CONNECTION: Identical client retries request before 1st responds!</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500">14:10:01.108Z</span>
+                                <span class="text-purple-300">[Ledger Core]</span>
+                                <span>Worker 1 checks idempotency table: Key IDEMP-BLK-771 not committed yet! (PASS)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500">14:10:01.109Z</span>
+                                <span class="text-purple-300">[Ledger Core]</span>
+                                <span class="text-rose-400 font-bold">RACE: Worker 2 checks idempotency table concurrently before Worker 1 commits! (PASS)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500">14:10:01.115Z</span>
+                                <span class="text-emerald-300">[Banking Rail]</span>
+                                <span class="text-rose-400 font-bold">Both Worker 1 and Worker 2 dispatch $500 clearing call to upstream bank!</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Root Cause & Fix -->
+                    <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                        <div class="flex justify-between text-emerald-400 font-bold">
+                            <span>Step 4: Root Cause Isolated with Mathematical Proof</span>
+                            <span class="text-slate-500">14:13:00 UTC</span>
+                        </div>
+                        <p class="text-slate-400 text-[11px] font-sans">
+                            <strong>Root Cause:</strong> The idempotency key check was executed outside the database row lock transaction. 
+                            <br><strong>The Permanent Fix:</strong> Wrap the idempotency key insertion inside a PostgreSQL <code class="text-slate-200 font-mono">INSERT ... ON CONFLICT DO NOTHING</code> subtransaction under pessimistic row locking (<code class="text-slate-200 font-mono">with_for_update()</code> from Chapter 06). Zero guesswork. Solved in 3 minutes!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. The 10-Point Staff Production Logging Audit -->
+        <section id="staff-audit" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Enterprise Metrology</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">The 10-Point Staff Production Logging Audit</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Before any service is deployed to production, Principal and Staff Engineers execute the **10-Point Production Logging Audit**. Every checkbox represents a hardened defensive control mastered across this curriculum:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-4 text-xs font-mono">
+                <!-- Point 1 -->
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-sm">
+                    <span class="text-emerald-700 font-bold">1. &check; Twelve-Factor stdout Compliance</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Application never writes directly to local disk files inside containers. Stream pipes unbuffered to <code class="text-slate-800 font-mono">stdout/stderr</code> with <code class="text-slate-800 font-mono">PYTHONUNBUFFERED=1</code>.
+                    </p>
+                </div>
+
+                <!-- Point 2 -->
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-sm">
+                    <span class="text-emerald-700 font-bold">2. &check; Machine-Indexable JSON Schema</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Zero free-text string concatenation. Every log line is valid NDJSON with ISO-8601 UTC microsecond timestamps and RFC 5424 severity levels.
+                    </p>
+                </div>
+
+                <!-- Point 3 -->
+                <div class="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-sm">
+                    <span class="text-emerald-700 font-bold">3. &check; In-Memory PII &amp; Luhn Redaction</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Payment cards masked to first 6 / last 4 digits via Luhn algorithm. Passwords, CVVs, and JWT bearer tokens scrubbed before serialization.
+                    </p>
+                </div>
+
+                <!-- Point 4 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">4. &check; W3C Distributed Trace Correlation</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Every log automatically inherits W3C <code class="text-slate-800 font-mono">trace_id</code> and <code class="text-slate-800 font-mono">span_id</code> via asynchronous <code class="text-slate-800 font-mono">contextvars</code> across tasks and threadpools.
+                    </p>
+                </div>
+
+                <!-- Point 5 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">5. &check; Non-Blocking Queue Buffering</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Application worker threads push to bounded in-memory queues in &lt;0.005ms via <code class="text-slate-800 font-mono">QueueHandler</code>. Zero thread mutex contention on I/O.
+                    </p>
+                </div>
+
+                <!-- Point 6 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">6. &check; Outbound Third-Party Telemetry</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        All external HTTP calls to banking gateways automatically record sanitized target URLs, exact millisecond durations, status codes, and retry counts.
+                    </p>
+                </div>
+
+                <!-- Point 7 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">7. &check; Token Bucket Error Throttling</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Repetitive database connection drops and cascading failures throttled in-memory to prevent self-inflicted log storm DoS crashes.
+                    </p>
+                </div>
+
+                <!-- Point 8 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">8. &check; Host Disk Exhaustion Safeguards</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Docker configured with <code class="text-slate-800 font-mono">mode=non-blocking</code> and strict <code class="text-slate-800 font-mono">max-size/max-file</code> caps. Kubelet container log limits tuned to prevent <code class="text-slate-800 font-mono">DiskPressure</code> evictions.
+                    </p>
+                </div>
+
+                <!-- Point 9 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">9. &check; Strict Storage Tiering &amp; WORM Ledgers</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Operational diagnostics routed to compressed chunks in S3/Loki with 30-day TTLs. Financial compliance events sealed with HMAC-SHA256 in immutable WORM storage.
+                    </p>
+                </div>
+
+                <!-- Point 10 -->
+                <div class="p-4 bg-white border border-slate-200 shadow-sm rounded-xl space-y-1">
+                    <span class="text-emerald-700 font-bold">10. &check; Zero-Downtime Dynamic Debug Leases</span>
+                    <p class="text-slate-600 text-[11px] font-sans">
+                        Log levels can be elevated live via authenticated REST API with auto-expiring TTLs and surgical tenant targeting without restarting pods.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Log Absence Fallacy"</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Assuming an application is 100% healthy because zero error logs are appearing in Loki or OpenSearch.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this causes undetected outages:</strong> If a Kubernetes node disk fills up, a network partition isolates the logging shipper, or a fatal segmentation fault terminates the process, the error logs never reach the dashboard! Always monitor heartbeat metrics and traffic volume alongside log streams.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>The "Alerting on Ephemeral Warnings" Fatigue</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Configuring on-call notifications on single transient WARNING statements.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this destroys engineering teams:</strong> A WARNING represents an anomaly that the software successfully recovered from (e.g. retrying a failed Redis lookup). If engineers are paged for warnings, they experience alert burnout and ignore real outages.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Certifying PulsePay Production Readiness</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to execute the simulated race-condition post-mortem test, query the unified cross-service timeline, and certify the 10-point audit:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Run Concurrency Race Condition Simulation -->
+                <div>
+                    <span class="text-slate-500"># 1. Execute simulated payment settlement race condition:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+python3 -c '
+import asyncio, httpx
+from pulsepay.web.app import app
+
+async def trigger_concurrent_race():
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Send two simultaneous identical requests with identical trace ID
+        headers = {"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}
+        payload = {"account_number": "ACC-US-9912", "amount": "500.00", "currency": "USD"}
+        
+        r1, r2 = await asyncio.gather(
+            client.post("/api/v1/payments/settle", json=payload, headers=headers),
+            client.post("/api/v1/payments/settle", json=payload, headers=headers)
+        )
+        print("Concurrent Responses:", r1.status_code, r2.status_code)
+
+asyncio.run(trigger_concurrent_race())
+'
+                    </div>
+                </div>
+
+                <!-- Step 2: Execute Forensic Timeline Reconstruction -->
+                <div>
+                    <span class="text-slate-500"># 2. Extract and format the complete distributed timeline for the incident trace:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+python3 -c '
+from pulsepay.observability.engine import configure_production_logging
+import logging, json
+
+m = configure_production_logging()
+logger = logging.getLogger("pulsepay.forensics")
+
+events = [
+    {"timestamp": "2026-11-10T14:10:01.102Z", "service": "api-gateway", "action": "REQ_IN", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"},
+    {"timestamp": "2026-11-10T14:10:01.108Z", "service": "ledger-core", "action": "IDEMP_CHECK", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"},
+    {"timestamp": "2026-11-10T14:10:01.115Z", "service": "banking-rail", "action": "OUTBOUND_DISPATCH", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"}
+]
+
+for e in events:
+    logger.info(f"Timeline event: {e[\"action\"]}", extra=e)
+
+m.shutdown()
+' | jq -s '[.[] | {time: .timestamp, service: .attributes.service, action: .attributes.action, trace_id: .trace_id}]'
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Reconstructs the unified forensic timeline proving cross-service correlation!
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Series Completion Banner -->
+        <section class="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 border-2 border-emerald-500/50 p-8 rounded-3xl text-center space-y-4 shadow-2xl">
+            <span class="text-xs font-mono font-bold uppercase tracking-widest text-emerald-400 block">Course Curriculum Complete</span>
+            <h3 class="text-3xl font-extrabold text-white">You Have Engineered PulsePay's Telemetry Mesh</h3>
+            <p class="text-slate-300 text-sm max-w-2xl mx-auto leading-relaxed font-sans">
+                You have journeyed from the raw physics of timestamped system events to non-blocking queue offloaders, W3C distributed trace correlation, Luhn-validated PII scrubbers, cryptographic audit chains, outbound HTTP interceptors, containerized Docker drivers, Kubernetes DaemonSet forwarders, Grafana Loki storage, and automated SLO alerting. You possess the complete architectural skillset required of a Senior Observability Engineer, Site Reliability Engineer (SRE), and Staff Infrastructure Architect.
+            </p>
+            <div class="pt-2 flex flex-wrap justify-center gap-4">
+                <a href="Series Navigator.html" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 font-mono text-xs font-bold transition shadow-lg">
+                    &larr; Return to Master Series Navigator
+                </a>
+                <a href="Logging Glossary.html" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 text-emerald-400 hover:bg-slate-700 font-mono text-xs font-bold transition border border-slate-700">
+                    Browse Master Logging Glossary (A–Z) &rarr;
+                </a>
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>

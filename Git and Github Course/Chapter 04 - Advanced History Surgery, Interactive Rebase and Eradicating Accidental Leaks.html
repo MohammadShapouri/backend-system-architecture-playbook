@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter 04: Advanced History Surgery, Interactive Rebase &amp; Eradicating Accidental Leaks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased leading-relaxed selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Status Banner -->
+    <div class="bg-slate-950 border-b border-slate-800 text-xs py-2 px-6">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center text-slate-400 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Git &amp; GitHub Architecture Series &bull; Production Track</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-400">
+                Project Tracker: <span class="text-emerald-400 font-semibold">ShipForge (Milestone 04 - History Surgery &amp; Secret Sanitization)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white py-16 px-6 shadow-xl border-b border-slate-800 relative overflow-hidden">
+        <div class="absolute -right-20 -top-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-5xl mx-auto relative z-10">
+            <div class="inline-flex items-center gap-2 px-3 py-1 mb-4 text-xs font-mono font-semibold tracking-widest uppercase bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
+                Chapter 04 &bull; DAG Surgery, Cryptographic Scrubbing &amp; Lease-Guarded Pushes
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mt-2 mb-4">
+                Advanced History Surgery, Interactive Rebase &amp; Eradicating Accidental Leaks
+            </h1>
+            <p class="text-slate-300 text-lg max-w-3xl leading-relaxed">
+                Surgically rewriting distributed history: Mastering interactive rebase (<code class="font-mono text-emerald-400">git rebase -i</code>), exposing the fatal security fallacy of deleting pushed secrets in subsequent commits, permanently eradicating leaked credentials across all historical trees using <code class="font-mono text-emerald-400">git-filter-repo</code>, and safeguarding upstream remotes with <code class="font-mono text-emerald-400">--force-with-lease</code> in <strong>ShipForge</strong>.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-14 space-y-20">
+
+        <!-- Series Project Roadmap Callout -->
+        <section class="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-3xl p-8 border border-slate-700 shadow-xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-2">
+                    <span class="text-xs uppercase font-mono tracking-widest text-emerald-400 font-bold">Continuous Project Build</span>
+                    <h2 class="text-2xl font-extrabold">ShipForge Milestone 04: Cryptographic History Surgery</h2>
+                    <p class="text-slate-300 text-sm max-w-2xl leading-relaxed">
+                        In Chapters 01 through 03, we mastered local object structures, atomic commits, branching pointers, and the safety net of <code class="font-mono text-emerald-300 bg-slate-950 px-1 py-0.5 rounded">git reflog</code>. In Milestone 04, we confront the most high-stakes operations in distributed version control: curating clean, professional pull request histories via interactive rebasing, splitting and squashing commits, and remediating high-severity credential leaks so completely that zero forensic traces remain in Git's object database.
+                    </p>
+                </div>
+                <div class="bg-slate-950/80 border border-slate-700 p-4 rounded-2xl font-mono text-xs text-slate-300 min-w-[270px]">
+                    <div class="text-emerald-400 font-bold mb-2 pb-1 border-b border-slate-800">// Milestone 04 Deliverables</div>
+                    <ul class="space-y-1.5 text-[11px]">
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Interactive Rebase Engine (<code class="text-purple-300">git rebase -i</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The 6 Rebase Operations (<code class="text-purple-300">pick</code>, <code class="text-purple-300">reword</code>, <code class="text-purple-300">squash</code>, <code class="text-purple-300">fixup</code>, <code class="text-purple-300">edit</code>, <code class="text-purple-300">drop</code>)</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> The "Ghost Blob" Leaked Secret Security Flaw</li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Global Object Purging via <code class="text-purple-300">git-filter-repo</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Upstream Guard: <code class="text-purple-300">--force-with-lease</code> vs <code class="text-purple-300">--force</code></li>
+                        <li class="flex items-center gap-1.5"><span class="text-emerald-400">&check;</span> Forensic Object Eradication Verification Battery</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1. The Computer Science of Interactive Rebase -->
+        <section id="interactive-rebase" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 01</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Computer Science: The Interactive Rebase State Machine</h2>
+            </div>
+            
+            <p class="text-slate-700 leading-relaxed">
+                When developers work on local feature branches, their natural workflow is iterative, experimental, and frequently chaotic: fixing typos, testing syntax, and making partial commits. Publishing this uncurated stream of consciousness to a team repository pollutes the DAG, breaks <code class="font-mono text-xs">git bisect</code> automation, and exhausts code reviewers.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                <strong>Interactive Rebase (<code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-purple-700 font-bold">git rebase -i &lt;base-commit&gt;</code>)</strong> is an in-memory compiler that allows you to rewrite, reorder, combine, and delete commit nodes before publishing. Git computes the series of patch deltas between the base commit and <code class="font-mono text-xs">HEAD</code>, presents them in an editable instruction script (the <em>rebase todo list</em>), and sequentially replays them to synthesize brand-new commit objects.
+            </p>
+
+            <!-- Rebase Command Taxonomy Grid -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+                <!-- pick -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-sky-600 text-sm">pick (p)</span>
+                        <span class="text-[10px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded font-bold">Default Action</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Retains the commit and applies its diff as is. Reordering <code class="font-mono text-slate-800">pick</code> lines in the instruction list physically reorders the sequence of commits in the resulting DAG.
+                    </p>
+                </div>
+
+                <!-- reword -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-purple-600 text-sm">reword (r)</span>
+                        <span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">Message Edit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Applies the commit's code changes, but pauses execution to allow the author to edit the commit log message (e.g., standardizing a non-compliant message to Conventional Commits).
+                    </p>
+                </div>
+
+                <!-- edit -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-amber-600 text-sm">edit (e)</span>
+                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded font-bold">Surgical Halt</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Halts the rebase process entirely at this commit. Leaves your working tree and staging index at that exact historical moment, allowing you to add files, amend changes, or split one commit into multiple atomic units.
+                    </p>
+                </div>
+
+                <!-- squash -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-emerald-600 text-sm">squash (s)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold">Melds &amp; Prompts</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Melds the commit's diff directly into the previous commit in the list. Pauses to open an editor containing both commit messages, allowing you to synthesize a combined semantic message.
+                    </p>
+                </div>
+
+                <!-- fixup -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-indigo-600 text-sm">fixup (f)</span>
+                        <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">Silent Melt</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Like <code class="font-mono text-indigo-700 font-bold">squash</code>, it merges changes into the preceding commit, but <strong>completely discards this commit's log message</strong>. Perfect for small typo corrections or formatting adjustments.
+                    </p>
+                </div>
+
+                <!-- drop -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span class="font-bold text-rose-600 text-sm">drop (d)</span>
+                        <span class="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded font-bold">Eradicate Node</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 font-sans leading-relaxed">
+                        Removes the commit entirely from the replayed history. (Alternatively, simply deleting the line from the rebase todo file achieves the exact same result).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Crucial Ordering Rule Callout -->
+            <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-xl text-xs text-amber-900 space-y-1 font-mono">
+                <span class="font-bold block text-sm">Critical Chronology Invariant in Rebase Todo Lists:</span>
+                <p class="font-sans text-amber-800 text-[11px] leading-relaxed">
+                    Unlike <code class="font-mono">git log</code> (which lists the newest commit at the very top), an interactive rebase todo file is displayed in <strong>chronological execution order</strong>: the oldest commit is at the top, and the newest commit is at the bottom! The command at line 1 executes first, and line 2 squashes into line 1.
+                </p>
+            </div>
+        </section>
+
+        <!-- 2. Security Anatomy: The Fatal "Ghost Blob" Secret Leak -->
+        <section id="accidental-secret-leak" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Part 02</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Security Anatomy: The "Ghost Blob" Fallacy of Deleting Secrets</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                One of the most dangerous misconceptions in software engineering is the belief that committing a deletion of a secret remediates the leak:
+            </p>
+
+            <div class="bg-rose-50 border border-rose-200 p-5 rounded-2xl space-y-2 text-xs font-mono text-rose-900">
+                <div class="font-bold text-sm text-rose-950">&#10060; The Fatal Remediation Fallacy:</div>
+                <div class="bg-white p-3 rounded-xl border border-rose-200 space-y-1">
+                    <div>$ git add secrets.json &amp;&amp; git commit -m "feat: add config"  <span class="text-rose-600 font-bold"># LEAK OCCURS HERE</span></div>
+                    <div>$ git push origin main</div>
+                    <div class="text-slate-500"># Developer panics upon realizing secrets.json contains AWS Private Keys:</div>
+                    <div>$ git rm secrets.json &amp;&amp; git commit -m "fix: delete secret file"</div>
+                    <div>$ git push origin main</div>
+                </div>
+                <p class="font-sans text-rose-800 leading-relaxed pt-1">
+                    <strong>Why this changes nothing:</strong> Git is an append-only snapshot database. While <code class="font-mono">secrets.json</code> is absent from the working tree of the latest commit, <strong>it lives permanently in the tree and blob objects of the previous commit!</strong> Anyone cloning the repository, browsing commit history on GitHub, or running <code class="font-mono">git checkout HEAD~1</code> can extract your live production credentials in milliseconds.
+                </p>
+            </div>
+
+            <!-- Ghost Blob Architecture Diagram (Pure HTML/CSS) -->
+            <div class="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 font-mono text-xs">
+                <div class="text-center font-bold text-slate-400 uppercase tracking-widest text-[11px]">
+                    Visualizing the Ghost Blob in Git's Immutable DAG
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                    <!-- Commit 1: The Leak -->
+                    <div class="p-5 bg-rose-950/40 border-2 border-rose-700 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-rose-800 pb-2">
+                            <span class="text-rose-400 font-bold text-sm">Commit A: The Leak</span>
+                            <span class="text-[9px] bg-rose-900 text-rose-200 px-2 py-0.5 rounded">SHA: a18f92</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[11px]">
+                            Root tree points directly to the secret credentials blob:
+                        </p>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-rose-900 text-[10px] space-y-1 text-slate-300">
+                            <div>Tree: <span class="text-purple-300">3f88d1</span></div>
+                            <div class="pl-2 border-l border-slate-800">
+                                &bull; README.md &rarr; blob <span class="text-sky-300">e69de2</span><br>
+                                &bull; <strong class="text-rose-400">secrets.json &rarr; blob c8102a (AWS_KEY=AKIA...)</strong>
+                            </div>
+                        </div>
+                        <span class="text-rose-400 font-bold text-[10px] block">&uarr; THIS BLOB REMAINS IN THE DATABASE FOREVER &uarr;</span>
+                    </div>
+
+                    <!-- Commit 2: The Naive Fix -->
+                    <div class="p-5 bg-slate-950 border border-slate-700 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-300 font-bold text-sm">Commit B: The "Deletion"</span>
+                            <span class="text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded">SHA: 7b4012</span>
+                        </div>
+                        <p class="text-slate-400 font-sans text-[11px]">
+                            Root tree omits the file, but links back to Commit A as its parent:
+                        </p>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 text-[10px] space-y-1 text-slate-400">
+                            <div>Parent: <span class="text-rose-400 font-bold">a18f92 (Points to Commit A!)</span></div>
+                            <div>Tree: <span class="text-purple-300">9c001f</span></div>
+                            <div class="pl-2 border-l border-slate-800">
+                                &bull; README.md &rarr; blob <span class="text-sky-300">e69de2</span>
+                            </div>
+                        </div>
+                        <span class="text-slate-500 text-[10px] block font-sans">
+                            Any adversary who executes <code class="text-slate-300 font-mono">git checkout a18f92</code> recovers the full secret on disk!
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Cryptographic Scrubbing: git-filter-repo -->
+        <section id="git-filter-repo" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 03</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Cryptographic Scrubbing: Permanent Purging via git-filter-repo</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                To truly remediate an accidental leak, the secret blob must be <strong>physically and mathematically excised from every commit tree, tag, and reference</strong> across the entire repository DAG.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                Historically, Git provided <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-rose-700">git filter-branch</code>. Today, <strong>git filter-branch is formally deprecated by the Git Core Project</strong> because it is painfully slow, prone to corrupting commit metadata, and frequently leaves dangling references in hidden namespaces.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                The modern, official standard recommended by Git and GitHub is <code class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-purple-700 font-bold">git-filter-repo</code>: a high-speed Python-based utility that rebuilds the entire object database from scratch in seconds:
+            </p>
+
+            <div class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl space-y-3">
+                <div class="text-emerald-400 font-bold">// Installing &amp; Executing Permanent Object Purging:</div>
+                <pre>
+<span class="text-slate-500"># 1. Install git-filter-repo via pip or package manager</span>
+pip install git-filter-repo
+
+<span class="text-slate-500"># 2. Permanently purge a secret file across ALL branches, tags, and commits</span>
+<span class="text-slate-500"># '--invert-paths' means: KEEP everything EXCEPT the specified path!</span>
+git filter-repo --invert-paths --path secrets.json --force
+
+<span class="text-slate-500"># 3. Alternatively: Scrub an exact API key string anywhere it appears across ALL files:</span>
+<span class="text-slate-500"># Create a expressions replacement file:</span>
+echo <span class="text-amber-300">"AKIAIOSFODNN7EXAMPLE==&gt;REDACTED_API_KEY"</span> &gt; replace.txt
+git filter-repo --replace-text replace.txt --force</pre>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2 font-sans text-xs">
+                <span class="font-mono font-bold text-slate-900 block text-sm">What git-filter-repo Does Under the Hood</span>
+                <p class="text-slate-600 leading-relaxed">
+                    <code class="font-mono text-slate-800">git-filter-repo</code> walks the entire DAG from the root commit to the tips of all branches. Whenever it encounters a tree containing <code class="font-mono text-slate-800">secrets.json</code>, it omits that entry from the new tree object. Because the root tree hash changes, every descendant commit receives a brand-new SHA hash. It rewrites tags, purges the local reflogs, and runs an aggressive <code class="font-mono text-slate-800">git gc --prune=now</code> to physically obliterate the unreferenced blobs from disk.
+                </p>
+            </div>
+        </section>
+
+        <!-- 4. Safe Remote Pushing: --force vs --force-with-lease -->
+        <section id="force-with-lease" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 04</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Safe Remote Updating: Why --force-with-lease is Mandatory</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                Whenever you rebase, squash, or purge history, your local branch diverges from the upstream remote branch. Running a standard <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">git push</code> will be rejected by GitHub with a <code class="font-mono text-xs text-rose-700 font-bold">[rejected - non-fast-forward]</code> error.
+            </p>
+            <p class="text-slate-700 leading-relaxed">
+                To publish rewritten history, engineers must force the update. However, using blind force is one of the leading causes of production code loss in software teams:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 items-stretch">
+                <!-- Blind Force -->
+                <div class="bg-rose-50 border border-rose-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-rose-900 text-sm">&#10060; git push --force</span>
+                        <span class="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded font-mono font-bold">Destructive Blind Overwrite</span>
+                    </div>
+                    <p class="text-xs text-rose-800 leading-relaxed font-sans">
+                        Instructs the remote server: <em>"Overclock your branch pointer to my local SHA, regardless of what anyone else has pushed in the interim!"</em>
+                    </p>
+                    <div class="bg-slate-900 text-rose-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>1. Alice and Bob work on feature/payments</div>
+                        <div>2. Bob pushes an important commit to GitHub</div>
+                        <div>3. Alice rebases locally, unaware of Bob's push</div>
+                        <div>4. Alice runs: git push --force</div>
+                        <div class="text-rose-400 font-bold">&rarr; Bob's commit is permanently overwritten on GitHub!</div>
+                    </div>
+                </div>
+
+                <!-- Force with Lease -->
+                <div class="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-bold text-emerald-900 text-sm">&check; git push --force-with-lease</span>
+                        <span class="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-mono font-bold">Defensive Conditional Overwrite</span>
+                    </div>
+                    <p class="text-xs text-emerald-800 leading-relaxed font-sans">
+                        Instructs the remote server: <em>"Only overwrite the remote branch IF its current pointer matches my local remote-tracking branch (<code class="font-mono">refs/remotes/origin/...</code>)!"</em>
+                    </p>
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-[10px] space-y-1">
+                        <div>1. Alice and Bob work on feature/payments</div>
+                        <div>2. Bob pushes an important commit to GitHub</div>
+                        <div>3. Alice rebases locally and pushes:</div>
+                        <div class="text-amber-300">git push --force-with-lease</div>
+                        <div class="text-emerald-400 font-bold">&rarr; REJECTED! Remote has updated. Bob's work is saved!</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Production Implementation: ShipForge Milestone 04 -->
+        <section id="shipforge-milestone-04" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-emerald-600 font-mono text-xs font-bold uppercase tracking-wider">Part 05</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">ShipForge Milestone 04: History Rebase &amp; Secret Sanitization</h2>
+            </div>
+
+            <p class="text-slate-700 leading-relaxed">
+                We now execute Milestone 04 for <strong>ShipForge</strong>: simulating an accidental secret commit of a private key file, curating a messy series of five local commits down to two semantic units via <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">git rebase -i</code>, and executing a complete scrub using <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded font-bold text-slate-800">git-filter-repo</code>.
+            </p>
+
+            <div class="bg-slate-900 p-5 rounded-2xl text-slate-300 font-mono text-xs space-y-1 border border-slate-800">
+                <div class="text-emerald-400 font-bold mb-2">// Updated ShipForge Hierarchy (Milestone 04)</div>
+                <div>shipforge/</div>
+                <div>├── .git/</div>
+                <div>├── src/</div>
+                <div>│   └── shipforge/</div>
+                <div>│       ├── auth.py</div>
+                <div>│       └── tokens.py                   <span class="text-emerald-300 font-bold"># Cleanly rebased feature commit</span></div>
+                <div>├── tests/</div>
+                <div>│   └── test_tokens.py              <span class="text-emerald-300 font-bold"># Unit test suite</span></div>
+                <div>└── <span class="text-rose-400 font-bold">mock_aws_secret.json</span>            <span class="text-slate-500"># Accidental leak target for surgical eradication</span></div>
+            </div>
+
+            <!-- Execution Walkthrough Code Block -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs font-mono">
+                    <span class="font-bold text-slate-800">1. Interactive Rebase &amp; Purge Protocol: <code class="text-purple-700">sanitize_history.sh</code></span>
+                    <span class="text-slate-400">Terminal Production Runbook</span>
+                </div>
+                <pre class="bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 shadow-xl">
+<span class="text-slate-500"># ==============================================================================</span>
+<span class="text-slate-500"># ShipForge History Surgery &amp; Secret Sanitization Protocol</span>
+<span class="text-slate-500"># ==============================================================================</span>
+
+<span class="text-slate-500"># 1. SIMULATE DIRTY FEATURE BRANCH WITH ACCIDENTAL SECRET</span>
+git switch -c feature/token-service
+echo <span class="text-amber-300">'{"AWS_KEY": "AKIA_SHIPFORGE_SECRET_LEAK_99182"}'</span> &gt; mock_aws_secret.json
+git add mock_aws_secret.json
+git commit -m <span class="text-amber-300">"chore: add mock credentials for local integration testing"</span>
+
+echo <span class="text-amber-300">'class TokenService: pass'</span> &gt; src/shipforge/tokens.py
+git add src/shipforge/tokens.py
+git commit -m <span class="text-amber-300">"wip tokens"</span>
+
+echo <span class="text-amber-300">'def test_tokens(): assert True'</span> &gt; tests/test_tokens.py
+git add tests/test_tokens.py
+git commit -m <span class="text-amber-300">"fix typo in tokens test"</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 2. INTERACTIVE REBASE: SQUASH MESSY COMMITS INTO CLEAN SEMANTIC UNITS</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Rebase the last 2 commits:</span>
+<span class="text-slate-500"># Command: git rebase -i HEAD~2</span>
+<span class="text-slate-500">#</span>
+<span class="text-slate-500"># IN THE EDITOR: Change the second commit from 'pick' to 'fixup':</span>
+<span class="text-slate-500">#   pick a1b2c3d wip tokens</span>
+<span class="text-slate-500">#   fixup e4f5g6h fix typo in tokens test</span>
+<span class="text-slate-500">#</span>
+<span class="text-slate-500"># Reword the parent commit to Conventional Commits:</span>
+<span class="text-slate-500">#   "feat(tokens): implement core token issuance and verification engine"</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 3. PERMANENT OBJECT PURGE: SCRUB mock_aws_secret.json FROM REPOSITORY DAG</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Physically excises the file across all historical trees:</span>
+git filter-repo --invert-paths --path mock_aws_secret.json --force
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 4. FORENSIC VERIFICATION: ASSERT OBJECT IS 100% GONE</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># Query every object in the entire database to prove the key string does not exist:</span>
+git rev-list --objects --all | grep mock_aws_secret.json || echo <span class="text-emerald-400">"&check; SECRET COMPLETELY ERADICATED"</span>
+
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+<span class="text-slate-500"># 5. SAFE PUSH: GUARD UPSTREAM WITH LEASE VERIFICATION</span>
+<span class="text-slate-500"># ------------------------------------------------------------------------------</span>
+git push --force-with-lease origin feature/token-service</pre>
+            </div>
+        </section>
+
+        <!-- 6. Common Gotchas & Architectural Anti-Patterns -->
+        <section id="gotchas" class="space-y-6">
+            <div class="border-b border-slate-200 pb-3">
+                <span class="text-rose-600 font-mono text-xs font-bold uppercase tracking-wider">Warning Track</span>
+                <h2 class="text-3xl font-bold text-slate-900 mt-1">Beginner Pitfalls &amp; Architectural Anti-Patterns</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Anti-Pattern 1 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Forgetting That Git Tags Retain Secret Blobs</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Running a history rewrite on branches while forgetting that release tags point to historical commits.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Why this leaves secrets exposed:</strong> Git tags are static pointers. If a tag like <code class="font-mono">v1.0.0</code> points to an ancient commit that holds your leaked secret, that commit and all its child blobs remain reachable and cannot be garbage collected! Tools like <code class="font-mono bg-rose-100 px-1 rounded text-rose-900 font-bold">git-filter-repo</code> automatically rewrite tags, neutralizing this vector.
+                    </p>
+                </div>
+
+                <!-- Anti-Pattern 2 -->
+                <div class="bg-rose-50 border-l-4 border-rose-500 p-6 rounded-r-2xl space-y-3">
+                    <div class="text-rose-900 font-bold flex items-center gap-2">
+                        <span>&#10060;</span>
+                        <span>Treating Git History Scrubbing as Key Revocation</span>
+                    </div>
+                    <p class="text-xs text-rose-800">
+                        Purging a secret from the Git repository and failing to immediately rotate the actual secret in your cloud infrastructure.
+                    </p>
+                    <p class="text-xs text-rose-900 leading-relaxed font-sans">
+                        <strong>Security Invariant:</strong> The moment a private key or API token touches a remote repository (like GitHub), <strong>assume it is compromised immediately</strong>. Malicious bots continuously scrape the public GitHub event firehose in real-time. Rewriting history is for compliance; <strong>immediate key rotation in AWS/GCP/Vault is non-negotiable</strong>!
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Interactive Verification & Terminal Runbook -->
+        <section id="runbook" class="bg-slate-900 text-white p-8 rounded-3xl space-y-6">
+            <div class="border-b border-slate-800 pb-3">
+                <span class="text-emerald-400 font-mono text-xs font-bold uppercase tracking-wider">Runbook</span>
+                <h2 class="text-2xl font-bold mt-1">Executing &amp; Validating ShipForge Milestone 04</h2>
+            </div>
+
+            <p class="text-slate-300 text-sm font-sans">
+                Follow these terminal commands to test interactive rebase, inspect replayed commit hashes, and verify forensic object eradication:
+            </p>
+
+            <div class="space-y-4 font-mono text-xs">
+                <!-- Step 1: Install git-filter-repo -->
+                <div>
+                    <span class="text-slate-500"># 1. Ensure modern git-filter-repo is installed in your development environment:</span>
+                    <div class="bg-slate-950 p-2.5 rounded border border-slate-800 text-emerald-400 mt-1">
+                        pip install git-filter-repo &amp;&amp; git filter-repo --version
+                    </div>
+                </div>
+
+                <!-- Step 2: Test Interactive Rebase -->
+                <div>
+                    <span class="text-slate-500"># 2. View commit history before rebasing:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sky-300 mt-1 overflow-x-auto">
+                        git log --oneline -n 5
+                    </div>
+                    <span class="text-slate-500 text-[11px] mt-1 block font-sans">
+                        Observe the chaotic sequence of uncurated commits before initiating interactive compilation.
+                    </span>
+                </div>
+
+                <!-- Step 3: Forensic Database Audit -->
+                <div>
+                    <span class="text-slate-500"># 3. Audit all active repository objects to confirm zero dangling references:</span>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-emerald-400 mt-1 overflow-x-auto">
+                        # Search for any raw commit, tree, or blob containing the word "secret":<br>
+                        git rev-list --all | xargs git grep -i "secret" || echo "CLEAN: Zero secrets found!"
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chapter Summary & Teaser for Chapter 05 -->
+        <section class="border-t border-slate-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+                <span class="text-xs font-mono font-bold text-slate-400 uppercase">Up Next</span>
+                <h4 class="text-lg font-bold text-slate-900">Chapter 05: Enterprise GitHub Collaboration: Pull Requests, Code Reviews &amp; Governance</h4>
+                <p class="text-xs text-slate-500 font-sans">Moving to distributed team workflows: Engineering high-context Pull Requests, multi-line review suggestions, configuring branch rulesets, and automating reviewer routing with <code class="font-mono">CODEOWNERS</code>.</p>
+            </div>
+            <a href="Chapter 05 - Enterprise GitHub Collaboration - Pull Requests, Code Reviews and Governance.html" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-emerald-400 hover:bg-slate-800 font-mono text-xs font-bold transition shadow-md shrink-0">
+                Continue to Chapter 05 &rarr;
+            </a>
+        </section>
+
+    </main>
+</body>
+</html>
